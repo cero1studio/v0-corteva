@@ -52,8 +52,8 @@ export default function NuevoEquipoPage() {
         setZones(zonesData)
         setDistributors(distributorsData)
         setCaptains(captainsData)
-      } catch (error) {
-        console.error("Error al cargar datos:", error)
+      } catch (err) {
+        console.error("Error al cargar datos:", err)
       }
     }
 
@@ -64,17 +64,15 @@ export default function NuevoEquipoPage() {
     setIsLoading(true)
     setError(null)
 
-    // Si se selecciona un capitán, obtener su distribuidor y zona
     if (formData.get("captain_id")) {
       const captainId = formData.get("captain_id") as string
-      const { data: captainData } = await supabase
+      const { data: captainData, error } = await supabase
         .from("profiles")
         .select("distributor_id, zone_id")
         .eq("id", captainId)
         .single()
 
-      if (captainData) {
-        // Usar el distribuidor y zona del capitán
+      if (!error && captainData) {
         if (captainData.distributor_id) {
           formData.set("distributor_id", captainData.distributor_id)
         }
@@ -101,12 +99,12 @@ export default function NuevoEquipoPage() {
         })
         router.push("/admin/equipos")
       }
-    } catch (error: any) {
-      setError(error.message || "Error al crear el equipo")
+    } catch (err: any) {
+      setError(err.message || "Error al crear el equipo")
       toast({
         variant: "destructive",
         title: "Error",
-        description: error.message || "Error al crear el equipo",
+        description: err.message || "Error al crear el equipo",
       })
     } finally {
       setIsLoading(false)
@@ -154,8 +152,8 @@ export default function NuevoEquipoPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="zoneId">Zona</Label>
-              <Select name="zoneId" value={zoneId} onValueChange={setZoneId} required>
+              <Label htmlFor="zone_id">Zona</Label>
+              <Select name="zone_id" value={zoneId} onValueChange={setZoneId} required>
                 <SelectTrigger>
                   <SelectValue placeholder="Selecciona una zona" />
                 </SelectTrigger>
@@ -170,8 +168,8 @@ export default function NuevoEquipoPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="distributorId">Distribuidor</Label>
-              <Select name="distributorId" value={distributorId} onValueChange={setDistributorId} required>
+              <Label htmlFor="distributor_id">Distribuidor</Label>
+              <Select name="distributor_id" value={distributorId} onValueChange={setDistributorId} required>
                 <SelectTrigger>
                   <SelectValue placeholder="Selecciona un distribuidor" />
                 </SelectTrigger>
