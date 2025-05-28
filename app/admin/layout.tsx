@@ -7,7 +7,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
       <DashboardNav role="admin" />
       <main className="flex-1 overflow-auto">
         <header className="flex h-16 shrink-0 items-center border-b px-6">
-          <h2 className="text-lg font-semibold">Panel de Administrador</h2>
+          <h2 className="text-lg font-semibold">Panel FIFA</h2>
         </header>
         <div className="p-6">{children}</div>
       </main>

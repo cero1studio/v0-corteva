@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -12,15 +12,37 @@ import { createDistributor } from "@/app/actions/distributors"
 import { useRouter } from "next/navigation"
 import { Upload } from "lucide-react"
 import Image from "next/image"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { getZones } from "@/app/actions/zones"
 
 export default function NuevoDistribuidorPage() {
   const { toast } = useToast()
   const router = useRouter()
   const [isLoading, setIsLoading] = useState(false)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
+  const [zones, setZones] = useState([])
   const [formData, setFormData] = useState({
     name: "",
+    zoneId: "",
   })
+
+  useEffect(() => {
+    fetchZones()
+  }, [])
+
+  async function fetchZones() {
+    try {
+      const data = await getZones()
+      setZones(data || [])
+    } catch (error) {
+      console.error("Error al cargar zonas:", error)
+      toast({
+        title: "Error",
+        description: "No se pudieron cargar las zonas",
+        variant: "destructive",
+      })
+    }
+  }
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target
@@ -30,6 +52,28 @@ export default function NuevoDistribuidorPage() {
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (file) {
+      // Validar tamaño (máximo 2MB)
+      if (file.size > 2 * 1024 * 1024) {
+        toast({
+          title: "Error",
+          description: "La imagen no debe superar los 2MB",
+          variant: "destructive",
+        })
+        e.target.value = ""
+        return
+      }
+
+      // Validar tipo
+      if (!file.type.startsWith("image/")) {
+        toast({
+          title: "Error",
+          description: "El archivo debe ser una imagen",
+          variant: "destructive",
+        })
+        e.target.value = ""
+        return
+      }
+
       const reader = new FileReader()
       reader.onloadend = () => {
         setImagePreview(reader.result as string)
@@ -44,15 +88,16 @@ export default function NuevoDistribuidorPage() {
 
     try {
       const formDataObj = new FormData()
-      Object.entries(formData).forEach(([key, value]) => {
-        formDataObj.append(key, value.toString())
-      })
+      formDataObj.append("name", formData.name)
+      formDataObj.append("zoneId", formData.zoneId)
 
       // Añadir la imagen si existe
-      const imageInput = document.getElementById("distributor-logo") as HTMLInputElement
+      const imageInput = document.getElementById("logo") as HTMLInputElement
       if (imageInput.files && imageInput.files[0]) {
         formDataObj.append("logo", imageInput.files[0])
       }
+
+      console.log("Enviando formulario con imagen:", imageInput.files?.[0]?.name)
 
       const result = await createDistributor(formDataObj)
 
@@ -88,7 +133,7 @@ export default function NuevoDistribuidorPage() {
           <CardTitle>Crear Nuevo Distribuidor</CardTitle>
           <CardDescription>Completa el formulario para crear un nuevo distribuidor en el sistema</CardDescription>
         </CardHeader>
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={handleSubmit} encType="multipart/form-data">
           <CardContent className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="name">
@@ -105,11 +150,37 @@ export default function NuevoDistribuidorPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="distributor-logo">Logo del Distribuidor</Label>
+              <Label htmlFor="zoneId">Zona</Label>
+              <Select
+                name="zoneId"
+                value={formData.zoneId}
+                onValueChange={(value) => setFormData({ ...formData, zoneId: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecciona una zona" />
+                </SelectTrigger>
+                <SelectContent>
+                  {zones.map((zone) => (
+                    <SelectItem key={zone.id} value={zone.id}>
+                      {zone.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="logo">Logo del Distribuidor</Label>
               <div className="flex items-center gap-4">
                 {imagePreview ? (
                   <div className="relative h-24 w-24 overflow-hidden rounded-md border">
-                    <Image src={imagePreview || "/placeholder.svg"} alt="Vista previa" fill className="object-cover" />
+                    <Image
+                      src={imagePreview || "/placeholder.svg"}
+                      alt="Vista previa"
+                      fill
+                      className="object-cover"
+                      unoptimized
+                    />
                   </div>
                 ) : (
                   <div className="flex h-24 w-24 items-center justify-center rounded-md border bg-muted">
@@ -118,13 +189,16 @@ export default function NuevoDistribuidorPage() {
                 )}
                 <div className="flex-1">
                   <Input
-                    id="distributor-logo"
+                    id="logo"
+                    name="logo"
                     type="file"
-                    accept="image/*"
+                    accept="image/jpeg,image/png,image/gif"
                     onChange={handleImageChange}
                     className="cursor-pointer"
                   />
-                  <p className="mt-1 text-xs text-muted-foreground">Formatos aceptados: JPG, PNG. Tamaño máximo: 2MB</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Formatos aceptados: JPG, PNG, GIF. Tamaño máximo: 2MB
+                  </p>
                 </div>
               </div>
             </div>

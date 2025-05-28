@@ -162,15 +162,18 @@ export default function DistribuidoresPage() {
                           <TableCell>
                             <div className="relative h-12 w-24 overflow-hidden rounded-md border">
                               <img
-                                src={logoUrl || "/placeholder.svg"}
-                                alt={distributor.name}
+                                src={getDistributorLogoUrl(distributor) || "/placeholder.svg"}
+                                alt={`Logo de ${distributor.name}`}
                                 className="h-full w-full object-contain"
                                 onError={(e) => {
-                                  console.error(`Error al cargar imagen para ${distributor.name}:`, logoUrl)
-                                  e.currentTarget.src = "/placeholder.svg"
+                                  console.error(
+                                    `Error al cargar imagen para ${distributor.name}:`,
+                                    getDistributorLogoUrl(distributor),
+                                  )
+                                  e.currentTarget.src = "/placeholder.svg?height=48&width=96&text=Sin+Logo"
                                 }}
                                 onLoad={() => {
-                                  console.log(`Imagen cargada exitosamente para ${distributor.name}:`, logoUrl)
+                                  console.log(`Imagen cargada exitosamente para ${distributor.name}`)
                                 }}
                               />
                             </div>

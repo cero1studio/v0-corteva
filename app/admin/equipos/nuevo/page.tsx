@@ -14,7 +14,7 @@ import { createTeam } from "@/app/actions/teams"
 import { getZones } from "@/app/actions/zones"
 import { getDistributors } from "@/app/actions/distributors"
 import { getCaptains } from "@/app/actions/captains"
-import { supabase } from "@/lib/supabase/client"
+import { supabase } from "@/lib/supabase"
 
 interface Zone {
   id: string

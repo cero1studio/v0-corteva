@@ -4,345 +4,308 @@ import type React from "react"
 
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { supabase } from "@/lib/supabase/client"
+import { getUserById, getZones, getDistributors, updateUser, diagnoseUser } from "@/app/actions/users"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { useToast } from "@/components/ui/use-toast"
-import { ArrowLeft, Save } from "lucide-react"
-import Link from "next/link"
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { Loader2, AlertCircle, CheckCircle2, AlertTriangle } from "lucide-react"
 
-interface Team {
-  id: string
-  name: string
-}
-
-interface Zone {
-  id: string
-  name: string
-}
-
-interface Distributor {
-  id: string
-  name: string
-}
-
-interface Profile {
-  id: string
-  full_name: string | null
-  role: string
-  team_id: string | null
-  zone_id: string | null
-  distributor_id: string | null
-}
-
-export default function EditarUsuarioPage({ params }: { params: { id: string } }) {
-  const [email, setEmail] = useState("")
-  const [password, setPassword] = useState("")
-  const [fullName, setFullName] = useState("")
-  const [role, setRole] = useState("")
-  const [teamId, setTeamId] = useState("")
-  const [zoneId, setZoneId] = useState("")
-  const [distributorId, setDistributorId] = useState("")
-  const [teams, setTeams] = useState<Team[]>([])
-  const [zones, setZones] = useState<Zone[]>([])
-  const [distributors, setDistributors] = useState<Distributor[]>([])
-  const [loading, setLoading] = useState(false)
-  const [loadingData, setLoadingData] = useState(true)
+export default function EditarUsuario({ params }: { params: { id: string } }) {
   const router = useRouter()
-  const { toast } = useToast()
-  const userId = params.id
+  const [loading, setLoading] = useState(true)
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [success, setSuccess] = useState<string | null>(null)
+  const [warning, setWarning] = useState<string | null>(null)
+  const [user, setUser] = useState<any>(null)
+  const [zones, setZones] = useState<any[]>([])
+  const [distributors, setDistributors] = useState<any[]>([])
+  const [diagnosticInfo, setDiagnosticInfo] = useState<any>(null)
+  const [showDiagnostic, setShowDiagnostic] = useState(false)
 
   useEffect(() => {
-    fetchTeams()
-    fetchZones()
-    fetchDistributors()
-    fetchUserData()
-  }, [userId])
+    const fetchData = async () => {
+      setLoading(true)
+      try {
+        // Cargar datos del usuario
+        const userResult = await getUserById(params.id)
+        if (userResult.error) {
+          setError(userResult.error)
+          return
+        }
+        setUser(userResult.data)
 
-  // Cuando cambia el rol a admin, eliminar el equipo, zona y distribuidor
-  useEffect(() => {
-    if (role === "admin") {
-      setTeamId("none")
-      setZoneId("none")
-      setDistributorId("none")
-    }
-  }, [role])
+        // Cargar zonas
+        const zonesResult = await getZones()
+        if (zonesResult.data) {
+          setZones(zonesResult.data)
+        }
 
-  async function fetchTeams() {
-    try {
-      const { data, error } = await supabase.from("teams").select("id, name").order("name")
+        // Cargar distribuidores
+        const distributorsResult = await getDistributors()
+        if (distributorsResult.data) {
+          setDistributors(distributorsResult.data)
+        }
 
-      if (error) throw error
-
-      setTeams(data || [])
-    } catch (error) {
-      console.error("Error al cargar equipos:", error)
-      toast({
-        title: "Error",
-        description: "No se pudieron cargar los equipos",
-        variant: "destructive",
-      })
-    }
-  }
-
-  async function fetchZones() {
-    try {
-      const { data, error } = await supabase.from("zones").select("id, name").order("name")
-
-      if (error) throw error
-
-      setZones(data || [])
-    } catch (error) {
-      console.error("Error al cargar zonas:", error)
-      toast({
-        title: "Error",
-        description: "No se pudieron cargar las zonas",
-        variant: "destructive",
-      })
-    }
-  }
-
-  async function fetchDistributors() {
-    try {
-      const { data, error } = await supabase.from("distributors").select("id, name").order("name")
-
-      if (error) throw error
-
-      setDistributors(data || [])
-    } catch (error) {
-      console.error("Error al cargar distribuidores:", error)
-      toast({
-        title: "Error",
-        description: "No se pudieron cargar los distribuidores",
-        variant: "destructive",
-      })
-    }
-  }
-
-  async function fetchUserData() {
-    setLoadingData(true)
-    try {
-      // Obtener perfil del usuario primero
-      const { data: profileData, error: profileError } = await supabase
-        .from("profiles")
-        .select("id, full_name, role, team_id, zone_id, distributor_id, email")
-        .eq("id", userId)
-        .single()
-
-      if (profileError) throw profileError
-
-      if (profileData) {
-        setEmail(profileData.email || "")
-        setFullName(profileData.full_name || "")
-        setRole(profileData.role || "")
-        setTeamId(profileData.team_id || "none")
-        setZoneId(profileData.zone_id || "none")
-        setDistributorId(profileData.distributor_id || "none")
+        // Cargar diagnóstico
+        const diagResult = await diagnoseUser(params.id)
+        setDiagnosticInfo(diagResult)
+      } catch (err: any) {
+        setError(err.message || "Error al cargar datos")
+      } finally {
+        setLoading(false)
       }
-    } catch (error) {
-      console.error("Error al cargar datos del usuario:", error)
-      toast({
-        title: "Error",
-        description: "No se pudieron cargar los datos del usuario",
-        variant: "destructive",
-      })
-    } finally {
-      setLoadingData(false)
     }
-  }
 
-  async function handleSubmit(e: React.FormEvent) {
+    fetchData()
+  }, [params.id])
+
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
-    setLoading(true)
+    setSubmitting(true)
+    setError(null)
+    setSuccess(null)
+    setWarning(null)
 
     try {
-      // Actualizar datos de Auth si se cambió la contraseña
-      if (password) {
-        const { error: authError } = await supabase.auth.admin.updateUserById(userId, {
-          password,
-        })
+      const formData = new FormData(e.currentTarget)
+      const result = await updateUser(params.id, formData)
 
-        if (authError) throw authError
+      if (result.error) {
+        setError(result.error)
+      } else if (result.warning) {
+        setWarning(result.warning)
+        setSuccess("Perfil actualizado correctamente")
+      } else {
+        setSuccess(result.message || "Usuario actualizado exitosamente")
       }
 
-      // Si es admin, asegurarse de que no tenga equipo, zona ni distribuidor
-      const finalTeamId = role === "admin" ? null : teamId === "none" ? null : teamId || null
-      const finalZoneId = role === "admin" ? null : zoneId === "none" ? null : zoneId || null
-      const finalDistributorId = role === "admin" ? null : distributorId === "none" ? null : distributorId || null
-
-      // Actualizar perfil
-      const { error: profileError } = await supabase
-        .from("profiles")
-        .update({
-          full_name: fullName,
-          role,
-          team_id: finalTeamId,
-          zone_id: finalZoneId,
-          distributor_id: finalDistributorId,
-        })
-        .eq("id", userId)
-
-      if (profileError) throw profileError
-
-      toast({
-        title: "Usuario actualizado",
-        description: "El usuario ha sido actualizado exitosamente",
-      })
-
-      router.push("/admin/usuarios")
-    } catch (error: any) {
-      console.error("Error al actualizar usuario:", error)
-      toast({
-        title: "Error",
-        description: error.message || "No se pudo actualizar el usuario",
-        variant: "destructive",
-      })
+      // Actualizar diagnóstico después de la actualización
+      const diagResult = await diagnoseUser(params.id)
+      setDiagnosticInfo(diagResult)
+    } catch (err: any) {
+      setError(err.message || "Error al actualizar usuario")
     } finally {
-      setLoading(false)
+      setSubmitting(false)
     }
   }
 
-  if (loadingData) {
+  if (loading) {
     return (
-      <div className="flex justify-center py-8">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-corteva-600"></div>
+      <div className="flex items-center justify-center min-h-screen">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <span className="ml-2">Cargando...</span>
+      </div>
+    )
+  }
+
+  if (!user) {
+    return (
+      <div className="container mx-auto p-4">
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>Error</AlertTitle>
+          <AlertDescription>No se pudo cargar el usuario. {error}</AlertDescription>
+        </Alert>
+        <Button className="mt-4" onClick={() => router.push("/admin/usuarios")}>
+          Volver
+        </Button>
       </div>
     )
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-3xl font-bold tracking-tight">Editar Usuario</h2>
-        <Button variant="outline" asChild>
-          <Link href="/admin/usuarios">
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Volver
-          </Link>
+    <div className="container mx-auto p-4">
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl font-bold">Editar Usuario</h1>
+        <Button variant="outline" onClick={() => router.push("/admin/usuarios")}>
+          Volver
         </Button>
       </div>
 
+      {error && (
+        <Alert variant="destructive" className="mb-4">
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>Error</AlertTitle>
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
+
+      {warning && (
+        <Alert variant="warning" className="mb-4 border-yellow-500 bg-yellow-50">
+          <AlertTriangle className="h-4 w-4 text-yellow-600" />
+          <AlertTitle className="text-yellow-600">Advertencia</AlertTitle>
+          <AlertDescription className="text-yellow-700">{warning}</AlertDescription>
+        </Alert>
+      )}
+
+      {success && (
+        <Alert variant="default" className="mb-4 border-green-500 bg-green-50">
+          <CheckCircle2 className="h-4 w-4 text-green-600" />
+          <AlertTitle className="text-green-600">Éxito</AlertTitle>
+          <AlertDescription className="text-green-700">{success}</AlertDescription>
+        </Alert>
+      )}
+
       <Card>
+        <CardHeader>
+          <CardTitle>Información del Usuario</CardTitle>
+          <CardDescription>
+            Edita la información del usuario. Los campos marcados con * son obligatorios.
+          </CardDescription>
+        </CardHeader>
         <form onSubmit={handleSubmit}>
-          <CardHeader>
-            <CardTitle>Información del Usuario</CardTitle>
-            <CardDescription>Actualiza los datos del usuario</CardDescription>
-          </CardHeader>
           <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="email">Correo electrónico</Label>
-              <Input id="email" type="email" value={email} disabled className="bg-gray-100" />
-              <p className="text-xs text-muted-foreground">El correo electrónico no se puede modificar</p>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="password">Nueva contraseña (opcional)</Label>
-              <Input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Dejar en blanco para mantener la actual"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="fullName">Nombre completo</Label>
-              <Input
-                id="fullName"
-                value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
-                placeholder="Nombre y apellido"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="role">Rol *</Label>
-              <Select value={role} onValueChange={setRole} required>
-                <SelectTrigger id="role">
-                  <SelectValue placeholder="Selecciona un rol" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="admin">Administrador</SelectItem>
-                  <SelectItem value="capitan">Capitán</SelectItem>
-                  <SelectItem value="director_tecnico">Director Técnico</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {role !== "admin" && (
-              <>
-                <div className="space-y-2">
-                  <Label htmlFor="zone">Zona *</Label>
-                  <Select value={zoneId} onValueChange={setZoneId} required>
-                    <SelectTrigger id="zone">
-                      <SelectValue placeholder="Selecciona una zona" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">Sin zona</SelectItem>
-                      {zones.map((zone) => (
-                        <SelectItem key={zone.id} value={zone.id}>
-                          {zone.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="distributor">Distribuidor *</Label>
-                  <Select value={distributorId} onValueChange={setDistributorId} required>
-                    <SelectTrigger id="distributor">
-                      <SelectValue placeholder="Selecciona un distribuidor" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">Sin distribuidor</SelectItem>
-                      {distributors.map((distributor) => (
-                        <SelectItem key={distributor.id} value={distributor.id}>
-                          {distributor.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="team">Equipo</Label>
-                  <Select value={teamId} onValueChange={setTeamId}>
-                    <SelectTrigger id="team">
-                      <SelectValue placeholder="Selecciona un equipo (opcional)" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">Sin equipo</SelectItem>
-                      {teams.map((team) => (
-                        <SelectItem key={team.id} value={team.id}>
-                          {team.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </>
-            )}
-
-            {role === "admin" && (
-              <div className="p-3 bg-gray-50 rounded-md text-sm text-gray-500">
-                Los administradores no pueden tener equipos, zonas o distribuidores asignados.
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="email">Email *</Label>
+                <Input
+                  id="email"
+                  name="email"
+                  type="email"
+                  defaultValue={user.email}
+                  required
+                  placeholder="correo@ejemplo.com"
+                />
               </div>
-            )}
+              <div className="space-y-2">
+                <Label htmlFor="fullName">Nombre Completo *</Label>
+                <Input
+                  id="fullName"
+                  name="fullName"
+                  defaultValue={user.full_name}
+                  required
+                  placeholder="Nombre Completo"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="role">Rol *</Label>
+                <Select name="role" defaultValue={user.role} required>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecciona un rol" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="admin">FIFA</SelectItem>
+                    <SelectItem value="capitan">Capitán</SelectItem>
+                    <SelectItem value="director_tecnico">Director Técnico</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="zoneId">Zona</Label>
+                <Select name="zoneId" defaultValue={user.zone_id || "none"}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecciona una zona" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Sin zona</SelectItem>
+                    {zones.map((zone) => (
+                      <SelectItem key={zone.id} value={zone.id}>
+                        {zone.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="distributorId">Distribuidor</Label>
+                <Select name="distributorId" defaultValue={user.distributor_id || "none"}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecciona un distribuidor" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Sin distribuidor</SelectItem>
+                    {distributors.map((distributor) => (
+                      <SelectItem key={distributor.id} value={distributor.id}>
+                        {distributor.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="password">Contraseña (dejar en blanco para mantener)</Label>
+                <Input
+                  id="password"
+                  name="password"
+                  type="password"
+                  placeholder="Nueva contraseña (mínimo 6 caracteres)"
+                />
+              </div>
+            </div>
+
+            <div className="pt-4">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setShowDiagnostic(!showDiagnostic)}
+                className="mb-4"
+              >
+                {showDiagnostic ? "Ocultar diagnóstico" : "Mostrar diagnóstico"}
+              </Button>
+
+              {showDiagnostic && diagnosticInfo && (
+                <div className="bg-gray-50 p-4 rounded-md border text-sm">
+                  <h3 className="font-medium mb-2">Diagnóstico del usuario</h3>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <strong>Estado en base de datos:</strong>{" "}
+                      {diagnosticInfo.profile ? (
+                        <span className="text-green-600">✓ Encontrado</span>
+                      ) : (
+                        <span className="text-red-600">✗ No encontrado</span>
+                      )}
+                    </div>
+                    <div>
+                      <strong>Estado en autenticación:</strong>{" "}
+                      {diagnosticInfo.auth ? (
+                        <span className="text-green-600">✓ Encontrado</span>
+                      ) : (
+                        <span className="text-red-600">✗ No encontrado</span>
+                      )}
+                    </div>
+                    {diagnosticInfo.profileError && (
+                      <div className="col-span-2">
+                        <strong>Error en base de datos:</strong>{" "}
+                        <span className="text-red-600">{diagnosticInfo.profileError}</span>
+                      </div>
+                    )}
+                    {diagnosticInfo.authError && (
+                      <div className="col-span-2">
+                        <strong>Error en autenticación:</strong>{" "}
+                        <span className="text-red-600">{diagnosticInfo.authError}</span>
+                      </div>
+                    )}
+                    {diagnosticInfo.auth && (
+                      <div className="col-span-2 mt-2">
+                        <strong>ID en autenticación:</strong> {diagnosticInfo.auth.id}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
           </CardContent>
-          <CardFooter>
-            <Button type="submit" disabled={loading} className="w-full">
-              {loading ? (
+          <CardFooter className="flex justify-between">
+            <Button variant="outline" type="button" onClick={() => router.push("/admin/usuarios")}>
+              Cancelar
+            </Button>
+            <Button type="submit" disabled={submitting}>
+              {submitting ? (
                 <>
-                  <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent"></div>
-                  Actualizando usuario...
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Guardando...
                 </>
               ) : (
-                <>
-                  <Save className="mr-2 h-4 w-4" />
-                  Guardar Cambios
-                </>
+                "Guardar Cambios"
               )}
             </Button>
           </CardFooter>

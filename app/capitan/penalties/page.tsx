@@ -5,8 +5,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { PenaltyCard } from "@/components/penalty-card"
 import { PenaltyHistoryList } from "@/components/penalty-history-list"
+import { getTeamPenalties, getTeamPenaltyHistory, usePenalty } from "@/app/actions/penalties"
 import { supabase } from "@/lib/supabase/client"
-import { useToast } from "@/hooks/use-toast"
+import { useToast } from "@/components/ui/use-toast"
 import { PenaltyAnimation } from "@/components/penalty-animation"
 import {
   AlertDialog,
@@ -65,45 +66,20 @@ export default function CapitanPenaltiesPage() {
       setTeamId(profile.team_id)
 
       // Obtener penaltis del equipo
-      const { data: penaltiesData, error: penaltiesError } = await supabase
-        .from("penalties")
-        .select(`
-          id,
-          team_id,
-          quantity,
-          used,
-          reason,
-          created_at,
-          teams (
-            id,
-            name,
-            zone_id,
-            distributor_id
-          )
-        `)
-        .eq("team_id", profile.team_id)
-        .order("created_at", { ascending: false })
-
-      if (penaltiesError) throw penaltiesError
-      setPenalties(penaltiesData || [])
+      const penaltiesResult = await getTeamPenalties(profile.team_id)
+      if (penaltiesResult.success) {
+        setPenalties(penaltiesResult.data || [])
+      } else {
+        throw new Error(penaltiesResult.error)
+      }
 
       // Obtener historial de penaltis
-      const { data: historyData, error: historyError } = await supabase
-        .from("penalty_history")
-        .select(`
-          id,
-          penalty_id,
-          team_id,
-          action,
-          quantity,
-          description,
-          created_at
-        `)
-        .eq("team_id", profile.team_id)
-        .order("created_at", { ascending: false })
-
-      if (historyError) throw historyError
-      setHistory(historyData || [])
+      const historyResult = await getTeamPenaltyHistory(profile.team_id)
+      if (historyResult.success) {
+        setHistory(historyResult.data || [])
+      } else {
+        throw new Error(historyResult.error)
+      }
     } catch (error: any) {
       console.error("Error al cargar datos:", error)
       toast({
@@ -124,21 +100,7 @@ export default function CapitanPenaltiesPage() {
     if (!teamId) return
 
     try {
-      // Llamar a la API route en lugar de la server action directamente
-      const response = await fetch("/api/penalties", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          action: "use",
-          teamId: teamId,
-          quantity: 1,
-          description: "Penalti reclamado por el capitán",
-        }),
-      })
-
-      const result = await response.json()
+      const result = await usePenalty(teamId, 1, "Penalti reclamado por el capitán")
 
       if (result.success) {
         setShowAnimation(true)

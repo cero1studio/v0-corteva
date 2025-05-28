@@ -5,6 +5,8 @@ import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { TeamLevelBadge } from "@/components/team-level-badge"
 import { GoalProgress } from "@/components/goal-progress"
+import { getDistributorLogoUrl } from "@/lib/utils/image"
+import Image from "next/image"
 
 export default async function DirectorTecnicoEquiposPage() {
   const cookieStore = cookies()
@@ -33,7 +35,7 @@ export default async function DirectorTecnicoEquiposPage() {
       total_points,
       logo_url,
       distributor_id,
-      distributors(name)
+      distributors(id, name, logo_url)
     `)
     .eq("zone_id", profile?.zone_id)
     .order("total_points", { ascending: false })
@@ -52,7 +54,22 @@ export default async function DirectorTecnicoEquiposPage() {
                 <div className="flex items-start justify-between">
                   <div>
                     <CardTitle className="line-clamp-1">{team.name}</CardTitle>
-                    <CardDescription>{team.distributors?.name || "Sin distribuidor"}</CardDescription>
+                    <CardDescription className="flex items-center gap-2">
+                      {team.distributors?.logo_url && (
+                        <Image
+                          src={getDistributorLogoUrl({
+                            name: team.distributors?.name || "",
+                            logo_url: team.distributors?.logo_url,
+                          })}
+                          alt={team.distributors?.name || "Distribuidor"}
+                          width={24}
+                          height={16}
+                          className="object-contain"
+                          unoptimized
+                        />
+                      )}
+                      {team.distributors?.name || "Sin distribuidor"}
+                    </CardDescription>
                   </div>
                   <TeamLevelBadge points={team.total_points || 0} />
                 </div>

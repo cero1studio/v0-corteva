@@ -103,7 +103,10 @@ export async function createProduct(formData: FormData) {
       .select()
       .single()
 
-    if (error) throw new Error(`Error al crear producto: ${error.message}`)
+    if (error) {
+      console.error("Error al crear producto:", error)
+      return { error: error.message }
+    }
 
     revalidatePath("/admin/productos")
     return { success: true, data }

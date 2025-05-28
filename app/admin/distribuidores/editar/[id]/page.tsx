@@ -14,25 +14,22 @@ import Link from "next/link"
 import Image from "next/image"
 import { getDistributorById, updateDistributor } from "@/app/actions/distributors"
 import { getDistributorLogoUrl } from "@/lib/utils/image"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { getZones } from "@/app/actions/zones"
 
 export default function EditarDistribuidorPage({ params }: { params: { id: string } }) {
   const [distributor, setDistributor] = useState<{
     id: string
     name: string
-    address: string | null
-    contact_name: string | null
-    contact_email: string | null
-    contact_phone: string | null
     logo_url: string | null
+    zone_id: string | null
   }>({
     id: "",
     name: "",
-    address: null,
-    contact_name: null,
-    contact_email: null,
-    contact_phone: null,
     logo_url: null,
+    zone_id: null,
   })
+  const [zones, setZones] = useState([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [logoPreview, setLogoPreview] = useState<string | null>(null)
@@ -43,6 +40,7 @@ export default function EditarDistribuidorPage({ params }: { params: { id: strin
   useEffect(() => {
     if (params.id) {
       fetchDistributor(params.id)
+      fetchZones()
     }
   }, [params.id])
 
@@ -53,7 +51,12 @@ export default function EditarDistribuidorPage({ params }: { params: { id: strin
 
       if (data) {
         console.log("Distribuidor obtenido:", data)
-        setDistributor(data)
+        setDistributor({
+          id: data.id,
+          name: data.name,
+          logo_url: data.logo_url,
+          zone_id: data.zone_id,
+        })
 
         // Configurar la vista previa del logo
         const logoUrl = getDistributorLogoUrl(data)
@@ -69,6 +72,20 @@ export default function EditarDistribuidorPage({ params }: { params: { id: strin
       })
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function fetchZones() {
+    try {
+      const data = await getZones()
+      setZones(data || [])
+    } catch (error) {
+      console.error("Error al cargar zonas:", error)
+      toast({
+        title: "Error",
+        description: "No se pudieron cargar las zonas",
+        variant: "destructive",
+      })
     }
   }
 
@@ -107,10 +124,9 @@ export default function EditarDistribuidorPage({ params }: { params: { id: strin
       // Crear FormData para enviar los datos
       const formData = new FormData()
       formData.append("name", distributor.name)
-      formData.append("address", distributor.address || "")
-      formData.append("contactName", distributor.contact_name || "")
-      formData.append("contactEmail", distributor.contact_email || "")
-      formData.append("contactPhone", distributor.contact_phone || "")
+      if (distributor.zone_id) {
+        formData.append("zoneId", distributor.zone_id)
+      }
 
       // Añadir la URL actual del logo si existe
       if (distributor.logo_url) {
@@ -155,14 +171,6 @@ export default function EditarDistribuidorPage({ params }: { params: { id: strin
     }
   }
 
-  if (loading) {
-    return (
-      <div className="flex justify-center items-center min-h-[60vh]">
-        <Loader2 className="h-8 w-8 animate-spin text-corteva-600" />
-      </div>
-    )
-  }
-
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-2">
@@ -193,44 +201,23 @@ export default function EditarDistribuidorPage({ params }: { params: { id: strin
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="address">Dirección</Label>
-              <Input
-                id="address"
-                value={distributor.address || ""}
-                onChange={(e) => setDistributor({ ...distributor, address: e.target.value })}
-                placeholder="Dirección del distribuidor"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="contact_name">Nombre de Contacto</Label>
-              <Input
-                id="contact_name"
-                value={distributor.contact_name || ""}
-                onChange={(e) => setDistributor({ ...distributor, contact_name: e.target.value })}
-                placeholder="Nombre de la persona de contacto"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="contact_email">Email de Contacto</Label>
-              <Input
-                id="contact_email"
-                type="email"
-                value={distributor.contact_email || ""}
-                onChange={(e) => setDistributor({ ...distributor, contact_email: e.target.value })}
-                placeholder="Email de contacto"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="contact_phone">Teléfono de Contacto</Label>
-              <Input
-                id="contact_phone"
-                value={distributor.contact_phone || ""}
-                onChange={(e) => setDistributor({ ...distributor, contact_phone: e.target.value })}
-                placeholder="Teléfono de contacto"
-              />
+              <Label htmlFor="zoneId">Zona</Label>
+              <Select
+                name="zoneId"
+                value={distributor.zone_id || ""}
+                onValueChange={(value) => setDistributor({ ...distributor, zone_id: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecciona una zona" />
+                </SelectTrigger>
+                <SelectContent>
+                  {zones.map((zone) => (
+                    <SelectItem key={zone.id} value={zone.id}>
+                      {zone.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="space-y-2">
@@ -269,9 +256,6 @@ export default function EditarDistribuidorPage({ params }: { params: { id: strin
                   <p className="mt-1 text-xs text-muted-foreground">Formatos aceptados: JPG, PNG. Tamaño máximo: 5MB</p>
                 </div>
               </div>
-              <p className="text-sm text-muted-foreground">
-                Nota: Los distribuidores de Corteva pueden usar el logo de Agralba por defecto.
-              </p>
             </div>
           </CardContent>
           <CardFooter className="flex justify-between">

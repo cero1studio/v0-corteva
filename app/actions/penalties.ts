@@ -1,4 +1,4 @@
-"use server"
+"\"use server"
 
 import { createServerClient } from "@/lib/supabase/server"
 import { cookies } from "next/headers"
@@ -105,14 +105,6 @@ export async function usePenalty(teamId: string, quantity: number, description: 
     const cookieStore = cookies()
     const supabase = createServerClient(cookieStore)
 
-    // Obtener goles actuales del equipo
-    const { data: team, error: teamError } = await supabase.from("teams").select("goals").eq("id", teamId).single()
-
-    if (teamError) {
-      console.error("Error al obtener equipo:", teamError)
-      return { success: false, error: teamError.message }
-    }
-
     // Obtener el penalti menos reciente que no ha sido usado completamente
     const { data: penalty, error: penaltyError } = await supabase
       .from("penalties")
@@ -125,16 +117,12 @@ export async function usePenalty(teamId: string, quantity: number, description: 
 
     if (penaltyError) {
       console.error("Error al obtener penalti:", penaltyError)
-      return { success: false, error: "No hay penaltis disponibles" }
+      return { success: false, error: penaltyError.message }
     }
 
     if (!penalty) {
       return { success: false, error: "No hay penaltis disponibles" }
     }
-
-    // Calcular bonus (25% de los goles actuales)
-    const currentGoals = team.goals || 0
-    const bonusGoals = Math.floor(currentGoals * 0.25)
 
     // Actualizar el penalti
     const { error: updateError } = await supabase
@@ -145,17 +133,6 @@ export async function usePenalty(teamId: string, quantity: number, description: 
     if (updateError) {
       console.error("Error al usar penalti:", updateError)
       return { success: false, error: updateError.message }
-    }
-
-    // Actualizar goles del equipo
-    const { error: goalsError } = await supabase
-      .from("teams")
-      .update({ goals: currentGoals + bonusGoals })
-      .eq("id", teamId)
-
-    if (goalsError) {
-      console.error("Error al actualizar goles:", goalsError)
-      return { success: false, error: goalsError.message }
     }
 
     // Registrar en el historial
@@ -173,7 +150,7 @@ export async function usePenalty(teamId: string, quantity: number, description: 
     }
 
     revalidatePath("/capitan/penalties")
-    return { success: true, bonusGoals }
+    return { success: true }
   } catch (error: any) {
     console.error("Error al usar penalti:", error)
     return { success: false, error: error.message || "Error al usar penalti" }

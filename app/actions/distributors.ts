@@ -9,11 +9,8 @@ export async function createDistributor(formData: FormData) {
 
   // Obtener datos del formulario
   const name = formData.get("name") as string
-  const address = formData.get("address") as string
-  const contactName = formData.get("contactName") as string
-  const contactEmail = formData.get("contactEmail") as string
-  const contactPhone = formData.get("contactPhone") as string
   const imageFile = formData.get("logo") as File
+  const zoneId = formData.get("zoneId") as string
 
   try {
     let logoUrl = null
@@ -22,9 +19,16 @@ export async function createDistributor(formData: FormData) {
     if (imageFile && imageFile.size > 0) {
       console.log("Subiendo imagen:", imageFile.name, "Tamaño:", imageFile.size)
 
-      const fileExt = imageFile.name.split(".").pop()
+      // Validar que el archivo sea una imagen
+      if (!imageFile.type.startsWith("image/")) {
+        return { error: "El archivo debe ser una imagen válida" }
+      }
+
+      const fileExt = imageFile.name.split(".").pop()?.toLowerCase()
       const fileName = `distributor_${Date.now()}.${fileExt}`
       const filePath = `distributors/${fileName}`
+
+      console.log("Ruta de subida:", filePath)
 
       const { data: uploadData, error: uploadError } = await adminSupabase.storage
         .from("images")
@@ -39,6 +43,11 @@ export async function createDistributor(formData: FormData) {
       }
 
       console.log("Imagen subida exitosamente:", uploadData.path)
+
+      // Verificar que la imagen se puede acceder
+      const { data: urlData } = adminSupabase.storage.from("images").getPublicUrl(uploadData.path)
+      console.log("URL pública generada:", urlData.publicUrl)
+
       logoUrl = uploadData.path
     }
 
@@ -46,11 +55,8 @@ export async function createDistributor(formData: FormData) {
       .from("distributors")
       .insert({
         name,
-        address,
-        contact_name: contactName,
-        contact_email: contactEmail,
-        contact_phone: contactPhone,
         logo_url: logoUrl,
+        zone_id: zoneId === "" ? null : zoneId,
       })
       .select()
       .single()
@@ -99,12 +105,9 @@ export async function updateDistributor(id: string, formData: FormData) {
   const supabase = createServerClient()
 
   const name = formData.get("name") as string
-  const address = (formData.get("address") as string) || null
-  const contactName = (formData.get("contactName") as string) || null
-  const contactEmail = (formData.get("contactEmail") as string) || null
-  const contactPhone = (formData.get("contactPhone") as string) || null
   const imageFile = formData.get("logo") as File
   const currentLogoUrl = (formData.get("currentLogoUrl") as string) || null
+  const zoneId = formData.get("zoneId") as string
 
   try {
     let logoUrl = currentLogoUrl
@@ -147,11 +150,8 @@ export async function updateDistributor(id: string, formData: FormData) {
       .from("distributors")
       .update({
         name,
-        address,
-        contact_name: contactName,
-        contact_email: contactEmail,
-        contact_phone: contactPhone,
         logo_url: logoUrl,
+        zone_id: zoneId === "" ? null : zoneId,
         updated_at: new Date().toISOString(),
       })
       .eq("id", id)
