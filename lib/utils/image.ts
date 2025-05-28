@@ -33,23 +33,11 @@ export function getImageUrl(path: string | null): string {
 export function getDistributorLogoUrl(distributor: { name: string; logo_url: string | null }): string {
   // Si tiene una imagen personalizada en Storage
   if (distributor.logo_url) {
-    // Si ya es una URL completa, devolverla tal como está
-    if (distributor.logo_url.startsWith("http")) {
-      return distributor.logo_url
-    }
-
-    // Si es una ruta de Storage, generar la URL pública
-    try {
-      const { data } = supabase.storage.from("images").getPublicUrl(distributor.logo_url)
-      console.log(`URL generada para ${distributor.name}:`, data.publicUrl)
-      return data.publicUrl
-    } catch (error) {
-      console.error("Error al generar URL de imagen:", error)
-    }
+    return getImageUrl(distributor.logo_url)
   }
 
   // Si no tiene imagen, usar logo predefinido basado en el nombre
-  const normalizedName = distributor.name?.toLowerCase().trim() || ""
+  const normalizedName = distributor.name.toLowerCase().trim()
 
   // Mapeo de distribuidores a sus logos
   const distributorLogos: Record<string, string> = {
@@ -74,5 +62,5 @@ export function getDistributorLogoUrl(distributor: { name: string; logo_url: str
   }
 
   // Logo por defecto si no hay coincidencia
-  return "/placeholder.svg?height=64&width=128&text=Logo"
+  return "/logos/agralba-antioquia.png"
 }

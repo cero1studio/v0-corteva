@@ -12,12 +12,9 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { TeamDetailChart } from "@/components/team-detail-chart"
-import { useUser } from "@/hooks/use-user"
-import { useEffect } from "react"
-import { supabase } from "@/lib/supabase"
 
 // Sample data for teams in the zone
-const teamsDataExample = [
+const teamsData = [
   {
     id: 1,
     name: "Los Campeones",
@@ -110,41 +107,6 @@ const teamsDataExample = [
 
 export default function EquiposPage() {
   const [selectedTeam, setSelectedTeam] = useState<number | null>(null)
-  const [teamsData, setTeamsData] = useState([])
-  const { profile } = useUser()
-
-  useEffect(() => {
-    const fetchTeams = async () => {
-      if (profile?.zone_id) {
-        const { data, error } = await supabase
-          .from("teams")
-          .select(
-            `
-            id,
-            name,
-            representative,
-            goals,
-            sales,
-            clients,
-            progress,
-            trend,
-            status,
-            distributors(logo_url)
-         `,
-          )
-          .eq("zone_id", profile?.zone_id)
-          .order("name")
-
-        if (error) {
-          console.error("Error fetching teams:", error)
-        } else {
-          setTeamsData(data || [])
-        }
-      }
-    }
-
-    fetchTeams()
-  }, [profile?.zone_id])
 
   const handleViewTeam = (teamId: number) => {
     setSelectedTeam(teamId)
@@ -161,7 +123,7 @@ export default function EquiposPage() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-3xl font-bold tracking-tight">Equipos de la Zona</h2>
-          <p className="text-muted-foreground">Zona Norte | Total: {teamsData.length} equipos</p>
+          <p className="text-muted-foreground">Zona Norte | Total: 8 equipos</p>
         </div>
         <div className="flex items-center gap-2">
           <DropdownMenu>
@@ -240,7 +202,6 @@ function TeamsTable({ teams, onViewTeam }) {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Logo</TableHead>
                 <TableHead>Equipo</TableHead>
                 <TableHead>Representante</TableHead>
                 <TableHead className="text-right">Goles</TableHead>
@@ -254,17 +215,6 @@ function TeamsTable({ teams, onViewTeam }) {
             <TableBody>
               {teams.map((team) => (
                 <TableRow key={team.id}>
-                  <TableCell>
-                    {team.distributors?.logo_url ? (
-                      <img
-                        src={team.distributors.logo_url || "/placeholder.svg"}
-                        alt={team.name}
-                        className="h-8 w-auto"
-                      />
-                    ) : (
-                      "No Logo"
-                    )}
-                  </TableCell>
                   <TableCell className="font-medium">{team.name}</TableCell>
                   <TableCell>{team.representative}</TableCell>
                   <TableCell className="text-right font-bold text-corteva-600">{team.goals}</TableCell>
@@ -295,7 +245,7 @@ function TeamsTable({ teams, onViewTeam }) {
         </CardContent>
         <CardFooter className="flex justify-between border-t px-6 py-4">
           <div className="text-sm text-muted-foreground">
-            Mostrando <strong>{teams.length}</strong> equipos
+            Mostrando <strong>8</strong> equipos
           </div>
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" disabled>

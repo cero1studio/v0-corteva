@@ -123,7 +123,7 @@ export default function NuevoProductoPage() {
           <CardTitle>Nuevo Producto</CardTitle>
           <CardDescription>Crea un nuevo producto para la venta</CardDescription>
         </CardHeader>
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={handleSubmit} encType="multipart/form-data">
           <CardContent className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="name">
@@ -190,7 +190,7 @@ export default function NuevoProductoPage() {
                     id="product-image"
                     name="image"
                     type="file"
-                    accept="image/*"
+                    accept="image/jpeg,image/png,image/gif"
                     onChange={handleImageChange}
                     className="cursor-pointer"
                   />
@@ -207,7 +207,7 @@ export default function NuevoProductoPage() {
             </div>
           </CardContent>
           <CardFooter className="flex justify-between">
-            <Button type="button" variant="outline" onClick={() => router.push("/admin/productos")}>
+            <Button variant="outline" type="button" onClick={() => router.push("/admin/productos")}>
               Cancelar
             </Button>
             <Button type="submit" disabled={isLoading} className="bg-corteva-500 hover:bg-corteva-600">

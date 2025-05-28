@@ -49,8 +49,7 @@ export async function createTeam(formData: FormData) {
   }
 }
 
-// Update the getTeams function to include logo_url in the query
-
+// Modificar la función getTeams para que funcione sin depender de capitanes
 export async function getTeams() {
   const cookieStore = cookies()
   const supabase = createServerClient(

@@ -372,7 +372,7 @@ export default function AdminDashboardPage() {
     <div className="flex-1 space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight">Panel FIFA</h2>
+          <h2 className="text-3xl font-bold tracking-tight">Panel de Administrador</h2>
           <p className="text-muted-foreground">
             Gestión del concurso Super Ganadería | {stats.totalTeams} Equipos activos
           </p>

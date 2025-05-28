@@ -10,8 +10,6 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useToast } from "@/components/ui/use-toast"
 import { supabase } from "@/lib/supabase/client"
-import Image from "next/image"
-import { getDistributorLogoUrl } from "@/lib/utils/image"
 
 export default function CrearEquipoPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -48,9 +46,7 @@ export default function CrearEquipoPage() {
         // 2. Obtener el perfil del usuario
         const { data: profileData, error: profileError } = await supabase
           .from("profiles")
-          .select(`
-            *, zones(name), distributors(id, logo_url, name)
-          `)
+          .select("*")
           .eq("id", userId)
           .single()
 
@@ -86,9 +82,19 @@ export default function CrearEquipoPage() {
         setUser(profileData)
 
         // 5. Obtener datos de zona
-        if (profileData.zone_id && profileData.zones) {
-          console.log("Datos de zona:", profileData.zones)
-          setZone(profileData.zones)
+        if (profileData.zone_id) {
+          const { data: zoneData, error: zoneError } = await supabase
+            .from("zones")
+            .select("*")
+            .eq("id", profileData.zone_id)
+            .single()
+
+          if (zoneError) {
+            console.error("Error al obtener zona:", zoneError)
+          } else {
+            console.log("Datos de zona:", zoneData)
+            setZone(zoneData)
+          }
         } else {
           console.warn("El usuario no tiene zona asignada")
         }
@@ -97,20 +103,16 @@ export default function CrearEquipoPage() {
         if (profileData.distributor_id) {
           const { data: distData, error: distError } = await supabase
             .from("distributors")
-            .select("*, logo_url")
+            .select("*")
             .eq("id", profileData.distributor_id)
             .single()
 
           if (distError) {
-            throw new Error(`Error al obtener distribuidor: ${distError.message}`)
+            console.error("Error al obtener distribuidor:", distError)
+          } else {
+            console.log("Datos de distribuidor:", distData)
+            setDistributor(distData)
           }
-
-          if (!distData) {
-            console.warn("El usuario tiene distribuidor asignado pero no se encontró el distribuidor")
-          }
-
-          console.log("Datos de distribuidor:", distData)
-          setDistributor(distData)
         } else {
           console.warn("El usuario no tiene distribuidor asignado")
         }
@@ -240,15 +242,14 @@ export default function CrearEquipoPage() {
     <div className="space-y-6 max-w-3xl mx-auto p-8">
       <div>
         <h1 className="text-2xl font-bold">Panel de Capitán</h1>
-        <h2 className="text-3xl font-bold tracking-tight mt-6">Asignar el nombre de tu equipo</h2>
+        <h2 className="text-3xl font-bold tracking-tight mt-6">Crear Equipo</h2>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>Asigna el nombre de tu equipo</CardTitle>
+          <CardTitle>Crea tu equipo</CardTitle>
           <CardDescription>
-            Antes de continuar, necesitas asignar el nombre de tu equipo. Este será el equipo que liderarás como
-            capitán.
+            Antes de continuar, necesitas crear tu equipo. Este será el equipo que liderarás como capitán.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -274,18 +275,73 @@ export default function CrearEquipoPage() {
                 <div className="space-y-2">
                   <Label>Distribuidor asignado</Label>
                   <div className="p-4 border rounded-md bg-white flex justify-center items-center min-h-[80px]">
-                    {distributor.logo_url ? (
-                      <Image
-                        src={getDistributorLogoUrl(distributor) || "/placeholder.svg"}
+                    {distributor.name.toLowerCase().includes("agralba") ? (
+                      <img
+                        src="/logos/agralba.png"
                         alt={distributor.name}
-                        width={128}
-                        height={64}
-                        className="h-auto max-h-[64px] object-contain"
-                        unoptimized
+                        className="h-16 object-contain"
+                        onError={(e) => {
+                          e.currentTarget.style.display = "none"
+                          e.currentTarget.nextElementSibling.style.display = "block"
+                        }}
                       />
-                    ) : (
-                      <div className="text-center text-gray-700 font-medium">{distributor.name}</div>
-                    )}
+                    ) : distributor.name.toLowerCase().includes("coacosta") ? (
+                      <img
+                        src="/logos/coacosta.png"
+                        alt={distributor.name}
+                        className="h-16 object-contain"
+                        onError={(e) => {
+                          e.currentTarget.style.display = "none"
+                          e.currentTarget.nextElementSibling.style.display = "block"
+                        }}
+                      />
+                    ) : distributor.name.toLowerCase().includes("hernandez") ? (
+                      <img
+                        src="/logos/hernandez.png"
+                        alt={distributor.name}
+                        className="h-16 object-contain"
+                        onError={(e) => {
+                          e.currentTarget.style.display = "none"
+                          e.currentTarget.nextElementSibling.style.display = "block"
+                        }}
+                      />
+                    ) : distributor.name.toLowerCase().includes("insagrin") ? (
+                      <img
+                        src="/logos/insagrin.png"
+                        alt={distributor.name}
+                        className="h-16 object-contain"
+                        onError={(e) => {
+                          e.currentTarget.style.display = "none"
+                          e.currentTarget.nextElementSibling.style.display = "block"
+                        }}
+                      />
+                    ) : distributor.name.toLowerCase().includes("cosechar") ? (
+                      <img
+                        src="/logos/cosechar.png"
+                        alt={distributor.name}
+                        className="h-16 object-contain"
+                        onError={(e) => {
+                          e.currentTarget.style.display = "none"
+                          e.currentTarget.nextElementSibling.style.display = "block"
+                        }}
+                      />
+                    ) : null}
+
+                    <div
+                      className="text-center text-gray-700 font-medium"
+                      style={{
+                        display:
+                          distributor.name.toLowerCase().includes("agralba") ||
+                          distributor.name.toLowerCase().includes("coacosta") ||
+                          distributor.name.toLowerCase().includes("hernandez") ||
+                          distributor.name.toLowerCase().includes("insagrin") ||
+                          distributor.name.toLowerCase().includes("cosechar")
+                            ? "none"
+                            : "block",
+                      }}
+                    >
+                      {distributor.name}
+                    </div>
                   </div>
                 </div>
               ) : (
@@ -301,7 +357,7 @@ export default function CrearEquipoPage() {
                 disabled={isSubmitting || !zone || !distributor}
                 className="bg-corteva-600 hover:bg-corteva-700"
               >
-                {isSubmitting ? "Asignando..." : "Asignar Equipo"}
+                {isSubmitting ? "Creando..." : "Crear Equipo"}
               </Button>
             </div>
           </form>

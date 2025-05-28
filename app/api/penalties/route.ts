@@ -1,93 +1,76 @@
+import { type NextRequest, NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { cookies } from "next/headers"
-import { NextResponse } from "next/server"
 
-export async function GET(request: Request) {
+export async function POST(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url)
-    const teamId = searchParams.get("teamId")
+    const body = await request.json()
+    const { action, teamId, quantity, description } = body
 
-    if (!teamId) {
-      return NextResponse.json({ error: "Se requiere el ID del equipo" }, { status: 400 })
-    }
+    if (action === "use") {
+      const cookieStore = cookies()
+      const supabase = createServerClient(cookieStore)
 
-    const cookieStore = cookies()
-    const supabase = createServerClient(cookieStore)
+      // Obtener goles actuales del equipo
+      const { data: team, error: teamError } = await supabase.from("teams").select("goals").eq("id", teamId).single()
 
-    const { data, error } = await supabase
-      .from("penalties")
-      .select(`
-        id,
-        team_id,
-        quantity,
-        used,
-        reason,
-        created_at
-      `)
-      .eq("team_id", teamId)
-      .order("created_at", { ascending: false })
-
-    if (error) {
-      console.error("Error al obtener penaltis:", error)
-      return NextResponse.json({ error: error.message }, { status: 500 })
-    }
-
-    return NextResponse.json({ success: true, data })
-  } catch (error: any) {
-    console.error("Error al procesar la solicitud:", error)
-    return NextResponse.json({ error: error.message || "Error interno del servidor" }, { status: 500 })
-  }
-}
-
-export async function POST(request: Request) {
-  try {
-    const cookieStore = cookies()
-    const supabase = createServerClient(cookieStore)
-    const { teamId, quantity = 1, reason = "Penalti reclamado" } = await request.json()
-
-    if (!teamId) {
-      return NextResponse.json({ error: "El ID del equipo es requerido" }, { status: 400 })
-    }
-
-    // Obtener penaltis disponibles
-    const { data: penalties, error: penaltiesError } = await supabase
-      .from("penalties")
-      .select("id, quantity, used")
-      .eq("team_id", teamId)
-      .order("created_at", { ascending: true })
-
-    if (penaltiesError) {
-      console.error("Error al obtener penaltis:", penaltiesError)
-      return NextResponse.json({ error: penaltiesError.message }, { status: 500 })
-    }
-
-    // Verificar si hay penaltis disponibles
-    let penaltyToUse = null
-    for (const penalty of penalties) {
-      if (penalty.used < penalty.quantity) {
-        penaltyToUse = penalty
-        break
+      if (teamError) {
+        return NextResponse.json({ success: false, error: teamError.message })
       }
+
+      // Obtener el penalti disponible
+      const { data: penalty, error: penaltyError } = await supabase
+        .from("penalties")
+        .select("*")
+        .eq("team_id", teamId)
+        .gt("quantity", 0)
+        .order("created_at", { ascending: true })
+        .limit(1)
+        .single()
+
+      if (penaltyError || !penalty) {
+        return NextResponse.json({ success: false, error: "No hay penaltis disponibles" })
+      }
+
+      // Calcular bonus (25% de los goles actuales)
+      const currentGoals = team.goals || 0
+      const bonusGoals = Math.floor(currentGoals * 0.25)
+
+      // Actualizar el penalti
+      const { error: updateError } = await supabase
+        .from("penalties")
+        .update({ quantity: penalty.quantity - quantity })
+        .eq("id", penalty.id)
+
+      if (updateError) {
+        return NextResponse.json({ success: false, error: updateError.message })
+      }
+
+      // Actualizar goles del equipo
+      const { error: goalsError } = await supabase
+        .from("teams")
+        .update({ goals: currentGoals + bonusGoals })
+        .eq("id", teamId)
+
+      if (goalsError) {
+        return NextResponse.json({ success: false, error: goalsError.message })
+      }
+
+      // Registrar en el historial
+      await supabase.from("penalty_history").insert({
+        penalty_id: penalty.id,
+        team_id: teamId,
+        action: "used",
+        quantity: quantity,
+        description: description,
+      })
+
+      return NextResponse.json({ success: true, bonusGoals })
     }
 
-    if (!penaltyToUse) {
-      return NextResponse.json({ error: "No hay penaltis disponibles" }, { status: 400 })
-    }
-
-    // Actualizar el penalti
-    const { error: updateError } = await supabase
-      .from("penalties")
-      .update({ used: penaltyToUse.used + 1 })
-      .eq("id", penaltyToUse.id)
-
-    if (updateError) {
-      console.error("Error al usar penalti:", updateError)
-      return NextResponse.json({ error: updateError.message }, { status: 500 })
-    }
-
-    return NextResponse.json({ success: true })
+    return NextResponse.json({ success: false, error: "Acción no válida" })
   } catch (error: any) {
-    console.error("Error al procesar la solicitud:", error)
-    return NextResponse.json({ error: error.message || "Error interno del servidor" }, { status: 500 })
+    console.error("Error en API de penaltis:", error)
+    return NextResponse.json({ success: false, error: error.message })
   }
 }

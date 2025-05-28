@@ -23,53 +23,42 @@ interface Distributor {
   name: string
 }
 
+interface Team {
+  id: string
+  name: string
+}
+
 export default function NuevoUsuarioPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [role, setRole] = useState("")
   const [zones, setZones] = useState<Zone[]>([])
   const [distributors, setDistributors] = useState<Distributor[]>([])
+  const [teams, setTeams] = useState<Team[]>([])
   const [selectedZone, setSelectedZone] = useState("")
   const [selectedDistributor, setSelectedDistributor] = useState("")
+  const [selectedTeam, setSelectedTeam] = useState("")
   const [loadingZones, setLoadingZones] = useState(false)
   const [loadingDistributors, setLoadingDistributors] = useState(false)
+  const [loadingTeams, setLoadingTeams] = useState(false)
 
   const router = useRouter()
   const { toast } = useToast()
 
   useEffect(() => {
-    console.log("Componente montado, cargando datos...")
     fetchZones()
     fetchDistributors()
+    fetchTeams()
   }, [])
 
   async function fetchZones() {
     try {
-      console.log("Iniciando carga de zonas...")
       setLoadingZones(true)
-
       const { data, error } = await supabase.from("zones").select("id, name").order("name")
 
-      console.log("Respuesta de zonas:", { data, error })
-
-      if (error) {
-        console.error("Error al cargar zonas:", error)
-        toast({
-          title: "Error",
-          description: "No se pudieron cargar las zonas",
-          variant: "destructive",
-        })
-        return
-      }
-
+      if (error) throw error
       setZones(data || [])
-      console.log(`Zonas cargadas: ${data?.length || 0}`)
     } catch (error) {
-      console.error("Error en fetchZones:", error)
-      toast({
-        title: "Error",
-        description: "Error al conectar con la base de datos",
-        variant: "destructive",
-      })
+      console.error("Error al cargar zonas:", error)
     } finally {
       setLoadingZones(false)
     }
@@ -77,34 +66,29 @@ export default function NuevoUsuarioPage() {
 
   async function fetchDistributors() {
     try {
-      console.log("Iniciando carga de distribuidores...")
       setLoadingDistributors(true)
-
       const { data, error } = await supabase.from("distributors").select("id, name").order("name")
 
-      console.log("Respuesta de distribuidores:", { data, error })
-
-      if (error) {
-        console.error("Error al cargar distribuidores:", error)
-        toast({
-          title: "Error",
-          description: "No se pudieron cargar los distribuidores",
-          variant: "destructive",
-        })
-        return
-      }
-
+      if (error) throw error
       setDistributors(data || [])
-      console.log(`Distribuidores cargados: ${data?.length || 0}`)
     } catch (error) {
-      console.error("Error en fetchDistributors:", error)
-      toast({
-        title: "Error",
-        description: "Error al conectar con la base de datos",
-        variant: "destructive",
-      })
+      console.error("Error al cargar distribuidores:", error)
     } finally {
       setLoadingDistributors(false)
+    }
+  }
+
+  async function fetchTeams() {
+    try {
+      setLoadingTeams(true)
+      const { data, error } = await supabase.from("teams").select("id, name").order("name")
+
+      if (error) throw error
+      setTeams(data || [])
+    } catch (error) {
+      console.error("Error al cargar equipos:", error)
+    } finally {
+      setLoadingTeams(false)
     }
   }
 
@@ -117,19 +101,12 @@ export default function NuevoUsuarioPage() {
 
       // Si el rol es capitán o director técnico, necesitamos guardar la zona y distribuidor
       if (role === "capitan" || role === "director_tecnico") {
-        if (!selectedZone || !selectedDistributor) {
-          toast({
-            title: "Error",
-            description: "Debes seleccionar una zona y un distribuidor para este rol",
-            variant: "destructive",
-          })
-          return
-        }
         formData.append("zoneId", selectedZone)
         formData.append("distributorId", selectedDistributor)
+        // No asignamos equipo, el capitán lo creará
+        formData.delete("teamId")
       }
 
-      console.log("Enviando datos del formulario...")
       const result = await createUser(formData)
 
       if (result.error) {
@@ -194,7 +171,7 @@ export default function NuevoUsuarioPage() {
                       <SelectValue placeholder="Selecciona un rol" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="admin">FIFA</SelectItem>
+                      <SelectItem value="admin">Administrador</SelectItem>
                       <SelectItem value="capitan">Capitán</SelectItem>
                       <SelectItem value="director_tecnico">Director Técnico</SelectItem>
                     </SelectContent>
@@ -208,14 +185,9 @@ export default function NuevoUsuarioPage() {
                     <Label htmlFor="zoneId">Zona</Label>
                     <Select name="zoneId" value={selectedZone} onValueChange={setSelectedZone} required>
                       <SelectTrigger>
-                        <SelectValue placeholder={loadingZones ? "Cargando zonas..." : "Selecciona una zona"} />
+                        <SelectValue placeholder={loadingZones ? "Cargando..." : "Selecciona una zona"} />
                       </SelectTrigger>
                       <SelectContent>
-                        {zones.length === 0 && !loadingZones && (
-                          <SelectItem value="no-zones" disabled>
-                            No hay zonas disponibles
-                          </SelectItem>
-                        )}
                         {zones.map((zone) => (
                           <SelectItem key={zone.id} value={zone.id}>
                             {zone.name}
@@ -223,7 +195,6 @@ export default function NuevoUsuarioPage() {
                         ))}
                       </SelectContent>
                     </Select>
-                    {loadingZones && <p className="text-sm text-gray-500">Cargando zonas...</p>}
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="distributorId">Distribuidor</Label>
@@ -234,18 +205,9 @@ export default function NuevoUsuarioPage() {
                       required
                     >
                       <SelectTrigger>
-                        <SelectValue
-                          placeholder={
-                            loadingDistributors ? "Cargando distribuidores..." : "Selecciona un distribuidor"
-                          }
-                        />
+                        <SelectValue placeholder={loadingDistributors ? "Cargando..." : "Selecciona un distribuidor"} />
                       </SelectTrigger>
                       <SelectContent>
-                        {distributors.length === 0 && !loadingDistributors && (
-                          <SelectItem value="no-distributors" disabled>
-                            No hay distribuidores disponibles
-                          </SelectItem>
-                        )}
                         {distributors.map((distributor) => (
                           <SelectItem key={distributor.id} value={distributor.id}>
                             {distributor.name}
@@ -253,32 +215,15 @@ export default function NuevoUsuarioPage() {
                         ))}
                       </SelectContent>
                     </Select>
-                    {loadingDistributors && <p className="text-sm text-gray-500">Cargando distribuidores...</p>}
                   </div>
                 </div>
               )}
 
               {role === "admin" && (
                 <div className="p-3 bg-gray-50 rounded-md text-sm text-gray-500">
-                  Los usuarios FIFA no necesitan zonas o distribuidores asignados.
+                  Los administradores no pueden tener equipos, zonas o distribuidores asignados.
                 </div>
               )}
-
-              {/* Botón de debug para probar la carga */}
-              <div className="flex gap-2">
-                <Button type="button" variant="outline" size="sm" onClick={fetchZones} disabled={loadingZones}>
-                  {loadingZones ? "Cargando..." : "Recargar Zonas"}
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={fetchDistributors}
-                  disabled={loadingDistributors}
-                >
-                  {loadingDistributors ? "Cargando..." : "Recargar Distribuidores"}
-                </Button>
-              </div>
             </div>
 
             <div className="flex justify-end gap-2">

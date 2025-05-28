@@ -258,7 +258,7 @@ export function DashboardNav({ role, children }: NavProps) {
                 <span className="text-sm font-medium">{profile?.full_name || "Usuario"}</span>
                 <span className="text-xs text-muted-foreground">
                   {profile?.role === "admin"
-                    ? "FIFA"
+                    ? "Administrador"
                     : profile?.role === "capitan" && profile?.team_name
                       ? profile.team_name
                       : profile?.role === "director_tecnico"
