@@ -144,24 +144,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   )
 
   // Función separada para manejar redirecciones después de que el perfil esté listo
-  const handleRedirection = useCallback(
-    (userProfile: UserProfile) => {
-      const currentPath = pathname || "/"
-      const dashboardRoute = getDashboardRoute(userProfile.role, userProfile.team_id)
+// Función separada para manejar redirecciones después de que el perfil esté listo
+const handleRedirection = useCallback(
+  (userProfile: UserProfile) => {
+    const currentPath = pathname || "/"
+    const dashboardRoute = getDashboardRoute(userProfile.role, userProfile.team_id)
 
-      console.log(`AUTH: Checking redirection. Current: ${currentPath}, Dashboard: ${dashboardRoute}`)
+    console.log(`AUTH: Checking redirection. Current: ${currentPath}, Dashboard: ${dashboardRoute}`)
 
-      // Solo redirigir desde login o si es capitán sin equipo
-      if (currentPath === "/login") {
-        console.log(`AUTH: Redirecting from login to ${dashboardRoute}`)
-        router.replace(dashboardRoute) // Usar replace en lugar de push
-      } else if (userProfile.role === "capitan" && !userProfile.team_id && currentPath !== "/capitan/crear-equipo") {
-        console.log(`AUTH: Captain without team, redirecting to create team`)
-        router.replace("/capitan/crear-equipo")
-      }
-    },
-    [pathname, getDashboardRoute, router],
-  )
+    // Solo redirigir desde login o si es capitán sin equipo
+    if (currentPath === "/login") {
+      console.log(`AUTH: Redirecting from login to ${dashboardRoute}`)
+      window.location.replace(dashboardRoute) // ← cambio aquí
+    } else if (
+      userProfile.role === "capitan" &&
+      !userProfile.team_id &&
+      currentPath !== "/capitan/crear-equipo"
+    ) {
+      console.log(`AUTH: Captain without team, redirecting to create team`)
+      window.location.replace("/capitan/crear-equipo") // ← cambio aquí
+    }
+  },
+  [pathname, getDashboardRoute],
+)
+
 
   // Inicialización de la sesión
   useEffect(() => {
