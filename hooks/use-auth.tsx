@@ -169,6 +169,7 @@ const handleRedirection = useCallback(
 )
 
 
+
   // Inicialización de la sesión
   useEffect(() => {
     let mounted = true
