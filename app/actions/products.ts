@@ -231,6 +231,31 @@ export async function deleteProduct(id: string) {
   }
 }
 
+export async function getAllProducts() {
+  const supabase = createServerClient()
+
+  try {
+    const { data, error } = await supabase.from("products").select("*").order("created_at", { ascending: false })
+
+    if (error) throw new Error(`Error al obtener productos: ${error.message}`)
+
+    // Procesar las URLs de las imágenes para asegurar que son URLs completas
+    const productsWithImages = data.map((product) => {
+      if (product.image_url && !product.image_url.startsWith("http") && !product.image_url.startsWith("/")) {
+        // Construir URL completa para el bucket de Supabase
+        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+        product.image_url = `${supabaseUrl}/storage/v1/object/public/images/${product.image_url}`
+      }
+      return product
+    })
+
+    return { success: true, data: productsWithImages }
+  } catch (error: any) {
+    console.error("Error en getAllProducts:", error)
+    return { success: false, error: error.message }
+  }
+}
+
 export async function toggleProductStatus(id: string, isActive: boolean) {
   const supabase = createServerClient()
 
@@ -252,5 +277,25 @@ export async function toggleProductStatus(id: string, isActive: boolean) {
   } catch (error: any) {
     console.error("Error en toggleProductStatus:", error)
     return { success: false, error: error.message }
+  }
+}
+
+// Función adicional para obtener productos simples (solo id y name)
+export async function getProductsSimple() {
+  const supabase = createServerClient()
+
+  try {
+    const { data, error } = await supabase
+      .from("products")
+      .select("id, name, points")
+      .eq("active", true)
+      .order("name", { ascending: true })
+
+    if (error) throw new Error(`Error al obtener productos: ${error.message}`)
+
+    return { success: true, data: data || [] }
+  } catch (error: any) {
+    console.error("Error en getProductsSimple:", error)
+    return { success: false, data: [], error: error.message }
   }
 }

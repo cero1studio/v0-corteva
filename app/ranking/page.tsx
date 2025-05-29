@@ -7,6 +7,7 @@ import { EmptyState } from "@/components/empty-state"
 import { Input } from "@/components/ui/input"
 import { cookies } from "next/headers"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { getTeamRankingByZone } from "@/app/actions/ranking"
 
 // Componente para cargar datos del ranking
 async function NationalRanking() {
@@ -14,25 +15,10 @@ async function NationalRanking() {
   const supabase = createServerClient(cookieStore)
 
   try {
-    // Obtener ranking nacional de equipos
-    const { data: teams, error } = await supabase
-      .from("teams")
-      .select(`
-        id,
-        name,
-        zone_id,
-        goals,
-        total_points,
-        zones(id, name),
-        distributors:distributor_id(id, name, logo_url)
-      `)
-      .order("total_points", { ascending: false })
+    // Obtener ranking nacional usando la función actualizada
+    const rankingResult = await getTeamRankingByZone()
 
-    if (error) {
-      throw error
-    }
-
-    if (!teams || teams.length === 0) {
+    if (!rankingResult.success || !rankingResult.data || rankingResult.data.length === 0) {
       return (
         <EmptyState
           icon={Trophy}
@@ -44,21 +30,13 @@ async function NationalRanking() {
       )
     }
 
-    // Obtener configuración de puntos para gol
-    const { data: puntosConfig } = await supabase
-      .from("system_config")
-      .select("value")
-      .eq("key", "puntos_para_gol")
-      .maybeSingle()
-
-    // Por defecto 100 puntos = 1 gol si no hay configuración
-    const puntosParaGol = puntosConfig?.value ? Number(puntosConfig.value) : 100
+    const teams = rankingResult.data
 
     // Función para obtener la URL del logo del distribuidor
-    const getDistributorLogo = (distributor) => {
-      if (!distributor || !distributor.name) return null
+    const getDistributorLogo = (distributorName: string) => {
+      if (!distributorName) return null
 
-      const normalizedName = distributor.name.toLowerCase()
+      const normalizedName = distributorName.toLowerCase()
 
       if (normalizedName.includes("agralba")) {
         return "/logos/agralba.png"
@@ -92,49 +70,48 @@ async function NationalRanking() {
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Goles
                 </th>
+                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Puntos
+                </th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {teams.map((team, index) => {
-                // Calcular goles basados en puntos totales
-                const goles = team.goals || Math.floor((team.total_points || 0) / puntosParaGol)
-
-                return (
-                  <tr key={team.id}>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center">
-                        <span className="text-sm font-medium text-gray-900 mr-2">{index + 1}</span>
-                        {index === 0 && <span className="text-xl">🥇</span>}
-                        {index === 1 && <span className="text-xl">🥈</span>}
-                        {index === 2 && <span className="text-xl">🥉</span>}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-medium text-gray-900">{team.name}</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      {team.distributors && (
-                        <div className="flex items-center">
-                          <img
-                            src={getDistributorLogo(team.distributors) || "/placeholder.svg"}
-                            alt=""
-                            className="h-8 w-auto"
-                            onError={(e) => {
-                              e.currentTarget.style.display = "none"
-                            }}
-                          />
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-500">{team.zones?.name || "Sin zona"}</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right">
-                      <div className="text-sm font-medium text-green-600">{goles}</div>
-                    </td>
-                  </tr>
-                )
-              })}
+              {teams.map((team, index) => (
+                <tr key={team.team_id}>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="flex items-center">
+                      <span className="text-sm font-medium text-gray-900 mr-2">{team.position}</span>
+                      {team.position === 1 && <span className="text-xl">🥇</span>}
+                      {team.position === 2 && <span className="text-xl">🥈</span>}
+                      {team.position === 3 && <span className="text-xl">🥉</span>}
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="text-sm font-medium text-gray-900">{team.team_name}</div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="flex items-center">
+                      <img
+                        src={getDistributorLogo(team.distributor_name) || "/placeholder.svg"}
+                        alt=""
+                        className="h-8 w-auto"
+                        onError={(e) => {
+                          e.currentTarget.style.display = "none"
+                        }}
+                      />
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="text-sm text-gray-500">{team.zone_name}</div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-right">
+                    <div className="text-sm font-medium text-green-600">{team.goals}</div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-right">
+                    <div className="text-sm text-gray-500">{team.total_points.toLocaleString()}</div>
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
@@ -191,36 +168,26 @@ async function ZoneRanking() {
     // Obtener información de la zona
     const { data: zone } = await supabase.from("zones").select("name").eq("id", profile.zone_id).single()
 
-    // Obtener equipos de la zona
-    const { data: teams, error } = await supabase
-      .from("teams")
-      .select(`
-        id,
-        name,
-        goals,
-        total_points,
-        distributors:distributor_id(id, name, logo_url)
-      `)
-      .eq("zone_id", profile.zone_id)
-      .order("total_points", { ascending: false })
+    // Obtener ranking de la zona usando la función actualizada
+    const rankingResult = await getTeamRankingByZone(profile.zone_id)
 
-    if (error) throw error
+    if (!rankingResult.success || !rankingResult.data || rankingResult.data.length === 0) {
+      return (
+        <EmptyState
+          icon={Trophy}
+          title={`No hay equipos en ${zone?.name || "tu zona"}`}
+          description="Aún no hay equipos registrados en esta zona."
+        />
+      )
+    }
 
-    // Obtener configuración de puntos para gol
-    const { data: puntosConfig } = await supabase
-      .from("system_config")
-      .select("value")
-      .eq("key", "puntos_para_gol")
-      .maybeSingle()
-
-    // Por defecto 100 puntos = 1 gol si no hay configuración
-    const puntosParaGol = puntosConfig?.value ? Number(puntosConfig.value) : 100
+    const teams = rankingResult.data
 
     // Función para obtener la URL del logo del distribuidor
-    const getDistributorLogo = (distributor) => {
-      if (!distributor || !distributor.name) return null
+    const getDistributorLogo = (distributorName: string) => {
+      if (!distributorName) return null
 
-      const normalizedName = distributor.name.toLowerCase()
+      const normalizedName = distributorName.toLowerCase()
 
       if (normalizedName.includes("agralba")) {
         return "/logos/agralba.png"
@@ -238,18 +205,26 @@ async function ZoneRanking() {
     }
 
     // Encontrar la posición del equipo del usuario
-    const userTeamPosition = teams.findIndex((team) => team.id === profile.team_id) + 1
-    const userTeam = teams.find((team) => team.id === profile.team_id)
+    const userTeam = teams.find((team) => team.team_id === profile.team_id)
+    const userTeamPosition = userTeam?.position || 0
 
     // Calcular próximo objetivo
     let nextGoal = 100
     let nextMedal = "🥉"
 
     if (userTeamPosition > 1 && userTeamPosition <= teams.length) {
-      const currentTeam = teams[userTeamPosition - 1]
-      const nextTeam = teams[userTeamPosition - 2] // Equipo de arriba
+      const currentTeam = teams.find((t) => t.position === userTeamPosition)
+      const nextTeam = teams.find((t) => t.position === userTeamPosition - 1)
 
       if (currentTeam && nextTeam) {
+        // Obtener configuración de puntos para gol
+        const { data: puntosConfig } = await supabase
+          .from("system_config")
+          .select("value")
+          .eq("key", "puntos_para_gol")
+          .maybeSingle()
+
+        const puntosParaGol = puntosConfig?.value ? Number(puntosConfig.value) : 100
         nextGoal = Math.max(1, Math.ceil((nextTeam.total_points - currentTeam.total_points + 1) / puntosParaGol))
       }
 
@@ -257,16 +232,6 @@ async function ZoneRanking() {
     } else if (userTeamPosition === 1) {
       nextGoal = 0
       nextMedal = "🥇"
-    }
-
-    if (!teams || teams.length === 0) {
-      return (
-        <EmptyState
-          icon={Trophy}
-          title={`No hay equipos en ${zone?.name || "tu zona"}`}
-          description="Aún no hay equipos registrados en esta zona."
-        />
-      )
     }
 
     return (
@@ -277,7 +242,7 @@ async function ZoneRanking() {
         </h3>
 
         <div className="grid gap-4 md:grid-cols-2 mb-6">
-          {profile.team_id && (
+          {profile.team_id && userTeam && (
             <>
               <Card>
                 <CardHeader>
@@ -289,9 +254,7 @@ async function ZoneRanking() {
                 </CardHeader>
                 <CardContent className="flex items-center justify-between">
                   <div className="text-7xl font-bold">{userTeamPosition || "-"}</div>
-                  <div className="text-5xl font-bold text-green-600">
-                    {userTeam ? Math.floor((userTeam.total_points || 0) / puntosParaGol) : 0}
-                  </div>
+                  <div className="text-5xl font-bold text-green-600">{userTeam.goals}</div>
                   <div className="text-4xl">
                     {userTeamPosition === 1 && "🥇"}
                     {userTeamPosition === 2 && "🥈"}
@@ -332,43 +295,45 @@ async function ZoneRanking() {
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Goles
                 </th>
+                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Puntos
+                </th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {teams.map((team, index) => {
-                // Calcular goles basados en puntos totales
-                const goles = team.goals || Math.floor((team.total_points || 0) / puntosParaGol)
-                const isUserTeam = team.id === profile.team_id
+              {teams.map((team) => {
+                const isUserTeam = team.team_id === profile.team_id
 
                 return (
-                  <tr key={team.id} className={isUserTeam ? "bg-blue-50" : ""}>
+                  <tr key={team.team_id} className={isUserTeam ? "bg-blue-50" : ""}>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
-                        <span className="text-sm font-medium text-gray-900 mr-2">{index + 1}</span>
-                        {index === 0 && <span className="text-xl">🥇</span>}
-                        {index === 1 && <span className="text-xl">🥈</span>}
-                        {index === 2 && <span className="text-xl">🥉</span>}
+                        <span className="text-sm font-medium text-gray-900 mr-2">{team.position}</span>
+                        {team.position === 1 && <span className="text-xl">🥇</span>}
+                        {team.position === 2 && <span className="text-xl">🥈</span>}
+                        {team.position === 3 && <span className="text-xl">🥉</span>}
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-medium text-gray-900">{team.name}</div>
+                      <div className="text-sm font-medium text-gray-900">{team.team_name}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      {team.distributors && (
-                        <div className="flex items-center">
-                          <img
-                            src={getDistributorLogo(team.distributors) || "/placeholder.svg"}
-                            alt=""
-                            className="h-8 w-auto"
-                            onError={(e) => {
-                              e.currentTarget.style.display = "none"
-                            }}
-                          />
-                        </div>
-                      )}
+                      <div className="flex items-center">
+                        <img
+                          src={getDistributorLogo(team.distributor_name) || "/placeholder.svg"}
+                          alt=""
+                          className="h-8 w-auto"
+                          onError={(e) => {
+                            e.currentTarget.style.display = "none"
+                          }}
+                        />
+                      </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right">
-                      <div className="text-sm font-medium text-green-600">{goles}</div>
+                      <div className="text-sm font-medium text-green-600">{team.goals}</div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-right">
+                      <div className="text-sm text-gray-500">{team.total_points.toLocaleString()}</div>
                     </td>
                   </tr>
                 )
@@ -410,7 +375,7 @@ async function DistributorRanking() {
     }
 
     // Función para obtener la URL del logo del distribuidor
-    const getDistributorLogo = (name) => {
+    const getDistributorLogo = (name: string) => {
       if (!name) return null
 
       const normalizedName = name.toLowerCase()

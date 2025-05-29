@@ -201,3 +201,16 @@ export async function deleteDistributor(distributorId: string) {
     return { error: error.message || "Error al eliminar el distribuidor" }
   }
 }
+
+// Alias para mantener consistencia con otras funciones "getAll"
+export const getAllDistributors = getDistributors
+
+// Función adicional que devuelve el formato esperado por las páginas admin
+export async function getAllDistributorsForAdmin() {
+  try {
+    const distributors = await getDistributors()
+    return { success: true, data: distributors, error: null }
+  } catch (error: any) {
+    return { success: false, data: [], error: error.message }
+  }
+}
