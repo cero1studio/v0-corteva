@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -16,13 +16,8 @@ export default function LoginPage() {
   const [password, setPassword] = useState("")
   const [localError, setLocalError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [mounted, setMounted] = useState(false)
   const { signIn, error: authError } = useAuth()
   const router = useRouter()
-
-  useEffect(() => {
-    setMounted(true)
-  }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -70,7 +65,7 @@ export default function LoginPage() {
         }
 
         console.log(`Redirigiendo a: ${dashboardRoute}`)
-        window.location.href = dashboardRoute
+        router.push(dashboardRoute)
       }
     } catch (error) {
       console.error("Error en login:", error)
@@ -81,10 +76,6 @@ export default function LoginPage() {
 
   // Mostrar error de autenticación o error local
   const displayError = localError || authError
-
-  if (!mounted) {
-    return null
-  }
 
   return (
     <div className="min-h-screen flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
