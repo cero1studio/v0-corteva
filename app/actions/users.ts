@@ -53,13 +53,12 @@ export async function getUsersSimple() {
 // Replace the getUsers function with this updated version that uses explicit joins
 export async function getUsers() {
   try {
-    // Usar el cliente administrativo para evitar problemas de RLS
-    const { adminSupabase } = await import("@/lib/supabase/server")
+    const supabase = createServerClient()
 
-    console.log("Obteniendo usuarios con cliente administrativo...")
+    console.log("Obteniendo usuarios...")
 
-    // Obtener todos los perfiles usando el cliente admin
-    const { data: profiles, error: profilesError } = await adminSupabase
+    // Obtener todos los perfiles
+    const { data: profiles, error: profilesError } = await supabase
       .from("profiles")
       .select(`
         id, 
@@ -83,9 +82,9 @@ export async function getUsers() {
     }
 
     // Obtener zonas, distribuidores y equipos por separado
-    const { data: zones } = await adminSupabase.from("zones").select("id, name")
-    const { data: distributors } = await adminSupabase.from("distributors").select("id, name, logo_url")
-    const { data: teams } = await adminSupabase.from("teams").select("id, name")
+    const { data: zones } = await supabase.from("zones").select("id, name")
+    const { data: distributors } = await supabase.from("distributors").select("id, name, logo_url")
+    const { data: teams } = await supabase.from("teams").select("id, name")
 
     // Crear mapas de búsqueda
     const zoneMap = zones ? zones.reduce((map, zone) => ({ ...map, [zone.id]: zone }), {}) : {}
@@ -121,11 +120,12 @@ export async function getUsers() {
 
 export async function deleteUser(userId: string) {
   try {
-    // Usar el cliente administrativo
-    const { adminSupabase } = await import("@/lib/supabase/server")
+    const supabase = createServerClient()
+
+    console.log("Eliminando usuario:", userId)
 
     // Primero eliminamos el perfil
-    const { error: profileError } = await adminSupabase.from("profiles").delete().eq("id", userId)
+    const { error: profileError } = await supabase.from("profiles").delete().eq("id", userId)
 
     if (profileError) {
       console.error("Error al eliminar perfil:", profileError)
@@ -133,11 +133,12 @@ export async function deleteUser(userId: string) {
     }
 
     // Luego eliminamos el usuario de auth
-    const { error: authError } = await adminSupabase.auth.admin.deleteUser(userId)
+    const { error: authError } = await supabase.auth.admin.deleteUser(userId)
 
     if (authError) {
       console.error("Error al eliminar usuario de auth:", authError)
-      return { error: authError.message }
+      // No retornamos error aquí porque el perfil ya se eliminó
+      console.warn("Usuario eliminado de la base de datos pero no del sistema de autenticación")
     }
 
     revalidatePath("/admin/usuarios")
@@ -202,11 +203,10 @@ export async function createUser(formData: FormData) {
       return { error: "La contraseña debe tener al menos 6 caracteres" }
     }
 
-    // Usar el cliente administrativo
-    const { adminSupabase } = await import("@/lib/supabase/server")
+    const supabase = createServerClient()
 
     // Verificar si el usuario ya existe en profiles
-    const { data: existingProfile } = await adminSupabase.from("profiles").select("email").eq("email", email).single()
+    const { data: existingProfile } = await supabase.from("profiles").select("email").eq("email", email).single()
 
     if (existingProfile) {
       return { error: "Ya existe un usuario con este email en la base de datos" }
@@ -215,7 +215,7 @@ export async function createUser(formData: FormData) {
     console.log("Creando usuario en auth...")
 
     // Crear usuario en auth
-    const { data: authData, error: authError } = await adminSupabase.auth.admin.createUser({
+    const { data: authData, error: authError } = await supabase.auth.admin.createUser({
       email: email,
       password: password,
       email_confirm: true,
@@ -248,14 +248,14 @@ export async function createUser(formData: FormData) {
 
     console.log("Creando perfil:", profileData)
 
-    const { error: profileError } = await adminSupabase.from("profiles").insert(profileData)
+    const { error: profileError } = await supabase.from("profiles").insert(profileData)
 
     if (profileError) {
       console.error("Error al crear perfil:", profileError)
 
       // Si falla la creación del perfil, eliminar el usuario de auth
       try {
-        await adminSupabase.auth.admin.deleteUser(authData.user.id)
+        await supabase.auth.admin.deleteUser(authData.user.id)
         console.log("Usuario de auth eliminado debido a error en perfil")
       } catch (cleanupError) {
         console.error("Error al limpiar usuario de auth:", cleanupError)
@@ -361,66 +361,45 @@ export async function updateUser(userId: string, formData: FormData) {
 
     console.log("Perfil actualizado exitosamente")
 
-    // SINCRONIZACIÓN AUTOMÁTICA CON AUTH - ENFOQUE SEGURO
-    console.log("Verificando existencia en sistema de autenticación...")
+    // Intentar actualizar en auth
+    try {
+      const authUpdateData: any = {
+        email: email,
+        user_metadata: {
+          full_name: fullName,
+          role: role,
+        },
+      }
 
-    // Verificar si el usuario existe en auth por ID
-    const { data: authUser, error: getUserError } = await supabase.auth.admin.getUserById(userId)
+      // Agregar contraseña si se proporcionó
+      if (password && password.trim() !== "") {
+        authUpdateData.password = password
+      }
 
-    // Si el usuario existe en auth, intentar actualizar
-    if (!getUserError && authUser.user) {
-      console.log("Usuario SÍ existe en auth, actualizando...")
+      // Actualizar usuario en auth
+      const { error: updateError } = await supabase.auth.admin.updateUserById(userId, authUpdateData)
 
-      try {
-        // Preparar datos de actualización
-        const authUpdateData: any = {
-          email: email,
-          user_metadata: {
-            full_name: fullName,
-            role: role,
-          },
-        }
-
-        // Agregar contraseña si se proporcionó
-        if (password && password.trim() !== "") {
-          authUpdateData.password = password
-        }
-
-        // Actualizar usuario en auth
-        const { error: updateError } = await supabase.auth.admin.updateUserById(userId, authUpdateData)
-
-        if (updateError) {
-          console.error("Error al actualizar usuario en auth:", updateError)
-          return {
-            success: true,
-            warning: `Perfil actualizado, pero no se pudo actualizar en sistema de autenticación: ${updateError.message}`,
-          }
-        }
-
-        console.log("✓ Usuario actualizado en auth exitosamente")
-        revalidatePath("/admin/usuarios")
-        return {
-          success: true,
-          message: "Usuario actualizado exitosamente en base de datos y sistema de autenticación",
-        }
-      } catch (updateError: any) {
+      if (updateError) {
         console.error("Error al actualizar usuario en auth:", updateError)
         return {
           success: true,
           warning: `Perfil actualizado, pero no se pudo actualizar en sistema de autenticación: ${updateError.message}`,
         }
       }
-    } else {
-      // El usuario no existe en auth o hubo un error al verificar
-      console.log("Usuario NO existe en auth o hubo un error al verificar")
 
-      // Devolver éxito pero con advertencia
-      revalidatePath("/admin/usuarios")
+      console.log("✓ Usuario actualizado en auth exitosamente")
+    } catch (updateError: any) {
+      console.error("Error al actualizar usuario en auth:", updateError)
       return {
         success: true,
-        warning:
-          "Perfil actualizado correctamente, pero no se pudo sincronizar con el sistema de autenticación. Use la función 'Sincronizar Usuarios' para completar el proceso.",
+        warning: `Perfil actualizado, pero no se pudo actualizar en sistema de autenticación: ${updateError.message}`,
       }
+    }
+
+    revalidatePath("/admin/usuarios")
+    return {
+      success: true,
+      message: "Usuario actualizado exitosamente",
     }
   } catch (error: any) {
     console.error("Error general en updateUser:", error)
@@ -1243,182 +1222,6 @@ export async function importUsersFromList() {
         role: "Director Tecnico",
         zone_id: "a9b0c1d2-e3f4-5a6b-7c8d-abcdef0123456", // Caribe Húmedo
         distributor_id: "234567890-abcd-ef12-3456-7890abcdef12", // Agralba Santander
-      },
-      {
-        email: "damian.gutierrez@llevolasriendas.com",
-        password: "SecretAccess101!",
-        full_name: "Damian Gutierrez",
-        role: "Capitan",
-        zone_id: "b4c5d6e7-f8a9-6b7c-8d9e-bcdef01234567", // Caribe Seco
-        distributor_id: "34567890a-bcde-f123-4567-890abcdef123", // Cosechar
-      },
-      {
-        email: "elena.gonzalez@llevolasriendas.com",
-        password: "CodeSecret202!",
-        full_name: "Elena Gonzalez",
-        role: "Director Tecnico",
-        zone_id: "c9d0e1f2-a3b4-7c5d-9e6f-cdef012345678", // Casanare
-        distributor_id: "4567890ab-cdef-1234-5678-90abcdef1234", // Insagrin
-      },
-      {
-        email: "federico.ramirez@llevolasriendas.com",
-        password: "AccessCode303!",
-        full_name: "Federico Ramirez",
-        role: "Capitan",
-        zone_id: "d4e5f6a7-b8c9-8d7e-9f0a-def0123456789", // Meta
-        distributor_id: "567890abc-def1-2345-6789-0abcdef12345", // Agralba Antioquia
-      },
-      {
-        email: "gimena.flores@llevolasriendas.com",
-        password: "PassWord404!",
-        full_name: "Gimena Flores",
-        role: "Director Tecnico",
-        zone_id: "e9f0a1b2-c3d4-9e5f-0a6b-ef0123456789a", // Eje y Valle
-        distributor_id: "67890abcd-ef12-3456-7890-abcdef123456", // Agralba Santander
-      },
-      {
-        email: "hugo.jimenez@llevolasriendas.com",
-        password: "SecretPass505!",
-        full_name: "Hugo Jimenez",
-        role: "Capitan",
-        zone_id: "f4a5b6c7-d8e9-0f1a-2b3c-f0123456789ab", // Colombia
-        distributor_id: "7890abcdef-1234-5678-90ab-cdef12345678", // Cosechar
-      },
-      {
-        email: "ines.castillo@llevolasriendas.com",
-        password: "CodeKey606!",
-        full_name: "Ines Castillo",
-        role: "Director Tecnico",
-        zone_id: "a0b1c2d3-e4f5-1a6b-3c7d-0123456789abc", // Antioquia
-        distributor_id: "890abcdef1-2345-6789-0abc-def123456789", // Insagrin
-      },
-      {
-        email: "javier.ortiz@llevolasriendas.com",
-        password: "AccessCode707!",
-        full_name: "Javier Ortiz",
-        role: "Capitan",
-        zone_id: "b5c6d7e8-f9a0-2b8c-4d9e-123456789abcd", // Mag. Medio
-        distributor_id: "90abcdef12-3456-7890-abcd-ef123456789a", // Agralba Antioquia
-      },
-      {
-        email: "karina.silva@llevolasriendas.com",
-        password: "PassAccess808!",
-        full_name: "Karina Silva",
-        role: "Director Tecnico",
-        zone_id: "c0d1e2f3-a4b5-3c4d-5e6f-23456789abcde", // Santander
-        distributor_id: "0abcdef123-4567-890a-bcde-f123456789ab", // Agralba Santander
-      },
-      {
-        email: "leonardo.perez@llevolasriendas.com",
-        password: "SecretWord909!",
-        full_name: "Leonardo Perez",
-        role: "Capitan",
-        zone_id: "d5e6f7a8-b9c0-4d5e-6f7a-3456789abcdef", // Caribe Húmedo
-        distributor_id: "abcdef1234-5678-90ab-cdef-123456789abc", // Insagrin
-      },
-      {
-        email: "micaela.gomez@llevolasriendas.com",
-        password: "CodePass111!",
-        full_name: "Micaela Gomez",
-        role: "Director Tecnico",
-        zone_id: "e0f1a2b3-c4d5-5e6f-7a8b-456789abcdef0", // Caribe Seco
-        distributor_id: "bcdef12345-6789-0abc-def1-23456789abcd", // Insagrin
-      },
-      {
-        email: "nicolas.rodriguez@llevolasriendas.com",
-        password: "AccessKey222!",
-        full_name: "Nicolas Rodriguez",
-        role: "Capitan",
-        zone_id: "f5a6b7c8-d9e0-6f7a-8b9c-56789abcdef01", // Meta
-        distributor_id: "cdef123456-7890-abcd-ef12-3456789abcde", // Agralba Antioquia
-      },
-      {
-        email: "olivia.martinez@llevolasriendas.com",
-        password: "PassCode333!",
-        full_name: "Olivia Martinez",
-        role: "Director Tecnico",
-        zone_id: "a1b2c3d4-e5f6-7a8b-9c0d-6789abcdef012", // Meta
-        distributor_id: "def1234567-890a-bcde-f123-456789abcdef", // Agralba Santander
-      },
-      {
-        email: "pablo.sanchez@llevolasriendas.com",
-        password: "SecretAccess444!",
-        full_name: "Pablo Sanchez",
-        role: "Capitan",
-        zone_id: "b6c7d8e9-f0a1-8b9c-0d1e-789abcdef0123", // Eje y Valle
-        distributor_id: "ef12345678-90ab-cdef-1234-56789abcdef0", // Cosechar
-      },
-      {
-        email: "quiteria.lopez@llevolasriendas.com",
-        password: "CodeWord555!",
-        full_name: "Quiteria Lopez",
-        role: "Director Tecnico",
-        zone_id: "c1d2e3f4-a5b6-9c0d-1e2f-89abcdef01234", // Colombia
-        distributor_id: "f123456789-0abc-def1-2345-67890abcdef1", // Insagrin
-      },
-      {
-        email: "ramiro.fernandez@llevolasriendas.com",
-        password: "AccessPass666!",
-        full_name: "Ramiro Fernandez",
-        role: "Capitan",
-        zone_id: "d6e7f8a9-b0c1-0d1e-2f3a-9abcdef012345", // Antioquia
-        distributor_id: "1234567890-abcd-ef12-3456-7890abcdef12", // Agralba Antioquia
-      },
-      {
-        email: "sabrina.gutierrez@llevolasriendas.com",
-        password: "PassCode777!",
-        full_name: "Sabrina Gutierrez",
-        role: "Director Tecnico",
-        zone_id: "e1f2a3b4-c5d6-1e2f-3a4b-abcdef01234567", // Mag. Medio
-        distributor_id: "234567890a-bcde-f123-4567-890abcdef123", // Agralba Santander
-      },
-      {
-        email: "tomas.gonzalez@llevolasriendas.com",
-        password: "SecretKey888!",
-        full_name: "Tomas Gonzalez",
-        role: "Capitan",
-        zone_id: "f6a7b8c9-d0e1-2f3a-4b5c-bcdef012345678", // Santander
-        distributor_id: "34567890ab-cdef-1234-5678-90abcdef1234", // Cosechar
-      },
-      {
-        email: "ursula.ramirez@llevolasriendas.com",
-        password: "CodeAccess999!",
-        full_name: "Ursula Ramirez",
-        role: "Director Tecnico",
-        zone_id: "a2b3c4d5-e6f7-3a4b-5c6d-cdef0123456789", // Caribe Húmedo
-        distributor_id: "4567890abc-def1-2345-6789-0abcdef12345", // Insagrin
-      },
-      {
-        email: "victor.flores@llevolasriendas.com",
-        password: "AccessWord000!",
-        full_name: "Victor Flores",
-        role: "Capitan",
-        zone_id: "b7c8d9e0-f1a2-4b5c-6d7e-def0123456789a", // Caribe Seco
-        distributor_id: "567890abcd-ef12-3456-7890-abcdef123456", // Agralba Antioquia
-      },
-      {
-        email: "ximena.jimenez@llevolasriendas.com",
-        password: "PassSecret111!",
-        full_name: "Ximena Jimenez",
-        role: "Director Tecnico",
-        zone_id: "c2d3e4f5-a6b7-5c6d-7e8f-ef0123456789ab", // Casanare
-        distributor_id: "67890abcdef-1234-5678-90ab-cdef12345678", // Agralba Santander
-      },
-      {
-        email: "yolanda.castillo@llevolasriendas.com",
-        password: "SecretCode222!",
-        full_name: "Yolanda Castillo",
-        role: "Capitan",
-        zone_id: "d7e8f9a0-b1c2-6d7e-8f9a-f0123456789abc", // Meta
-        distributor_id: "7890abcdef1-2345-6789-0abc-def123456789", // Cosechar
-      },
-      {
-        email: "zoilo.ortiz@llevolasriendas.com",
-        password: "CodeAccess333!",
-        full_name: "Zoilo Ortiz",
-        role: "Director Tecnico",
-        zone_id: "e2f3a4b5-c6d7-7e8f-9a0b-0123456789abcd", // Eje y Valle
-        distributor_id: "890abcdef12-3456-7890-abcd-ef123456789a", // Insagrin
       },
     ]
 
