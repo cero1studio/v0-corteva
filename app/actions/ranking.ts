@@ -2,418 +2,202 @@
 
 import { createServerClient } from "@/lib/supabase/server"
 
-export interface TeamRanking {
-  position: number
-  team_id: string
-  team_name: string
-  distributor_name: string
-  distributor_logo?: string
-  goals: number
-  total_points: number
-  zone_name: string
-}
+export async function getRanking() {
+  const supabase = createServerClient()
 
-export interface SalesRanking {
-  position: number
-  team_id: string
-  team_name: string
-  distributor_name: string
-  total_sales: number
-  total_points: number
-  zone_name: string
-}
-
-export interface ClientsRanking {
-  position: number
-  team_id: string
-  team_name: string
-  distributor_name: string
-  total_clients: number
-  total_points_from_clients: number
-  zone_name: string
-}
-
-export interface UserTeamInfo {
-  team_id: string
-  team_name: string
-  zone_id: string
-  zone_name: string
-  position: number
-  goals: number
-  total_points: number
-  goals_to_next_position: number
-}
-
-export async function getTeamRankingByZone(zoneId?: string) {
   try {
-    const supabase = createServerClient()
-
-    // Obtener configuración de puntos para gol
-    const { data: puntosConfig } = await supabase
-      .from("system_config")
-      .select("value")
-      .eq("key", "puntos_para_gol")
-      .maybeSingle()
-
-    const puntosParaGol = puntosConfig?.value ? Number(puntosConfig.value) : 100
-
-    // Obtener equipos con sus zonas y distribuidores
-    let teamsQuery = supabase.from("teams").select(`
+    // Obtener equipos con sus puntos totales
+    const { data: teams, error: teamsError } = await supabase
+      .from("teams")
+      .select(`
         id,
         name,
-        zone_id,
-        zones!inner(id, name),
-        distributors!inner(id, name, logo_url)
+        goals,
+        zones (
+          id,
+          name
+        ),
+        distributors (
+          id,
+          name,
+          logo_url
+        )
       `)
-
-    if (zoneId) {
-      teamsQuery = teamsQuery.eq("zone_id", zoneId)
-    }
-
-    const { data: teams, error: teamsError } = await teamsQuery
+      .order("goals", { ascending: false })
 
     if (teamsError) {
-      console.error("Error fetching teams for ranking:", teamsError)
+      console.error("Error al obtener equipos:", teamsError)
       return { success: false, error: teamsError.message }
     }
 
-    // Calcular puntos reales de ventas para cada equipo
-    const ranking: TeamRanking[] = []
-
-    for (const team of teams || []) {
-      // Obtener miembros del equipo
-      const { data: teamMembers } = await supabase.from("profiles").select("id").eq("team_id", team.id)
-
-      const memberIds = teamMembers?.map((member) => member.id) || []
-
-      // Obtener todas las ventas de los miembros del equipo
-      const { data: sales, error: salesError } = await supabase
-        .from("sales")
-        .select("points")
-        .in("representative_id", memberIds.length > 0 ? memberIds : ["no-members"])
-
-      let totalPoints = 0
-      if (!salesError && sales) {
-        totalPoints = sales.reduce((sum, sale) => sum + (sale.points || 0), 0)
-      }
-
-      // Obtener clientes del equipo (a través de los representantes)
-      let totalClients = 0
-      if (memberIds.length > 0) {
-        const { count: clientsCount } = await supabase
-          .from("competitor_clients")
-          .select("*", { count: "exact", head: true })
-          .in("representative_id", memberIds)
-
-        totalClients = clientsCount || 0
-      }
-
-      // Sumar puntos de clientes (200 puntos por cliente)
-      const clientsPoints = totalClients * 200
-      const finalTotalPoints = totalPoints + clientsPoints
-
-      // Calcular goles
-      const goals = Math.floor(finalTotalPoints / puntosParaGol)
-
-      ranking.push({
-        position: 0, // Se asignará después del ordenamiento
-        team_id: team.id,
-        team_name: team.name,
-        distributor_name: team.distributors.name,
-        distributor_logo: team.distributors.logo_url,
-        goals: goals,
-        total_points: finalTotalPoints,
-        zone_name: team.zones.name,
-      })
-    }
-
-    // Ordenar por puntos totales y asignar posiciones
-    const sortedRanking = ranking
-      .sort((a, b) => b.total_points - a.total_points)
-      .map((team, index) => ({
-        ...team,
-        position: index + 1,
-      }))
-
-    return { success: true, data: sortedRanking }
-  } catch (error) {
-    console.error("Error in getTeamRankingByZone:", error)
-    return { success: false, error: "Error interno del servidor" }
-  }
-}
-
-export async function getSalesRankingByZone(zoneId?: string) {
-  try {
-    const supabase = createServerClient()
-
-    // Obtener equipos de la zona
-    let teamsQuery = supabase.from("teams").select(`
-        id,
-        name,
-        zones!inner(id, name),
-        distributors!inner(id, name, logo_url)
+    // Calcular puntos totales por equipo desde las ventas
+    const { data: salesData, error: salesError } = await supabase.from("sales").select(`
+        team_id,
+        points
       `)
 
-    if (zoneId) {
-      teamsQuery = teamsQuery.eq("zone_id", zoneId)
+    if (salesError) {
+      console.error("Error al obtener ventas:", salesError)
+      return { success: false, error: salesError.message }
     }
 
-    const { data: teams, error: teamsError } = await teamsQuery
-
-    if (teamsError) {
-      console.error("Error fetching teams for sales ranking:", teamsError)
-      return { success: false, error: teamsError.message }
-    }
-
-    const ranking: SalesRanking[] = []
-
-    for (const team of teams || []) {
-      // Obtener miembros del equipo
-      const { data: teamMembers } = await supabase.from("profiles").select("id").eq("team_id", team.id)
-
-      const memberIds = teamMembers?.map((member) => member.id) || []
-
-      // Obtener ventas del equipo a través de los miembros
-      const { data: sales, error: salesError } = await supabase
-        .from("sales")
-        .select("points")
-        .in("representative_id", memberIds.length > 0 ? memberIds : ["no-members"])
-
-      let totalSales = 0
-      let totalPoints = 0
-
-      if (!salesError && sales) {
-        totalSales = sales.length
-        totalPoints = sales.reduce((sum, sale) => sum + (sale.points || 0), 0)
-      }
-
-      ranking.push({
-        position: 0, // Se asignará después del ordenamiento
-        team_id: team.id,
-        team_name: team.name,
-        distributor_name: team.distributors.name,
-        total_sales: totalSales,
-        total_points: totalPoints,
-        zone_name: team.zones.name,
-      })
-    }
-
-    // Ordenar por puntos totales y asignar posiciones
-    const sortedRanking = ranking
-      .sort((a, b) => b.total_points - a.total_points)
-      .map((team, index) => ({
-        ...team,
-        position: index + 1,
-      }))
-
-    return { success: true, data: sortedRanking }
-  } catch (error) {
-    console.error("Error in getSalesRankingByZone:", error)
-    return { success: false, error: "Error interno del servidor" }
-  }
-}
-
-export async function getClientsRankingByZone(zoneId?: string) {
-  try {
-    const supabase = createServerClient()
-
-    // Obtener equipos de la zona
-    let teamsQuery = supabase.from("teams").select(`
-        id,
-        name,
-        zones!inner(id, name),
-        distributors!inner(id, name, logo_url)
-      `)
-
-    if (zoneId) {
-      teamsQuery = teamsQuery.eq("zone_id", zoneId)
-    }
-
-    const { data: teams, error: teamsError } = await teamsQuery
-
-    if (teamsError) {
-      console.error("Error fetching teams for clients ranking:", teamsError)
-      return { success: false, error: teamsError.message }
-    }
-
-    const ranking: ClientsRanking[] = []
-
-    for (const team of teams || []) {
-      // Obtener representantes del equipo
-      const { data: representatives, error: repsError } = await supabase
-        .from("profiles")
-        .select("id")
-        .eq("team_id", team.id)
-
-      let totalClients = 0
-
-      if (!repsError && representatives && representatives.length > 0) {
-        const { count: clientsCount, error: clientsError } = await supabase
-          .from("competitor_clients")
-          .select("*", { count: "exact", head: true })
-          .in(
-            "representative_id",
-            representatives.map((rep) => rep.id),
-          )
-
-        if (!clientsError) {
-          totalClients = clientsCount || 0
+    // Agrupar puntos por equipo
+    const teamPoints =
+      salesData?.reduce((acc: any, sale: any) => {
+        if (sale.team_id) {
+          acc[sale.team_id] = (acc[sale.team_id] || 0) + (sale.points || 0)
         }
-      }
+        return acc
+      }, {}) || {}
 
-      const totalPointsFromClients = totalClients * 200 // 200 puntos por cliente
+    // Combinar datos de equipos con puntos
+    const ranking =
+      teams
+        ?.map((team: any) => ({
+          ...team,
+          total_points: teamPoints[team.id] || 0,
+        }))
+        .sort((a: any, b: any) => b.total_points - a.total_points) || []
 
-      ranking.push({
-        position: 0, // Se asignará después del ordenamiento
-        team_id: team.id,
-        team_name: team.name,
-        distributor_name: team.distributors.name,
-        total_clients: totalClients,
-        total_points_from_clients: totalPointsFromClients,
-        zone_name: team.zones.name,
-      })
-    }
-
-    // Ordenar por número de clientes y asignar posiciones
-    const sortedRanking = ranking
-      .sort((a, b) => b.total_clients - a.total_clients)
-      .map((team, index) => ({
-        ...team,
-        position: index + 1,
-      }))
-
-    return { success: true, data: sortedRanking }
-  } catch (error) {
-    console.error("Error in getClientsRankingByZone:", error)
-    return { success: false, error: "Error interno del servidor" }
+    return { success: true, data: ranking }
+  } catch (error: any) {
+    console.error("Error en getRanking:", error)
+    return { success: false, error: error.message }
   }
 }
 
-export async function getUserTeamInfo(
-  userId: string,
-): Promise<{ success: boolean; data?: UserTeamInfo; error?: string }> {
+export async function getTeamRanking(teamId: string) {
+  const supabase = createServerClient()
+
   try {
-    const supabase = createServerClient()
-
-    console.log("Buscando usuario con ID:", userId)
-
-    // Obtener perfil del usuario
-    const { data: profile, error: profileError } = await supabase.from("profiles").select("*").eq("id", userId).single()
-
-    if (profileError || !profile) {
-      return { success: false, error: "Usuario no encontrado en profiles" }
-    }
-
-    if (!profile.team_id) {
-      return { success: false, error: "Usuario no tiene equipo asignado" }
-    }
-
     // Obtener información del equipo
     const { data: team, error: teamError } = await supabase
       .from("teams")
       .select(`
         id,
         name,
-        zone_id,
-        zones!inner(name)
+        goals,
+        zones (
+          id,
+          name
+        ),
+        distributors (
+          id,
+          name,
+          logo_url
+        )
       `)
-      .eq("id", profile.team_id)
+      .eq("id", teamId)
       .single()
 
-    if (teamError || !team) {
-      return { success: false, error: "Error al obtener información del equipo" }
+    if (teamError) {
+      console.error("Error al obtener equipo:", teamError)
+      return { success: false, error: teamError.message }
     }
 
-    // Obtener miembros del equipo
-    const { data: teamMembers } = await supabase.from("profiles").select("id").eq("team_id", team.id)
+    // Obtener puntos totales del equipo
+    const { data: salesData, error: salesError } = await supabase.from("sales").select("points").eq("team_id", teamId)
 
-    const memberIds = teamMembers?.map((member) => member.id) || []
-
-    // Calcular puntos reales del equipo
-    const { data: sales } = await supabase
-      .from("sales")
-      .select("points")
-      .in("representative_id", memberIds.length > 0 ? memberIds : ["no-members"])
-
-    let totalPointsFromSales = 0
-    if (sales) {
-      totalPointsFromSales = sales.reduce((sum, sale) => sum + (sale.points || 0), 0)
+    if (salesError) {
+      console.error("Error al obtener ventas del equipo:", salesError)
+      return { success: false, error: salesError.message }
     }
 
-    // Obtener clientes del equipo
-    let totalClients = 0
-    if (memberIds.length > 0) {
-      const { count: clientsCount } = await supabase
-        .from("competitor_clients")
-        .select("*", { count: "exact", head: true })
-        .in("representative_id", memberIds)
+    const totalPoints = salesData?.reduce((sum, sale) => sum + (sale.points || 0), 0) || 0
 
-      totalClients = clientsCount || 0
+    // Obtener ranking general para determinar posición
+    const { success: rankingSuccess, data: ranking } = await getRanking()
+
+    if (!rankingSuccess) {
+      return { success: false, error: "Error al obtener ranking general" }
     }
 
-    const totalPointsFromClients = totalClients * 200
-    const totalPoints = totalPointsFromSales + totalPointsFromClients
+    const position = ranking.findIndex((t: any) => t.id === teamId) + 1
 
-    // Obtener configuración de puntos para gol
-    const { data: puntosConfig } = await supabase
-      .from("system_config")
-      .select("value")
-      .eq("key", "puntos_para_gol")
-      .maybeSingle()
-
-    const puntosParaGol = puntosConfig?.value ? Number(puntosConfig.value) : 100
-    const goals = Math.floor(totalPoints / puntosParaGol)
-
-    // Obtener ranking de la zona para calcular la posición
-    const rankingResult = await getTeamRankingByZone(team.zone_id)
-
-    let position = 0
-    let goalsToNext = 0
-
-    if (rankingResult.success && rankingResult.data) {
-      const teamPosition = rankingResult.data.find((t) => t.team_id === team.id)
-      const nextTeam = rankingResult.data.find((t) => t.position === (teamPosition?.position || 1) - 1)
-
-      position = teamPosition?.position || 0
-      goalsToNext = nextTeam ? Math.max(0, Math.ceil((nextTeam.total_points - totalPoints) / puntosParaGol)) : 0
+    return {
+      success: true,
+      data: {
+        ...team,
+        total_points: totalPoints,
+        position: position || ranking.length + 1,
+      },
     }
-
-    const userTeamInfo: UserTeamInfo = {
-      team_id: team.id,
-      team_name: team.name,
-      zone_id: team.zone_id,
-      zone_name: team.zones.name,
-      position: position,
-      goals: goals,
-      total_points: totalPoints,
-      goals_to_next_position: goalsToNext,
-    }
-
-    return { success: true, data: userTeamInfo }
-  } catch (error) {
-    console.error("Error in getUserTeamInfo:", error)
-    return { success: false, error: "Error interno del servidor" }
+  } catch (error: any) {
+    console.error("Error en getTeamRanking:", error)
+    return { success: false, error: error.message }
   }
 }
 
-export async function getProducts() {
+export async function getUserRanking(userId: string) {
+  const supabase = createServerClient()
+
   try {
-    const supabase = createServerClient()
+    // Obtener información del usuario y su equipo
+    const { data: user, error: userError } = await supabase
+      .from("profiles")
+      .select(`
+        id,
+        full_name,
+        team_id,
+        teams (
+          id,
+          name,
+          zones (
+            id,
+            name
+          ),
+          distributors (
+            id,
+            name,
+            logo_url
+          )
+        )
+      `)
+      .eq("id", userId)
+      .single()
 
-    const { data: products, error } = await supabase
-      .from("products")
-      .select("id, name")
-      .eq("active", true)
-      .order("name")
-
-    if (error) {
-      console.error("Error fetching products:", error)
-      return { success: false, error: error.message }
+    if (userError) {
+      console.error("Error al obtener usuario:", userError)
+      return { success: false, error: userError.message }
     }
 
-    return { success: true, data: products || [] }
-  } catch (error) {
-    console.error("Error in getProducts:", error)
-    return { success: false, error: "Error interno del servidor" }
+    if (!user.team_id) {
+      return { success: false, error: "El usuario no tiene equipo asignado" }
+    }
+
+    // Obtener puntos del usuario
+    const { data: userSales, error: userSalesError } = await supabase
+      .from("sales")
+      .select("points")
+      .eq("representative_id", userId)
+
+    if (userSalesError) {
+      console.error("Error al obtener ventas del usuario:", userSalesError)
+      return { success: false, error: userSalesError.message }
+    }
+
+    const userPoints = userSales?.reduce((sum, sale) => sum + (sale.points || 0), 0) || 0
+
+    // Obtener ranking del equipo
+    const { success: teamRankingSuccess, data: teamRanking } = await getTeamRanking(user.team_id)
+
+    if (!teamRankingSuccess) {
+      return { success: false, error: "Error al obtener ranking del equipo" }
+    }
+
+    return {
+      success: true,
+      data: {
+        user: {
+          id: user.id,
+          full_name: user.full_name,
+          points: userPoints,
+        },
+        team: teamRanking,
+      },
+    }
+  } catch (error: any) {
+    console.error("Error en getUserRanking:", error)
+    return { success: false, error: error.message }
   }
 }
