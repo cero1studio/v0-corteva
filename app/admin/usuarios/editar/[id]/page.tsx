@@ -1,8 +1,7 @@
 "use client"
 
 import type React from "react"
-
-import { useState, useEffect } from "react"
+import { use, useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
@@ -29,7 +28,12 @@ interface Distributor {
   name: string
 }
 
-export default function EditarUsuarioPage({ params }: { params: { id: string } }) {
+interface PageProps {
+  params: Promise<{ id: string }>
+}
+
+export default function EditarUsuarioPage({ params }: PageProps) {
+  const resolvedParams = use(params)
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [fullName, setFullName] = useState("")
@@ -45,7 +49,7 @@ export default function EditarUsuarioPage({ params }: { params: { id: string } }
   const [error, setError] = useState<string | null>(null)
   const router = useRouter()
   const { toast } = useToast()
-  const userId = params.id
+  const userId = resolvedParams.id
 
   useEffect(() => {
     loadInitialData()
