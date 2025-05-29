@@ -15,10 +15,26 @@ export async function middleware(req: NextRequest) {
           return req.cookies.get(name)?.value
         },
         set(name: string, value: string, options: any) {
-          res.cookies.set({ name, value, ...options })
+          res.cookies.set({
+            name,
+            value,
+            httpOnly: true,
+            secure: true, // 🔒 Necesario para HTTPS
+            sameSite: "Lax",
+            path: "/",
+            ...options,
+          })
         },
         remove(name: string, options: any) {
-          res.cookies.set({ name, value: "", ...options })
+          res.cookies.set({
+            name,
+            value: "",
+            httpOnly: true,
+            secure: true,
+            sameSite: "Lax",
+            path: "/",
+            ...options,
+          })
         },
       },
     }
@@ -38,23 +54,25 @@ export async function middleware(req: NextRequest) {
       "/primer-acceso",
       "/ranking-publico",
     ]
-    const isPublicRoute = publicRoutes.some((route) => req.nextUrl.pathname.startsWith(route))
 
-    // Si hay error con el refresh token
+    const isPublicRoute = publicRoutes.some((route) =>
+      req.nextUrl.pathname.startsWith(route)
+    )
+
+    // ❌ Token inválido o expirado
     if (sessionError?.message?.includes("refresh_token") || sessionError?.message?.includes("invalid_grant")) {
       const redirectRes = NextResponse.redirect(new URL("/login", req.url))
       redirectRes.cookies.delete("supabase-auth-token")
       redirectRes.cookies.delete("supabase.auth.token")
-
       return isPublicRoute ? res : redirectRes
     }
 
-    // Si no hay sesión y no es ruta pública
+    // ⛔️ No autenticado y no está en ruta pública
     if (!session && !isPublicRoute) {
       return NextResponse.redirect(new URL("/login", req.url))
     }
 
-    // Si hay sesión
+    // ✅ Sesión válida
     if (session) {
       const { data: profile, error: profileError } = await supabase
         .from("profiles")
