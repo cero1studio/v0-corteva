@@ -3,9 +3,8 @@ import { createClient } from "@supabase/supabase-js"
 import { cookies } from "next/headers"
 import type { Database } from "@/types/supabase"
 
-// Función principal para crear cliente del servidor (NO async para compatibilidad)
-export function createServerClient() {
-  const cookieStore = cookies()
+export async function createServerClient() {
+  const cookieStore = await cookies()
 
   return createSSRClient<Database>(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
     cookies: {
@@ -25,7 +24,7 @@ export function createServerClient() {
   })
 }
 
-// Mantener todas las funciones anteriores por compatibilidad
+// Mantener la función original por compatibilidad
 export const createServerSupabaseClient = createServerClient
 
 // Cliente de Supabase con rol de administrador para operaciones privilegiadas
@@ -34,7 +33,7 @@ export const adminSupabase = createClient<Database>(
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
 )
 
-// Cliente administrativo con privilegios elevados (versión función)
-export function createAdminClient() {
+// Cliente administrativo con privilegios elevados (versión async)
+export async function createAdminClient() {
   return createClient<Database>(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
 }
