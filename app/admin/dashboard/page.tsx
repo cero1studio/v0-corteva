@@ -1,6 +1,9 @@
 // Agregar el AuthGuard al dashboard de admin
 // Importar el AuthGuard
 import { AuthGuard } from "@/components/auth-guard"
+import AdminStatsChart from "@/components/admin-stats-chart"
+import AdminRankingChart from "@/components/admin-ranking-chart"
+import AdminZonesChart from "@/components/admin-zones-chart"
 
 // Envolver el contenido de la página con AuthGuard
 export default function AdminDashboardPage() {
