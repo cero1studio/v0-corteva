@@ -23,12 +23,9 @@ interface Distributor {
   name: string
 }
 
-const roles = {
-  admin: "Administrador",
-  capitan: "Capitán",
-  director_tecnico: "Director Técnico",
-  representante: "Representante",
-  supervisor: "Supervisor",
+interface Team {
+  id: string
+  name: string
 }
 
 export default function NuevoUsuarioPage() {
@@ -36,10 +33,13 @@ export default function NuevoUsuarioPage() {
   const [role, setRole] = useState("")
   const [zones, setZones] = useState<Zone[]>([])
   const [distributors, setDistributors] = useState<Distributor[]>([])
+  const [teams, setTeams] = useState<Team[]>([])
   const [selectedZone, setSelectedZone] = useState("")
   const [selectedDistributor, setSelectedDistributor] = useState("")
+  const [selectedTeam, setSelectedTeam] = useState("")
   const [loadingZones, setLoadingZones] = useState(false)
   const [loadingDistributors, setLoadingDistributors] = useState(false)
+  const [loadingTeams, setLoadingTeams] = useState(false)
 
   const router = useRouter()
   const { toast } = useToast()
@@ -47,6 +47,7 @@ export default function NuevoUsuarioPage() {
   useEffect(() => {
     fetchZones()
     fetchDistributors()
+    fetchTeams()
   }, [])
 
   async function fetchZones() {
@@ -77,6 +78,20 @@ export default function NuevoUsuarioPage() {
     }
   }
 
+  async function fetchTeams() {
+    try {
+      setLoadingTeams(true)
+      const { data, error } = await supabase.from("teams").select("id, name").order("name")
+
+      if (error) throw error
+      setTeams(data || [])
+    } catch (error) {
+      console.error("Error al cargar equipos:", error)
+    } finally {
+      setLoadingTeams(false)
+    }
+  }
+
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setIsSubmitting(true)
@@ -84,29 +99,15 @@ export default function NuevoUsuarioPage() {
     try {
       const formData = new FormData(event.currentTarget)
 
-      // Combinar nombre y apellido en fullName
-      const name = formData.get("name") as string
-      const surname = formData.get("surname") as string
-      const fullName = `${name} ${surname}`.trim()
-
-      // Crear nuevo FormData con los campos correctos
-      const submitData = new FormData()
-      submitData.append("email", formData.get("email") as string)
-      submitData.append("password", formData.get("password") as string)
-      submitData.append("fullName", fullName)
-      submitData.append("role", role)
-
-      // Solo agregar zona y distribuidor si el rol los requiere
+      // Si el rol es capitán o director técnico, necesitamos guardar la zona y distribuidor
       if (role === "capitan" || role === "director_tecnico") {
-        if (selectedZone) {
-          submitData.append("zoneId", selectedZone)
-        }
-        if (selectedDistributor) {
-          submitData.append("distributorId", selectedDistributor)
-        }
+        formData.append("zoneId", selectedZone)
+        formData.append("distributorId", selectedDistributor)
+        // No asignamos equipo, el capitán lo creará
+        formData.delete("teamId")
       }
 
-      const result = await createUser(submitData)
+      const result = await createUser(formData)
 
       if (result.error) {
         toast({
@@ -149,59 +150,44 @@ export default function NuevoUsuarioPage() {
             <div className="space-y-4">
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
-                  <Label htmlFor="name">Nombre *</Label>
-                  <Input id="name" name="name" placeholder="Nombre" required />
+                  <Label htmlFor="fullName">Nombre completo</Label>
+                  <Input id="fullName" name="fullName" placeholder="Nombre completo" required />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="surname">Apellido *</Label>
-                  <Input id="surname" name="surname" placeholder="Apellido" required />
+                  <Label htmlFor="email">Correo electrónico</Label>
+                  <Input id="email" name="email" type="email" placeholder="correo@ejemplo.com" required />
                 </div>
               </div>
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
-                  <Label htmlFor="email">Correo electrónico *</Label>
-                  <Input id="email" name="email" type="email" placeholder="correo@ejemplo.com" required />
+                  <Label htmlFor="password">Contraseña</Label>
+                  <Input id="password" name="password" type="password" placeholder="********" required />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="password">Contraseña *</Label>
-                  <Input
-                    id="password"
-                    name="password"
-                    type="password"
-                    placeholder="Mínimo 6 caracteres"
-                    required
-                    minLength={6}
-                  />
+                  <Label htmlFor="role">Rol</Label>
+                  <Select name="role" value={role} onValueChange={(value) => setRole(value)} required>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecciona un rol" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="admin">Administrador</SelectItem>
+                      <SelectItem value="capitan">Capitán</SelectItem>
+                      <SelectItem value="director_tecnico">Director Técnico</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="role">Rol *</Label>
-                <Select value={role} onValueChange={(value) => setRole(value)} required>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecciona un rol" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Object.entries(roles).map(([key, label]) => (
-                      <SelectItem key={key} value={key}>
-                        {label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
               </div>
 
               {(role === "capitan" || role === "director_tecnico") && (
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
                     <Label htmlFor="zoneId">Zona</Label>
-                    <Select value={selectedZone} onValueChange={setSelectedZone}>
+                    <Select name="zoneId" value={selectedZone} onValueChange={setSelectedZone} required>
                       <SelectTrigger>
                         <SelectValue placeholder={loadingZones ? "Cargando..." : "Selecciona una zona"} />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="no_zona">Sin zona</SelectItem>
                         {zones.map((zone) => (
                           <SelectItem key={zone.id} value={zone.id}>
                             {zone.name}
@@ -212,12 +198,16 @@ export default function NuevoUsuarioPage() {
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="distributorId">Distribuidor</Label>
-                    <Select value={selectedDistributor} onValueChange={setSelectedDistributor}>
+                    <Select
+                      name="distributorId"
+                      value={selectedDistributor}
+                      onValueChange={setSelectedDistributor}
+                      required
+                    >
                       <SelectTrigger>
                         <SelectValue placeholder={loadingDistributors ? "Cargando..." : "Selecciona un distribuidor"} />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="no_distribuidor">Sin distribuidor</SelectItem>
                         {distributors.map((distributor) => (
                           <SelectItem key={distributor.id} value={distributor.id}>
                             {distributor.name}
@@ -231,7 +221,7 @@ export default function NuevoUsuarioPage() {
 
               {role === "admin" && (
                 <div className="p-3 bg-gray-50 rounded-md text-sm text-gray-500">
-                  Los administradores no necesitan zona o distribuidor asignado.
+                  Los administradores no pueden tener equipos, zonas o distribuidores asignados.
                 </div>
               )}
             </div>
@@ -245,7 +235,7 @@ export default function NuevoUsuarioPage() {
               >
                 Cancelar
               </Button>
-              <Button type="submit" disabled={isSubmitting || !role}>
+              <Button type="submit" disabled={isSubmitting}>
                 {isSubmitting ? "Creando..." : "Crear Usuario"}
               </Button>
             </div>
