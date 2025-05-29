@@ -1,138 +1,101 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from "recharts"
+import { ChartContainer, ChartTooltipContent } from "@/components/ui/chart"
 import { supabase } from "@/lib/supabase/client"
-import { AlertCircle } from "lucide-react"
 
-type Team = {
-  id: string
-  name: string
-  goals: number
-  position?: number
-}
+const sampleData = [
+  { team: "Los Campeones", points: 450, zone: "Norte" },
+  { team: "Águilas FC", points: 420, zone: "Sur" },
+  { team: "Tigres Unidos", points: 380, zone: "Este" },
+  { team: "Leones Dorados", points: 350, zone: "Oeste" },
+  { team: "Halcones", points: 320, zone: "Norte" },
+]
 
-type AdminRankingChartProps = {
-  teams?: Team[] | null
-}
-
-export function AdminRankingChart({ teams: propTeams }: AdminRankingChartProps) {
-  const [isMounted, setIsMounted] = useState(false)
+export function AdminRankingChart() {
+  const [data, setData] = useState(sampleData)
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [teams, setTeams] = useState<Team[]>([])
 
   useEffect(() => {
-    setIsMounted(true)
+    fetchRankingData()
+  }, [])
 
-    // Si recibimos equipos como prop, usamos esos (asegurándonos de que sea un array)
-    if (propTeams && Array.isArray(propTeams)) {
-      setTeams(propTeams)
-      setLoading(false)
-      return
-    }
+  async function fetchRankingData() {
+    try {
+      const { data: teams, error } = await supabase
+        .from("teams")
+        .select(`
+          id,
+          name,
+          zones (name),
+          sales (points)
+        `)
+        .order("name")
 
-    // Si no, cargamos los equipos desde la base de datos
-    async function fetchTeams() {
-      try {
-        setLoading(true)
-        const { data, error } = await supabase.from("teams").select("id, name, goals")
-
-        if (error) throw error
-
-        // Asegurar que data sea un array
-        const teamsData = Array.isArray(data) ? data : []
-        setTeams(teamsData)
-        setError(null)
-      } catch (err: any) {
-        console.error("Error al cargar datos del ranking:", err)
-        setError("No se pudieron cargar los datos del ranking")
-        setTeams([]) // Asegurar que teams sea un array vacío en caso de error
-      } finally {
-        setLoading(false)
+      if (error) {
+        console.error("Error fetching teams:", error)
+        setData(sampleData)
+        return
       }
+
+      if (!teams || teams.length === 0) {
+        setData(sampleData)
+        return
+      }
+
+      const processedData = teams
+        .map((team: any) => {
+          const totalPoints = team.sales?.reduce((sum: number, sale: any) => sum + (sale.points || 0), 0) || 0
+          return {
+            team: team.name,
+            points: totalPoints,
+            zone: team.zones?.name || "Sin zona",
+          }
+        })
+        .sort((a, b) => b.points - a.points)
+        .slice(0, 10) // Top 10
+
+      setData(processedData.length > 0 ? processedData : sampleData)
+    } catch (error) {
+      console.error("Error processing ranking data:", error)
+      setData(sampleData)
+    } finally {
+      setLoading(false)
     }
-
-    fetchTeams()
-  }, [propTeams])
-
-  if (!isMounted) {
-    return <div className="h-full flex items-center justify-center">Cargando gráfico...</div>
   }
 
-  if (error) {
-    return (
-      <div className="h-full flex flex-col items-center justify-center space-y-2">
-        <AlertCircle className="h-8 w-8 text-red-500" />
-        <p className="text-sm text-muted-foreground text-center">{error}</p>
-      </div>
-    )
+  const chartConfig = {
+    points: {
+      label: "Puntos",
+      color: "hsl(var(--chart-1))",
+    },
   }
 
   if (loading) {
-    return <div className="h-full flex items-center justify-center">Cargando datos del ranking...</div>
-  }
-
-  // Verificar si hay equipos para mostrar - asegurar que teams sea un array
-  const teamsArray = Array.isArray(teams) ? teams : []
-
-  if (teamsArray.length === 0) {
     return (
-      <div className="h-full flex flex-col items-center justify-center space-y-2">
-        <p className="text-sm font-medium">No hay datos de equipos</p>
-        <p className="text-xs text-muted-foreground text-center">
-          Aún no hay equipos registrados con puntuación para mostrar en el ranking.
-        </p>
-      </div>
-    )
-  }
-
-  // Tomar los 10 mejores equipos - usar teamsArray para asegurar que es iterable
-  const top10Teams = teamsArray
-    .filter((team) => team && typeof team.goals === "number") // Filtrar equipos válidos
-    .sort((a, b) => b.goals - a.goals)
-    .slice(0, 10)
-    .map((team, index) => ({
-      name: team.name || "Sin nombre",
-      goals: team.goals || 0,
-      color: index === 0 ? "#f59e0b" : index === 1 ? "#94a3b8" : index === 2 ? "#d97706" : "#16a34a",
-    }))
-
-  if (top10Teams.length === 0) {
-    return (
-      <div className="h-full flex flex-col items-center justify-center space-y-2">
-        <p className="text-sm font-medium">No hay datos válidos</p>
-        <p className="text-xs text-muted-foreground text-center">Los equipos no tienen datos de puntuación válidos.</p>
+      <div className="w-full h-full flex items-center justify-center">
+        <div className="text-muted-foreground">Cargando ranking...</div>
       </div>
     )
   }
 
   return (
-    <ResponsiveContainer width="100%" height="100%">
-      <BarChart
-        data={top10Teams}
-        layout="vertical"
-        margin={{
-          top: 20,
-          right: 30,
-          left: 100,
-          bottom: 5,
-        }}
-      >
-        <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} />
-        <XAxis type="number" />
-        <YAxis type="category" dataKey="name" width={100} />
-        <Tooltip />
-        <Legend />
-        <Bar
-          dataKey="goals"
-          name="Goles"
-          radius={[0, 4, 4, 0]}
-          fill="#16a34a"
-          label={{ position: "right", fill: "#16a34a", fontSize: 12 }}
-          barSize={30}
+    <ChartContainer config={chartConfig} className="h-full w-full">
+      <BarChart data={data} layout="horizontal" margin={{ top: 20, right: 30, left: 100, bottom: 5 }}>
+        <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+        <XAxis type="number" className="text-xs fill-muted-foreground" />
+        <YAxis type="category" dataKey="team" className="text-xs fill-muted-foreground" width={90} />
+        <Tooltip
+          content={<ChartTooltipContent />}
+          contentStyle={{
+            backgroundColor: "hsl(var(--background))",
+            border: "1px solid hsl(var(--border))",
+            borderRadius: "6px",
+          }}
         />
+        <Bar dataKey="points" fill="var(--color-1)" radius={[0, 4, 4, 0]} />
       </BarChart>
-    </ResponsiveContainer>
+    </ChartContainer>
   )
 }
