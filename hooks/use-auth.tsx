@@ -173,6 +173,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [fetchUserProfile, handleRedirection])
 
+
   useEffect(() => {
     const {
       data: { subscription },
