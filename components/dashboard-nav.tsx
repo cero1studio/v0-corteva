@@ -22,7 +22,7 @@ import {
   Menu,
   X,
 } from "lucide-react"
-import { useAuth } from "@/hooks/use-auth"
+import { useAuth } from "@/components/auth-provider" // Corregido: usar el useAuth del auth-provider
 
 interface NavProps {
   role: "admin" | "capitan" | "supervisor" | "director-tecnico" | "representante"
@@ -30,7 +30,7 @@ interface NavProps {
 
 export function DashboardNav({ role }: NavProps) {
   const pathname = usePathname()
-  const { profile, signOut } = useAuth()
+  const { user, signOut } = useAuth() // Corregido: usar user en lugar de profile
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
 
   // Función para obtener las iniciales del nombre
@@ -151,11 +151,11 @@ export function DashboardNav({ role }: NavProps) {
         <div className="border-t p-4">
           <div className="flex items-center gap-3 rounded-md border p-3">
             <Avatar>
-              <AvatarImage src="/placeholder.svg" alt={profile?.full_name || "Usuario"} />
-              <AvatarFallback>{profile?.full_name ? getInitials(profile.full_name) : "U"}</AvatarFallback>
+              <AvatarImage src="/placeholder.svg" alt={user?.full_name || "Usuario"} />
+              <AvatarFallback>{user?.full_name ? getInitials(user.full_name) : "U"}</AvatarFallback>
             </Avatar>
             <div className="flex flex-col">
-              <span className="text-sm font-medium">{profile?.full_name || "Usuario"}</span>
+              <span className="text-sm font-medium">{user?.full_name || "Usuario"}</span>
               <span className="text-xs text-muted-foreground">
                 {role === "admin"
                   ? "Administrador"
@@ -222,11 +222,11 @@ export function DashboardNav({ role }: NavProps) {
               <div className="border-t p-4">
                 <div className="flex items-center gap-3 rounded-md border p-3">
                   <Avatar>
-                    <AvatarImage src="/placeholder.svg" alt={profile?.full_name || "Usuario"} />
-                    <AvatarFallback>{profile?.full_name ? getInitials(profile.full_name) : "U"}</AvatarFallback>
+                    <AvatarImage src="/placeholder.svg" alt={user?.full_name || "Usuario"} />
+                    <AvatarFallback>{user?.full_name ? getInitials(user.full_name) : "U"}</AvatarFallback>
                   </Avatar>
                   <div className="flex flex-col">
-                    <span className="text-sm font-medium">{profile?.full_name || "Usuario"}</span>
+                    <span className="text-sm font-medium">{user?.full_name || "Usuario"}</span>
                     <span className="text-xs text-muted-foreground">
                       {role === "admin"
                         ? "Administrador"
