@@ -1,11 +1,11 @@
 "use server"
 
-import { createServerSupabaseClient } from "@/lib/supabase/server"
+import { createServerClient } from "@/lib/supabase/server"
 import { getSystemConfig } from "./system-config"
 
 // Verificar y otorgar penaltis por completar desafíos
 export async function checkAndAwardChallenges(userId: string, teamId: string) {
-  const supabase = createServerSupabaseClient()
+  const supabase = createServerClient()
 
   try {
     // Obtener configuración de desafíos
@@ -32,7 +32,7 @@ export async function checkAndAwardChallenges(userId: string, teamId: string) {
 
 // Verificar desafío de ventas semanales
 async function checkSalesChallenge(userId: string, teamId: string, config: any, week: number, year: number) {
-  const supabase = createServerSupabaseClient()
+  const supabase = createServerClient()
 
   try {
     // Contar ventas de esta semana
@@ -78,7 +78,7 @@ async function checkSalesChallenge(userId: string, teamId: string, config: any, 
 
 // Verificar meta de goles semanales
 async function checkGoalsChallenge(teamId: string, config: any, week: number, year: number) {
-  const supabase = createServerSupabaseClient()
+  const supabase = createServerClient()
 
   try {
     // Obtener puntos para gol
@@ -129,7 +129,7 @@ async function checkGoalsChallenge(teamId: string, config: any, week: number, ye
 
 // Obtener progreso de desafíos para un usuario/equipo
 export async function getChallengeProgress(userId: string, teamId: string) {
-  const supabase = createServerSupabaseClient()
+  const supabase = createServerClient()
 
   try {
     // Obtener configuración de desafíos

@@ -1,12 +1,10 @@
 "use server"
 
-import { createServerSupabaseClient } from "@/lib/supabase/server"
+import { createServerClient } from "@/lib/supabase/server"
 import { revalidatePath } from "next/cache"
 
-
-
 export async function registerSale(formData: FormData) {
-  const supabase = createServerSupabaseClient()
+  const supabase = createServerClient()
 
   const product_id = formData.get("product_id") as string
   const quantity = formData.get("quantity") as string
@@ -78,7 +76,7 @@ export async function registerSale(formData: FormData) {
 }
 
 export async function getSales() {
-  const supabase = createServerSupabaseClient()
+  const supabase = createServerClient()
   try {
     const { data: sales, error } = await supabase.from("sales").select(`
         id,
@@ -107,7 +105,7 @@ export async function getSales() {
 }
 
 export async function getSalesByUser(userId: string) {
-  const supabase = createServerSupabaseClient()
+  const supabase = createServerClient()
 
   try {
     const { data: sales, error } = await supabase
@@ -150,7 +148,7 @@ export async function getSalesByUser(userId: string) {
 
 // Simplificar la función getAllSales para evitar problemas de relaciones múltiples
 export async function getAllSales() {
-  const supabase = createServerSupabaseClient()
+  const supabase = createServerClient()
 
   try {
     // Primero obtenemos las ventas básicas
@@ -302,7 +300,7 @@ export async function getAllSales() {
 // En la función createSale, agregar validación y cálculo de puntos:
 
 export async function createSale(formData: FormData) {
-  const supabase = createServerSupabaseClient()
+  const supabase = createServerClient()
 
   const product_id = formData.get("product_id") as string
   const quantity = formData.get("quantity") as string
@@ -397,7 +395,7 @@ export async function createSale(formData: FormData) {
 }
 
 export async function updateSale(id: string, formData: FormData) {
-  const supabase = createServerSupabaseClient()
+  const supabase = createServerClient()
 
   const product_id = formData.get("product_id") as string
   const quantity = formData.get("quantity") as string
@@ -440,7 +438,7 @@ export async function updateSale(id: string, formData: FormData) {
 }
 
 export async function deleteSale(id: string) {
-  const supabase = createServerSupabaseClient()
+  const supabase = createServerClient()
 
   try {
     const { error } = await supabase.from("sales").delete().eq("id", id)

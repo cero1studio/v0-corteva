@@ -1,14 +1,14 @@
 "use server"
 
 import { adminSupabase } from "@/lib/supabase"
-import { createServerSupabaseClient } from "@/lib/supabase/server"
+import { createServerClient } from "@/lib/supabase/server"
 
 /**
  * Obtiene la lista de capitanes disponibles en el sistema
  */
 export async function getCaptains() {
   try {
-    const supabase = createServerSupabaseClient()
+    const supabase = createServerClient()
 
     const { data: captains, error } = await supabase
       .from("profiles")
@@ -33,7 +33,7 @@ export async function getCaptains() {
  */
 export async function getCaptainById(captainId: string) {
   try {
-    const supabase = createServerSupabaseClient()
+    const supabase = createServerClient()
 
     const { data: captain, error } = await supabase
       .from("profiles")

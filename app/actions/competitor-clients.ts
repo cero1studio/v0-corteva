@@ -1,10 +1,10 @@
 "use server"
 
-import { createServerSupabaseClient } from "@/lib/supabase/server"
+import { createServerClient } from "@/lib/supabase/server"
 import { revalidatePath } from "next/cache"
 
 export async function createCompetitorClient(formData: FormData) {
-  const supabase = createServerSupabaseClient()
+  const supabase = createServerClient()
 
   try {
     const clientData = {
@@ -68,7 +68,7 @@ export async function createCompetitorClient(formData: FormData) {
 }
 
 export async function getAllCompetitorClients() {
-  const supabase = createServerSupabaseClient()
+  const supabase = createServerClient()
 
   try {
     // Primero obtenemos los clientes
@@ -151,7 +151,7 @@ export async function getAllCompetitorClients() {
 }
 
 export async function updateCompetitorClient(id: string, formData: FormData) {
-  const supabase = createServerSupabaseClient()
+  const supabase = createServerClient()
 
   try {
     const clientData = {
@@ -215,7 +215,7 @@ export async function updateCompetitorClient(id: string, formData: FormData) {
 }
 
 export async function deleteCompetitorClient(id: string) {
-  const supabase = createServerSupabaseClient()
+  const supabase = createServerClient()
 
   try {
     const { error } = await supabase.from("competitor_clients").delete().eq("id", id)
@@ -234,7 +234,7 @@ export async function deleteCompetitorClient(id: string) {
 }
 
 export async function getCompetitorClientsByTeam(teamId: string) {
-  const supabase = createServerSupabaseClient()
+  const supabase = createServerClient()
 
   try {
     const { data, error } = await supabase
@@ -253,7 +253,7 @@ export async function getCompetitorClientsByTeam(teamId: string) {
 }
 
 export async function getCompetitorClientsByRepresentative(representativeId: string) {
-  const supabase = createServerSupabaseClient()
+  const supabase = createServerClient()
 
   try {
     const { data, error } = await supabase
