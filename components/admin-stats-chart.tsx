@@ -38,7 +38,13 @@ export function AdminStatsChart() {
       } = await supabase.auth.getSession()
       if (!session) {
         console.log("No hay sesión activa para cargar el gráfico")
-        setData([])
+        // Generar datos de ejemplo para mostrar el gráfico
+        const exampleData = Array.from({ length: 4 }, (_, i) => ({
+          name: `Semana ${i + 1}`,
+          ejemplo: Math.floor(Math.random() * 100),
+        }))
+        setData(exampleData)
+        setTeams([{ id: "ejemplo", name: "Datos de ejemplo", color: "#16a34a" }])
         setLoading(false)
         return
       }
@@ -66,8 +72,19 @@ export function AdminStatsChart() {
       setTeams(teamsWithColors)
 
       if (!teamsData || teamsData.length === 0) {
-        // Si no hay equipos, no hay nada que mostrar
-        setData([])
+        // Generar datos de ejemplo si no hay equipos
+        const exampleTeams = [
+          { id: "team1", name: "Equipo Ejemplo 1", color: "#f59e0b" },
+          { id: "team2", name: "Equipo Ejemplo 2", color: "#4ade80" },
+        ]
+        setTeams(exampleTeams)
+
+        const exampleData = Array.from({ length: 4 }, (_, i) => ({
+          name: `Semana ${i + 1}`,
+          team1: Math.floor(Math.random() * 50),
+          team2: Math.floor(Math.random() * 50),
+        }))
+        setData(exampleData)
         setLoading(false)
         return
       }
