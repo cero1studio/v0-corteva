@@ -1,173 +1,208 @@
 "use server"
 
-import { createServerSupabaseClient } from "@/lib/supabase/server"
+import { createServerClient } from "@/lib/supabase/server"
+import { adminSupabase } from "@/lib/supabase/server"
 import { revalidatePath } from "next/cache"
 
-export async function registerCompetitorClient(formData: FormData) {
-  const supabase = createServerSupabaseClient()
+export async function createDistributor(formData: FormData) {
+  const supabase = createServerClient()
 
   // Obtener datos del formulario
   const name = formData.get("name") as string
-  const previousSupplier = formData.get("previousSupplier") as string
-  const contactInfo = formData.get("contactInfo") as string
-  const notes = formData.get("notes") as string
-  const capturedBy = formData.get("userId") as string
+  const imageFile = formData.get("logo") as File
+  const zoneId = formData.get("zoneId") as string
 
   try {
-    // Obtener información del usuario y equipo
-    const { data: profile, error: profileError } = await supabase
-      .from("profiles")
-      .select("team_id")
-      .eq("id", capturedBy)
-      .single()
+    let logoUrl = null
 
-    if (profileError) throw new Error(`Error al obtener perfil: ${profileError.message}`)
-    if (!profile || !profile.team_id) throw new Error("Usuario sin equipo asignado")
+    // Subir imagen si se proporciona
+    if (imageFile && imageFile.size > 0) {
+      console.log("Subiendo imagen:", imageFile.name, "Tamaño:", imageFile.size)
 
-    // Registrar el cliente
+      // Validar que el archivo sea una imagen
+      if (!imageFile.type.startsWith("image/")) {
+        return { error: "El archivo debe ser una imagen válida" }
+      }
+
+      const fileExt = imageFile.name.split(".").pop()?.toLowerCase()
+      const fileName = `distributor_${Date.now()}.${fileExt}`
+      const filePath = `distributors/${fileName}`
+
+      console.log("Ruta de subida:", filePath)
+
+      const { data: uploadData, error: uploadError } = await adminSupabase.storage
+        .from("images")
+        .upload(filePath, imageFile, {
+          cacheControl: "3600",
+          upsert: false,
+        })
+
+      if (uploadError) {
+        console.error("Error al subir imagen:", uploadError)
+        return { error: `Error al subir imagen: ${uploadError.message}` }
+      }
+
+      console.log("Imagen subida exitosamente:", uploadData.path)
+
+      // Verificar que la imagen se puede acceder
+      const { data: urlData } = adminSupabase.storage.from("images").getPublicUrl(uploadData.path)
+      console.log("URL pública generada:", urlData.publicUrl)
+
+      logoUrl = uploadData.path
+    }
+
     const { data, error } = await supabase
-      .from("competitor_clients")
+      .from("distributors")
       .insert({
         name,
-        previous_supplier: previousSupplier,
-        contact_info: contactInfo,
-        notes,
-        captured_by: capturedBy,
-        team_id: profile.team_id,
-        capture_date: new Date().toISOString().split("T")[0],
+        logo_url: logoUrl,
+        zone_id: zoneId === "" ? null : zoneId,
       })
       .select()
-
-    if (error) throw new Error(`Error al registrar cliente: ${error.message}`)
-
-    // Verificar si se cumple el objetivo semanal para otorgar penalti
-    const startOfWeek = new Date()
-    startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay() + 1) // Lunes de la semana actual
-
-    const { data: weekClients, error: weekClientsError } = await supabase
-      .from("competitor_clients")
-      .select("id")
-      .eq("team_id", profile.team_id)
-      .gte("capture_date", startOfWeek.toISOString().split("T")[0])
-
-    if (weekClientsError) throw new Error(`Error al obtener clientes semanales: ${weekClientsError.message}`)
-
-    // Obtener configuración del sistema
-    const { data: penaltyConfig, error: configError } = await supabase
-      .from("system_config")
-      .select("value")
-      .eq("key", "penalty_settings")
       .single()
 
-    if (configError) throw new Error(`Error al obtener configuración: ${configError.message}`)
+    if (error) {
+      console.error("Error al crear distribuidor:", error)
+      return { error: error.message }
+    }
 
-    const config = penaltyConfig.value
-    const clientTarget = 3 // Objetivo de clientes captados (podría ser configurable)
-    const penaltyReward = config.challenge_reward || 1
+    console.log("Distribuidor creado:", data)
+    revalidatePath("/admin/distribuidores")
+    return { success: true, data }
+  } catch (error: any) {
+    console.error("Error general:", error)
+    return { error: error.message || "Error al crear el distribuidor" }
+  }
+}
 
-    // Verificar si se alcanzó el objetivo de clientes semanales
-    const weeklyCount = weekClients ? weekClients.length : 0
+export async function getDistributors() {
+  const supabase = createServerClient()
 
-    if (weeklyCount >= clientTarget) {
-      // Verificar si ya se otorgó un penalti esta semana por este motivo
-      const { data: existingPenalty, error: penaltyCheckError } = await supabase
-        .from("penalty_history")
-        .select("id")
-        .eq("team_id", profile.team_id)
-        .eq("action", "earned")
-        .gte("created_at", startOfWeek.toISOString())
-        .ilike("description", "%clientes de la competencia%")
+  const { data, error } = await supabase.from("distributors").select("*").order("name", { ascending: true })
 
-      if (penaltyCheckError) throw new Error(`Error al verificar penaltis: ${penaltyCheckError.message}`)
+  if (error) {
+    console.error("Error al obtener distribuidores:", error)
+    return []
+  }
 
-      // Si no se ha otorgado un penalti esta semana, otorgar uno
-      if (!existingPenalty || existingPenalty.length === 0) {
-        // Crear nuevo penalti
-        const { data: penalty, error: penaltyError } = await supabase
-          .from("penalties")
-          .insert({
-            team_id: profile.team_id,
-            quantity: penaltyReward,
-            used: 0,
-            reason: "Objetivo semanal de captación de clientes alcanzado",
-          })
-          .select()
-          .single()
+  return data
+}
 
-        if (penaltyError) throw new Error(`Error al crear penalti: ${penaltyError.message}`)
+export async function getDistributorById(id: string) {
+  const supabase = createServerClient()
 
-        // Registrar en historial
-        await supabase.from("penalty_history").insert({
-          penalty_id: penalty.id,
-          team_id: profile.team_id,
-          action: "earned",
-          quantity: penaltyReward,
-          description: "Objetivo semanal de captación de clientes de la competencia alcanzado",
+  const { data, error } = await supabase.from("distributors").select("*").eq("id", id).single()
+
+  if (error) {
+    console.error("Error al obtener distribuidor:", error)
+    return null
+  }
+
+  return data
+}
+
+export async function updateDistributor(id: string, formData: FormData) {
+  const supabase = createServerClient()
+
+  const name = formData.get("name") as string
+  const imageFile = formData.get("logo") as File
+  const currentLogoUrl = (formData.get("currentLogoUrl") as string) || null
+  const zoneId = formData.get("zoneId") as string
+
+  try {
+    let logoUrl = currentLogoUrl
+
+    // Subir nueva imagen si se proporciona
+    if (imageFile && imageFile.size > 0) {
+      console.log("Actualizando imagen:", imageFile.name, "Tamaño:", imageFile.size)
+
+      const fileExt = imageFile.name.split(".").pop()
+      const fileName = `distributor_${Date.now()}.${fileExt}`
+      const filePath = `distributors/${fileName}`
+
+      const { data: uploadData, error: uploadError } = await adminSupabase.storage
+        .from("images")
+        .upload(filePath, imageFile, {
+          cacheControl: "3600",
+          upsert: false,
         })
+
+      if (uploadError) {
+        console.error("Error al subir nueva imagen:", uploadError)
+        return { error: `Error al subir imagen: ${uploadError.message}` }
+      }
+
+      console.log("Nueva imagen subida:", uploadData.path)
+
+      // Eliminar imagen anterior si existe
+      if (currentLogoUrl) {
+        console.log("Eliminando imagen anterior:", currentLogoUrl)
+        const { error: deleteError } = await adminSupabase.storage.from("images").remove([currentLogoUrl])
+        if (deleteError) {
+          console.error("Error al eliminar imagen anterior:", deleteError)
+        }
+      }
+
+      logoUrl = uploadData.path
+    }
+
+    const { data, error } = await supabase
+      .from("distributors")
+      .update({
+        name,
+        logo_url: logoUrl,
+        zone_id: zoneId === "" ? null : zoneId,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", id)
+      .select()
+      .single()
+
+    if (error) {
+      console.error("Error al actualizar distribuidor:", error)
+      return { error: error.message }
+    }
+
+    console.log("Distribuidor actualizado:", data)
+    revalidatePath("/admin/distribuidores")
+    return { success: true, data }
+  } catch (error: any) {
+    console.error("Error general al actualizar:", error)
+    return { error: error.message || "Error al actualizar el distribuidor" }
+  }
+}
+
+export async function deleteDistributor(distributorId: string) {
+  const supabase = createServerClient()
+
+  try {
+    // Obtener información del distribuidor para eliminar la imagen
+    const { data: distributor } = await supabase
+      .from("distributors")
+      .select("logo_url")
+      .eq("id", distributorId)
+      .single()
+
+    // Eliminar distribuidor
+    const { error } = await supabase.from("distributors").delete().eq("id", distributorId)
+
+    if (error) {
+      return { error: error.message }
+    }
+
+    // Eliminar imagen si existe
+    if (distributor?.logo_url) {
+      console.log("Eliminando imagen del distribuidor:", distributor.logo_url)
+      const { error: deleteError } = await adminSupabase.storage.from("images").remove([distributor.logo_url])
+      if (deleteError) {
+        console.error("Error al eliminar imagen:", deleteError)
       }
     }
 
-    revalidatePath("/capitan/dashboard")
-    revalidatePath("/admin/dashboard")
-
-    return { success: true, data }
+    revalidatePath("/admin/distribuidores")
+    return { success: true }
   } catch (error: any) {
-    console.error("Error en registerCompetitorClient:", error)
-    return { success: false, error: error.message }
-  }
-}
-
-export async function getCompetitorClientsByTeam(teamId: string) {
-  const supabase = createServerSupabaseClient()
-
-  try {
-    const { data, error } = await supabase
-      .from("competitor_clients")
-      .select(`
-        id,
-        name,
-        previous_supplier,
-        contact_info,
-        notes,
-        capture_date,
-        created_at,
-        profiles (id, full_name)
-      `)
-      .eq("team_id", teamId)
-      .order("capture_date", { ascending: false })
-
-    if (error) throw error
-
-    return { success: true, data }
-  } catch (error: any) {
-    console.error("Error en getCompetitorClientsByTeam:", error)
-    return { success: false, error: error.message }
-  }
-}
-
-export async function getCompetitorClientsByUser(userId: string) {
-  const supabase = createServerSupabaseClient()
-
-  try {
-    const { data, error } = await supabase
-      .from("competitor_clients")
-      .select(`
-        id,
-        name,
-        previous_supplier,
-        contact_info,
-        notes,
-        capture_date,
-        created_at
-      `)
-      .eq("captured_by", userId)
-      .order("capture_date", { ascending: false })
-
-    if (error) throw error
-
-    return { success: true, data }
-  } catch (error: any) {
-    console.error("Error en getCompetitorClientsByUser:", error)
-    return { success: false, error: error.message }
+    console.error("Error al eliminar distribuidor:", error)
+    return { error: error.message || "Error al eliminar el distribuidor" }
   }
 }
