@@ -4,7 +4,7 @@ import { createServerClient, adminSupabase } from "@/lib/supabase/server"
 import { revalidatePath } from "next/cache"
 
 export async function getProducts() {
-  const supabase = createServerClient()
+  const supabase = await createServerClient()
 
   try {
     const { data, error } = await supabase.from("products").select("*").order("created_at", { ascending: false })
@@ -29,7 +29,7 @@ export async function getProducts() {
 }
 
 export async function getProductById(id: string) {
-  const supabase = createServerClient()
+  const supabase = await createServerClient()
 
   try {
     const { data, error } = await supabase.from("products").select("*").eq("id", id).single()
@@ -51,7 +51,7 @@ export async function getProductById(id: string) {
 }
 
 export async function createProduct(formData: FormData) {
-  const supabase = createServerClient()
+  const supabase = await createServerClient()
 
   try {
     const name = formData.get("name") as string
@@ -114,7 +114,7 @@ export async function createProduct(formData: FormData) {
 }
 
 export async function updateProduct(id: string, formData: FormData) {
-  const supabase = createServerClient()
+  const supabase = await createServerClient()
 
   try {
     const name = formData.get("name") as string
@@ -197,7 +197,7 @@ export async function updateProduct(id: string, formData: FormData) {
 }
 
 export async function deleteProduct(id: string) {
-  const supabase = createServerClient()
+  const supabase = await createServerClient()
 
   try {
     // Obtener información del producto para eliminar la imagen
@@ -232,7 +232,7 @@ export async function deleteProduct(id: string) {
 }
 
 export async function getAllProducts() {
-  const supabase = createServerClient()
+  const supabase = await createServerClient()
 
   try {
     const { data, error } = await supabase.from("products").select("*").order("created_at", { ascending: false })
@@ -257,7 +257,7 @@ export async function getAllProducts() {
 }
 
 export async function toggleProductStatus(id: string, isActive: boolean) {
-  const supabase = createServerClient()
+  const supabase = await createServerClient()
 
   try {
     const { data, error } = await supabase
@@ -282,7 +282,7 @@ export async function toggleProductStatus(id: string, isActive: boolean) {
 
 // Función adicional para obtener productos simples (solo id y name)
 export async function getProductsSimple() {
-  const supabase = createServerClient()
+  const supabase = await createServerClient()
 
   try {
     const { data, error } = await supabase
