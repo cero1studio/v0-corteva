@@ -2,17 +2,29 @@
 
 import type React from "react"
 import { useRouter } from "next/navigation"
-import { useAuth } from "@/components/auth-provider"
+import { useAuth } from "@/components/auth-provider" // Usar el useAuth del auth-provider
 import { Loader2 } from "lucide-react"
 import { useEffect, useState } from "react"
 
-export function AuthGuard({ children }: { children: React.ReactNode }) {
+interface AuthGuardProps {
+  children: React.ReactNode
+  allowedRoles?: string[]
+}
+
+export function AuthGuard({ children, allowedRoles }: AuthGuardProps) {
   const { user, isLoading, isInitialized } = useAuth()
   const router = useRouter()
   const [isRedirecting, setIsRedirecting] = useState(false)
 
   // Rutas públicas que no requieren autenticación
-  const publicRoutes = ["/login", "/register", "/forgot-password", "/reset-password", "/primer-acceso"]
+  const publicRoutes = [
+    "/login",
+    "/register",
+    "/forgot-password",
+    "/reset-password",
+    "/primer-acceso",
+    "/ranking-publico",
+  ]
 
   useEffect(() => {
     // Si aún no está inicializado, no hacemos nada
@@ -20,45 +32,40 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
 
     const currentPath = window.location.pathname
 
-    // Si estamos en una ruta pública, no necesitamos redireccionar ni mostrar loading
+    // Si estamos en una ruta pública, no necesitamos verificar autenticación
     if (publicRoutes.some((route) => currentPath.startsWith(route))) {
-      // Si el usuario está autenticado y está en login, redirigir al dashboard
-      if (user && currentPath === "/login") {
-        setIsRedirecting(true)
-        const dashboardRoute = getDashboardRoute(user.role)
-        console.log("🔄 Redirigiendo a usuario autenticado desde login a:", dashboardRoute)
-        router.push(dashboardRoute)
-      }
       return
     }
 
     // Si no está autenticado y no es una ruta pública, redirigir a login
     if (!user) {
       setIsRedirecting(true)
-      console.log("🔄 Redirigiendo a login: usuario no autenticado")
+      console.log("🔄 AuthGuard: Redirigiendo a login - usuario no autenticado")
       router.push("/login")
       return
     }
 
-    // Redirecciones basadas en rol
-    const dashboardRoute = getDashboardRoute(user.role)
+    // Si se especificaron roles permitidos, verificar que el usuario tenga el rol correcto
+    if (allowedRoles && allowedRoles.length > 0) {
+      if (!allowedRoles.includes(user.role)) {
+        setIsRedirecting(true)
+        console.log(`🔄 AuthGuard: Acceso denegado - rol ${user.role} no permitido para esta ruta`)
+
+        // Redirigir al dashboard apropiado según su rol
+        const dashboardRoute = getDashboardRoute(user.role)
+        router.push(dashboardRoute)
+        return
+      }
+    }
 
     // Si el usuario es capitán y no ha creado equipo, redirigir a crear equipo
     if (user.role === "capitan" && !user.team_id && !currentPath.includes("/capitan/crear-equipo")) {
       setIsRedirecting(true)
-      console.log("AUTH_GUARD: Redirigiendo a capitán sin equipo (team_id missing) a crear equipo")
+      console.log("🔄 AuthGuard: Redirigiendo a capitán sin equipo a crear equipo")
       router.push("/capitan/crear-equipo")
       return
     }
-
-    // Si el usuario está en una ruta que no corresponde a su rol, redirigir al dashboard
-    if (!currentPath.includes(`/${user.role}`) && !currentPath.startsWith("/crear-equipo")) {
-      setIsRedirecting(true)
-      console.log(`🔄 Redirigiendo a ${dashboardRoute}: ruta incorrecta para rol ${user.role}`)
-      router.push(dashboardRoute)
-      return
-    }
-  }, [user, isInitialized, router])
+  }, [user, isInitialized, router, allowedRoles])
 
   // Función para obtener la ruta del dashboard según el rol
   const getDashboardRoute = (role: string) => {
@@ -69,6 +76,10 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
         return "/capitan/dashboard"
       case "director_tecnico":
         return "/director-tecnico/dashboard"
+      case "supervisor":
+        return "/supervisor/dashboard"
+      case "representante":
+        return "/representante/dashboard"
       default:
         return "/login"
     }
@@ -83,13 +94,15 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen">
         <div className="flex flex-col items-center">
-          <Loader2 className="h-8 w-8 animate-spin text-blue-600 mb-4" />
-          <p className="text-gray-600 text-lg font-medium">{isRedirecting ? "Redirigiendo..." : "Cargando..."}</p>
+          <Loader2 className="h-8 w-8 animate-spin text-corteva-600 mb-4" />
+          <p className="text-gray-600 text-lg font-medium">
+            {isRedirecting ? "Redirigiendo..." : "Verificando acceso..."}
+          </p>
         </div>
       </div>
     )
   }
 
-  // Si está en una ruta pública o está autenticado y en la ruta correcta, mostrar children
+  // Si está en una ruta pública o está autenticado y autorizado, mostrar children
   return <>{children}</>
 }
