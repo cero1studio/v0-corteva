@@ -1,8 +1,7 @@
 "use client"
 
 import type React from "react"
-
-import { useState, useEffect } from "react"
+import { use, useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -17,7 +16,12 @@ import { getDistributorLogoUrl } from "@/lib/utils/image"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { getZones } from "@/app/actions/zones"
 
-export default function EditarDistribuidorPage({ params }: { params: { id: string } }) {
+interface PageProps {
+  params: Promise<{ id: string }>
+}
+
+export default function EditarDistribuidorPage({ params }: PageProps) {
+  const resolvedParams = use(params)
   const [distributor, setDistributor] = useState<{
     id: string
     name: string
@@ -38,11 +42,11 @@ export default function EditarDistribuidorPage({ params }: { params: { id: strin
   const { toast } = useToast()
 
   useEffect(() => {
-    if (params.id) {
-      fetchDistributor(params.id)
+    if (resolvedParams.id) {
+      fetchDistributor(resolvedParams.id)
       fetchZones()
     }
-  }, [params.id])
+  }, [resolvedParams.id])
 
   async function fetchDistributor(id: string) {
     try {
@@ -169,6 +173,14 @@ export default function EditarDistribuidorPage({ params }: { params: { id: strin
     } finally {
       setSaving(false)
     }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Loader2 className="h-8 w-8 animate-spin" />
+      </div>
+    )
   }
 
   return (

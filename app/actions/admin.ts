@@ -1,13 +1,11 @@
 "use server"
 
 import { createServerClient } from "@/lib/supabase/server"
-import { cookies } from "next/headers"
 import { revalidatePath } from "next/cache"
 
 // Función para crear un nuevo usuario
 export async function createUser(formData: FormData) {
-  const cookieStore = cookies()
-  const supabase = createServerClient(cookieStore)
+  const supabase = createServerClient()
 
   const email = formData.get("email") as string
   const password = formData.get("password") as string
@@ -48,8 +46,7 @@ export async function createUser(formData: FormData) {
 
 // Función para crear un nuevo equipo
 export async function createTeam(formData: FormData) {
-  const cookieStore = cookies()
-  const supabase = createServerClient(cookieStore)
+  const supabase = createServerClient()
 
   const name = formData.get("name") as string
   const zoneId = formData.get("zoneId") as string
@@ -75,8 +72,7 @@ export async function createTeam(formData: FormData) {
 
 // Función para crear una nueva zona
 export async function createZone(formData: FormData) {
-  const cookieStore = cookies()
-  const supabase = createServerClient(cookieStore)
+  const supabase = createServerClient()
 
   const name = formData.get("name") as string
   const description = (formData.get("description") as string) || null
@@ -100,8 +96,7 @@ export async function createZone(formData: FormData) {
 
 // Función para crear un nuevo distribuidor
 export async function createDistributor(formData: FormData) {
-  const cookieStore = cookies()
-  const supabase = createServerClient(cookieStore)
+  const supabase = createServerClient()
 
   const name = formData.get("name") as string
   const zoneId = formData.get("zoneId") as string
@@ -131,8 +126,7 @@ export async function createDistributor(formData: FormData) {
 
 // Función para crear un nuevo producto
 export async function createProduct(formData: FormData) {
-  const cookieStore = cookies()
-  const supabase = createServerClient(cookieStore)
+  const supabase = createServerClient()
 
   const name = formData.get("name") as string
   const description = (formData.get("description") as string) || null

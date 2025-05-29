@@ -1,8 +1,7 @@
 "use client"
 
 import type React from "react"
-
-import { useEffect, useState } from "react"
+import { use, useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -16,14 +15,12 @@ import { Upload } from "lucide-react"
 import Image from "next/image"
 import { Skeleton } from "@/components/ui/skeleton"
 
-interface EditarProductoPageProps {
-  params: {
-    id: string
-  }
+interface PageProps {
+  params: Promise<{ id: string }>
 }
 
-export default function EditarProductoPage({ params }: EditarProductoPageProps) {
-  const { id } = params
+export default function EditarProductoPage({ params }: PageProps) {
+  const resolvedParams = use(params)
   const { toast } = useToast()
   const router = useRouter()
   const [isLoading, setIsLoading] = useState(false)
@@ -40,7 +37,7 @@ export default function EditarProductoPage({ params }: EditarProductoPageProps) 
   useEffect(() => {
     const fetchProduct = async () => {
       try {
-        const product = await getProductById(id)
+        const product = await getProductById(resolvedParams.id)
         if (product) {
           setFormData({
             name: product.name || "",
@@ -74,7 +71,7 @@ export default function EditarProductoPage({ params }: EditarProductoPageProps) 
     }
 
     fetchProduct()
-  }, [id, router, toast])
+  }, [resolvedParams.id, router, toast])
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target
@@ -141,9 +138,9 @@ export default function EditarProductoPage({ params }: EditarProductoPageProps) 
         formDataObj.append("image", imageInput.files[0])
       }
 
-      console.log("Actualizando producto con ID:", id)
+      console.log("Actualizando producto con ID:", resolvedParams.id)
 
-      const result = await updateProduct(id, formDataObj)
+      const result = await updateProduct(resolvedParams.id, formDataObj)
 
       if (result.success) {
         toast({

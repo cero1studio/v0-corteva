@@ -132,12 +132,13 @@ export async function getAllCompetitorClients() {
           ? {
               id: team.id,
               name: team.name,
-              zone: team.zones
-                ? {
-                    id: team.zones.id,
-                    name: team.zones.name,
-                  }
-                : null,
+              zone:
+                team.zones && team.zones.length > 0
+                  ? {
+                      id: team.zones[0].id,
+                      name: team.zones[0].name,
+                    }
+                  : null,
             }
           : null,
       }
