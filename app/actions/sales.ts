@@ -2,7 +2,7 @@
 
 import { createServerSupabaseClient } from "@/lib/supabase/server"
 import { revalidatePath } from "next/cache"
-import updateAllTeamsPoints from "@/app/actions/sales"
+
 
 
 export async function registerSale(formData: FormData) {
