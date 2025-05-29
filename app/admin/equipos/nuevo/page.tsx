@@ -12,16 +12,10 @@ import { AlertCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { createTeam } from "@/app/actions/teams"
 import { getZones } from "@/app/actions/zones"
-import { getDistributors } from "@/app/actions/distributors"
 import { getCaptains } from "@/app/actions/captains"
 import { supabase } from "@/lib/supabase/client"
 
 interface Zone {
-  id: string
-  name: string
-}
-
-interface Distributor {
   id: string
   name: string
 }
@@ -35,10 +29,8 @@ export default function NuevoEquipoPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [zones, setZones] = useState<Zone[]>([])
-  const [distributors, setDistributors] = useState<Distributor[]>([])
   const [captains, setCaptains] = useState<Captain[]>([])
   const [zoneId, setZoneId] = useState("")
-  const [distributorId, setDistributorId] = useState("")
   const [captainId, setCaptainId] = useState("")
   const router = useRouter()
   const { toast } = useToast()
@@ -47,10 +39,8 @@ export default function NuevoEquipoPage() {
     async function fetchData() {
       try {
         const zonesData = await getZones()
-        const distributorsData = await getDistributors()
         const captainsData = await getCaptains()
         setZones(zonesData)
-        setDistributors(distributorsData)
         setCaptains(captainsData)
       } catch (err) {
         console.error("Error al cargar datos:", err)
@@ -68,14 +58,11 @@ export default function NuevoEquipoPage() {
       const captainId = formData.get("captain_id") as string
       const { data: captainData, error } = await supabase
         .from("profiles")
-        .select("distributor_id, zone_id")
+        .select("zone_id")
         .eq("id", captainId)
         .single()
 
       if (!error && captainData) {
-        if (captainData.distributor_id) {
-          formData.set("distributor_id", captainData.distributor_id)
-        }
         if (captainData.zone_id) {
           formData.set("zone_id", captainData.zone_id)
         }
@@ -161,22 +148,6 @@ export default function NuevoEquipoPage() {
                   {zones.map((zone) => (
                     <SelectItem key={zone.id} value={zone.id}>
                       {zone.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="distributor_id">Distribuidor</Label>
-              <Select name="distributor_id" value={distributorId} onValueChange={setDistributorId} required>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecciona un distribuidor" />
-                </SelectTrigger>
-                <SelectContent>
-                  {distributors.map((distributor) => (
-                    <SelectItem key={distributor.id} value={distributor.id}>
-                      {distributor.name}
                     </SelectItem>
                   ))}
                 </SelectContent>

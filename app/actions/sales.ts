@@ -1,6 +1,6 @@
 "use server"
 
-import { createClient } from "@/utils/supabase/server"
+import { createClient } from "@/lib/supabase/server"
 import { revalidatePath } from "next/cache"
 import { redirect } from "next/navigation"
 
@@ -102,4 +102,17 @@ export async function deleteSale(id: string) {
 
   revalidatePath("/sales")
   redirect("/sales")
+}
+
+export async function updateAllTeamsPoints() {
+  const supabase = createClient()
+
+  try {
+    // This function would need to be implemented based on your business logic
+    // For now, returning a success response
+    return { success: true }
+  } catch (error: any) {
+    console.error("Error updating team points:", error)
+    return { success: false, error: error.message }
+  }
 }
