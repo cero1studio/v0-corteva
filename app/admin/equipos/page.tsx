@@ -64,6 +64,16 @@ export default function EquiposPage() {
     fetchZones()
     fetchDistributors()
     fetchTeams()
+
+    // Agregar un timeout para evitar carga infinita
+    const timeout = setTimeout(() => {
+      setLoading(false)
+      if (teams.length === 0 && !error) {
+        setError("Tiempo de espera agotado. Por favor, intenta recargar la página.")
+      }
+    }, 10000) // 10 segundos de timeout
+
+    return () => clearTimeout(timeout)
   }, [])
 
   async function fetchZones() {

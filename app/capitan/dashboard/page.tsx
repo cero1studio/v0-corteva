@@ -16,11 +16,12 @@ import { useRouter } from "next/navigation"
 import { Progress } from "@/components/ui/progress"
 import { getImageUrl, getDistributorLogoUrl } from "@/lib/utils/image"
 import { getTeamRankingByZone } from "@/app/actions/ranking"
+import { AuthGuard } from "@/components/auth-guard"
 
 // Constante para la conversión de puntos a goles
 const PUNTOS_POR_GOL = 100
 
-export default function CapitanDashboard() {
+function CapitanDashboardContent() {
   const [user, setUser] = useState<any>(null)
   const [team, setTeam] = useState<any>(null)
   const [loading, setLoading] = useState(true)
@@ -81,13 +82,13 @@ export default function CapitanDashboard() {
       const { data: profileData, error: profileError } = await supabase
         .from("profiles")
         .select(`
-          *,
-          zones:zone_id(*),
-          teams:team_id(
-            *,
-            distributors:distributor_id(*)
-          )
-        `)
+         *,
+         zones:zone_id(*),
+         teams:team_id(
+           *,
+           distributors:distributor_id(*)
+         )
+       `)
         .eq("id", authUser.id)
         .single()
 
@@ -114,10 +115,10 @@ export default function CapitanDashboard() {
         const { data: teamData, error: teamError } = await supabase
           .from("teams")
           .select(`
-            *,
-            zones:zone_id(*),
-            distributors:distributor_id(*)
-          `)
+           *,
+           zones:zone_id(*),
+           distributors:distributor_id(*)
+         `)
           .eq("id", profileData.team_id)
           .single()
 
@@ -179,9 +180,9 @@ export default function CapitanDashboard() {
       const { data: salesData, error: salesError } = await supabase
         .from("sales")
         .select(`
-          *,
-          products(id, name, image_url)
-        `)
+         *,
+         products(id, name, image_url)
+       `)
         .in("representative_id", memberIds)
         .order("created_at", { ascending: false })
 
@@ -568,5 +569,13 @@ export default function CapitanDashboard() {
 
       <LiveFeed />
     </div>
+  )
+}
+
+export default function CapitanDashboard() {
+  return (
+    <AuthGuard allowedRoles={["capitan"]}>
+      <CapitanDashboardContent />
+    </AuthGuard>
   )
 }

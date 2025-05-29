@@ -8,23 +8,23 @@ import { DashboardNav } from "@/components/dashboard-nav"
 import Image from "next/image"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { LogOut } from "lucide-react"
-import { useAuth } from "@/hooks/use-auth"
+import { useAuth } from "@/components/auth-provider" // Corregido: usar el useAuth del auth-provider
 
 export default function CapitanLayout({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true)
   const pathname = usePathname()
   const router = useRouter()
-  const { profile, signOut, isLoading: authLoading } = useAuth()
+  const { user, signOut, isLoading: authLoading } = useAuth()
 
   useEffect(() => {
     // Si tenemos datos del perfil, actualizar el estado
-    if (profile) {
+    if (user) {
       setLoading(false)
     } else if (!authLoading) {
       // Si no hay datos y la autenticación ya terminó de cargar, mostrar error
       setLoading(false)
     }
-  }, [profile, authLoading])
+  }, [user, authLoading])
 
   // Función para obtener las iniciales del nombre
   const getInitials = (name: string) => {
@@ -59,13 +59,13 @@ export default function CapitanLayout({ children }: { children: React.ReactNode 
   }
 
   // Si el usuario no ha creado equipo y no está en la página de crear equipo, redirigir
-  if (profile?.has_created_team === false && !pathname?.includes("/crear-equipo")) {
+  if (user?.role === "capitan" && user?.team_id === null && !pathname?.includes("/crear-equipo")) {
     router.push("/capitan/crear-equipo")
     return null
   }
 
   // Si el usuario no ha creado equipo, mostrar solo el sidebar simplificado
-  if (profile?.has_created_team === false) {
+  if (user?.role === "capitan" && user?.team_id === null) {
     return (
       <div className="flex min-h-screen">
         {/* Sidebar fijo */}
@@ -88,11 +88,11 @@ export default function CapitanLayout({ children }: { children: React.ReactNode 
             <div className="border-t p-4">
               <div className="flex items-center gap-3 rounded-md border p-3">
                 <Avatar>
-                  <AvatarImage src="/placeholder.svg" alt={profile?.full_name || "Usuario"} />
-                  <AvatarFallback>{profile?.full_name ? getInitials(profile.full_name) : "U"}</AvatarFallback>
+                  <AvatarImage src="/placeholder.svg" alt={user?.full_name || "Usuario"} />
+                  <AvatarFallback>{user?.full_name ? getInitials(user.full_name) : "U"}</AvatarFallback>
                 </Avatar>
                 <div className="flex flex-col">
-                  <span className="text-sm font-medium">{profile?.full_name || "Usuario"}</span>
+                  <span className="text-sm font-medium">{user?.full_name || "Usuario"}</span>
                   <span className="text-xs text-muted-foreground">Capitán</span>
                 </div>
               </div>

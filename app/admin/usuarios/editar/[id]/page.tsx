@@ -1,10 +1,8 @@
 "use client"
 
 import type React from "react"
-
-import { useState, useEffect } from "react"
+import { use, useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { supabase } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -13,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/components/ui/use-toast"
 import { ArrowLeft, Save } from "lucide-react"
 import Link from "next/link"
+import { getUserById, updateUser, getZones, getDistributors } from "@/app/actions/users"
 
 interface Team {
   id: string
@@ -29,16 +28,12 @@ interface Distributor {
   name: string
 }
 
-interface Profile {
-  id: string
-  full_name: string | null
-  role: string
-  team_id: string | null
-  zone_id: string | null
-  distributor_id: string | null
+interface PageProps {
+  params: Promise<{ id: string }>
 }
 
-export default function EditarUsuarioPage({ params }: { params: { id: string } }) {
+export default function EditarUsuarioPage({ params }: PageProps) {
+  const resolvedParams = use(params)
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [fullName, setFullName] = useState("")
@@ -51,15 +46,13 @@ export default function EditarUsuarioPage({ params }: { params: { id: string } }
   const [distributors, setDistributors] = useState<Distributor[]>([])
   const [loading, setLoading] = useState(false)
   const [loadingData, setLoadingData] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const router = useRouter()
   const { toast } = useToast()
-  const userId = params.id
+  const userId = resolvedParams.id
 
   useEffect(() => {
-    fetchTeams()
-    fetchZones()
-    fetchDistributors()
-    fetchUserData()
+    loadInitialData()
   }, [userId])
 
   // Cuando cambia el rol a admin, eliminar el equipo, zona y distribuidor
@@ -71,82 +64,55 @@ export default function EditarUsuarioPage({ params }: { params: { id: string } }
     }
   }, [role])
 
-  async function fetchTeams() {
+  async function loadInitialData() {
     try {
-      const { data, error } = await supabase.from("teams").select("id, name").order("name")
+      setLoadingData(true)
+      setError(null)
 
-      if (error) throw error
+      // Cargar datos en paralelo
+      const [userResult, zonesResult, distributorsResult, teamsResult] = await Promise.all([
+        getUserById(userId),
+        getZones(),
+        getDistributors(),
+        fetchTeams(),
+      ])
 
-      setTeams(data || [])
-    } catch (error) {
-      console.error("Error al cargar equipos:", error)
-      toast({
-        title: "Error",
-        description: "No se pudieron cargar los equipos",
-        variant: "destructive",
-      })
-    }
-  }
-
-  async function fetchZones() {
-    try {
-      const { data, error } = await supabase.from("zones").select("id, name").order("name")
-
-      if (error) throw error
-
-      setZones(data || [])
-    } catch (error) {
-      console.error("Error al cargar zonas:", error)
-      toast({
-        title: "Error",
-        description: "No se pudieron cargar las zonas",
-        variant: "destructive",
-      })
-    }
-  }
-
-  async function fetchDistributors() {
-    try {
-      const { data, error } = await supabase.from("distributors").select("id, name").order("name")
-
-      if (error) throw error
-
-      setDistributors(data || [])
-    } catch (error) {
-      console.error("Error al cargar distribuidores:", error)
-      toast({
-        title: "Error",
-        description: "No se pudieron cargar los distribuidores",
-        variant: "destructive",
-      })
-    }
-  }
-
-  async function fetchUserData() {
-    setLoadingData(true)
-    try {
-      // Obtener perfil del usuario primero
-      const { data: profileData, error: profileError } = await supabase
-        .from("profiles")
-        .select("id, full_name, role, team_id, zone_id, distributor_id, email")
-        .eq("id", userId)
-        .single()
-
-      if (profileError) throw profileError
-
-      if (profileData) {
-        setEmail(profileData.email || "")
-        setFullName(profileData.full_name || "")
-        setRole(profileData.role || "")
-        setTeamId(profileData.team_id || "none")
-        setZoneId(profileData.zone_id || "none")
-        setDistributorId(profileData.distributor_id || "none")
+      // Manejar resultado del usuario
+      if (userResult.error) {
+        throw new Error(userResult.error)
       }
-    } catch (error) {
-      console.error("Error al cargar datos del usuario:", error)
+
+      if (userResult.data) {
+        setEmail(userResult.data.email || "")
+        setFullName(userResult.data.full_name || "")
+        setRole(userResult.data.role || "")
+        setTeamId(userResult.data.team_id || "none")
+        setZoneId(userResult.data.zone_id || "none")
+        setDistributorId(userResult.data.distributor_id || "none")
+      }
+
+      // Manejar zonas
+      if (zonesResult.error) {
+        console.warn("Error al cargar zonas:", zonesResult.error)
+      } else {
+        setZones(zonesResult.data || [])
+      }
+
+      // Manejar distribuidores
+      if (distributorsResult.error) {
+        console.warn("Error al cargar distribuidores:", distributorsResult.error)
+      } else {
+        setDistributors(distributorsResult.data || [])
+      }
+
+      // Manejar equipos
+      setTeams(teamsResult || [])
+    } catch (error: any) {
+      console.error("Error al cargar datos:", error)
+      setError(error.message || "Error al cargar los datos del usuario")
       toast({
         title: "Error",
-        description: "No se pudieron cargar los datos del usuario",
+        description: error.message || "No se pudieron cargar los datos del usuario",
         variant: "destructive",
       })
     } finally {
@@ -154,43 +120,70 @@ export default function EditarUsuarioPage({ params }: { params: { id: string } }
     }
   }
 
+  async function fetchTeams() {
+    try {
+      // Importar dinámicamente para evitar problemas de SSR
+      const { createServerClient } = await import("@/lib/supabase/client")
+      const supabase = createServerClient()
+
+      const { data, error } = await supabase.from("teams").select("id, name").order("name")
+
+      if (error) {
+        console.warn("Error al cargar equipos:", error)
+        return []
+      }
+
+      return data || []
+    } catch (error) {
+      console.warn("Error al cargar equipos:", error)
+      return []
+    }
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+
+    if (!email || !fullName || !role) {
+      toast({
+        title: "Error",
+        description: "Los campos email, nombre y rol son obligatorios",
+        variant: "destructive",
+      })
+      return
+    }
+
     setLoading(true)
 
     try {
-      // Actualizar datos de Auth si se cambió la contraseña
-      if (password) {
-        const { error: authError } = await supabase.auth.admin.updateUserById(userId, {
-          password,
-        })
-
-        if (authError) throw authError
+      // Crear FormData para enviar a la función server action
+      const formData = new FormData()
+      formData.append("email", email)
+      formData.append("fullName", fullName)
+      formData.append("role", role)
+      formData.append("zoneId", zoneId === "none" ? "" : zoneId)
+      formData.append("distributorId", distributorId === "none" ? "" : distributorId)
+      if (password.trim()) {
+        formData.append("password", password)
       }
 
-      // Si es admin, asegurarse de que no tenga equipo, zona ni distribuidor
-      const finalTeamId = role === "admin" ? null : teamId === "none" ? null : teamId || null
-      const finalZoneId = role === "admin" ? null : zoneId === "none" ? null : zoneId || null
-      const finalDistributorId = role === "admin" ? null : distributorId === "none" ? null : distributorId || null
+      const result = await updateUser(userId, formData)
 
-      // Actualizar perfil
-      const { error: profileError } = await supabase
-        .from("profiles")
-        .update({
-          full_name: fullName,
-          role,
-          team_id: finalTeamId,
-          zone_id: finalZoneId,
-          distributor_id: finalDistributorId,
+      if (result.error) {
+        throw new Error(result.error)
+      }
+
+      if (result.warning) {
+        toast({
+          title: "Usuario actualizado con advertencias",
+          description: result.warning,
+          variant: "default",
         })
-        .eq("id", userId)
-
-      if (profileError) throw profileError
-
-      toast({
-        title: "Usuario actualizado",
-        description: "El usuario ha sido actualizado exitosamente",
-      })
+      } else {
+        toast({
+          title: "Usuario actualizado",
+          description: result.message || "El usuario ha sido actualizado exitosamente",
+        })
+      }
 
       router.push("/admin/usuarios")
     } catch (error: any) {
@@ -207,8 +200,51 @@ export default function EditarUsuarioPage({ params }: { params: { id: string } }
 
   if (loadingData) {
     return (
-      <div className="flex justify-center py-8">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-corteva-600"></div>
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <h2 className="text-3xl font-bold tracking-tight">Editar Usuario</h2>
+          <Button variant="outline" asChild>
+            <Link href="/admin/usuarios">
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Volver
+            </Link>
+          </Button>
+        </div>
+        <Card>
+          <CardContent className="flex justify-center py-8">
+            <div className="flex items-center space-x-2">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-corteva-600"></div>
+              <span>Cargando datos del usuario...</span>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <h2 className="text-3xl font-bold tracking-tight">Editar Usuario</h2>
+          <Button variant="outline" asChild>
+            <Link href="/admin/usuarios">
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Volver
+            </Link>
+          </Button>
+        </div>
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-8 space-y-4">
+            <div className="text-red-500 text-center">
+              <h3 className="text-lg font-semibold">Error al cargar usuario</h3>
+              <p className="text-sm">{error}</p>
+            </div>
+            <Button onClick={loadInitialData} variant="outline">
+              Reintentar
+            </Button>
+          </CardContent>
+        </Card>
       </div>
     )
   }
@@ -234,8 +270,7 @@ export default function EditarUsuarioPage({ params }: { params: { id: string } }
           <CardContent className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="email">Correo electrónico</Label>
-              <Input id="email" type="email" value={email} disabled className="bg-gray-100" />
-              <p className="text-xs text-muted-foreground">El correo electrónico no se puede modificar</p>
+              <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
             </div>
             <div className="space-y-2">
               <Label htmlFor="password">Nueva contraseña (opcional)</Label>
@@ -254,6 +289,7 @@ export default function EditarUsuarioPage({ params }: { params: { id: string } }
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
                 placeholder="Nombre y apellido"
+                required
               />
             </div>
             <div className="space-y-2">
@@ -273,8 +309,8 @@ export default function EditarUsuarioPage({ params }: { params: { id: string } }
             {role !== "admin" && (
               <>
                 <div className="space-y-2">
-                  <Label htmlFor="zone">Zona *</Label>
-                  <Select value={zoneId} onValueChange={setZoneId} required>
+                  <Label htmlFor="zone">Zona</Label>
+                  <Select value={zoneId} onValueChange={setZoneId}>
                     <SelectTrigger id="zone">
                       <SelectValue placeholder="Selecciona una zona" />
                     </SelectTrigger>
@@ -290,8 +326,8 @@ export default function EditarUsuarioPage({ params }: { params: { id: string } }
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="distributor">Distribuidor *</Label>
-                  <Select value={distributorId} onValueChange={setDistributorId} required>
+                  <Label htmlFor="distributor">Distribuidor</Label>
+                  <Select value={distributorId} onValueChange={setDistributorId}>
                     <SelectTrigger id="distributor">
                       <SelectValue placeholder="Selecciona un distribuidor" />
                     </SelectTrigger>
