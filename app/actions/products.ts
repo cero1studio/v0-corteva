@@ -1,6 +1,6 @@
 "use server"
 
-import { createServerClient } from "@/lib/supabase/server"
+import { createServerClient, adminSupabase } from "@/lib/supabase/server"
 import { revalidatePath } from "next/cache"
 
 export async function getProducts() {
@@ -66,7 +66,7 @@ export async function createProduct(formData: FormData) {
 
     let imageUrl = null
 
-    // Subir imagen si existe
+    // Subir imagen si existe usando adminSupabase
     if (imageFile && imageFile.size > 0) {
       console.log("Subiendo imagen:", imageFile.name, "Tamaño:", imageFile.size)
 
@@ -74,7 +74,7 @@ export async function createProduct(formData: FormData) {
       const fileName = `${Date.now()}.${fileExt}`
       const filePath = `${fileName}`
 
-      const { data: uploadData, error: uploadError } = await supabase.storage
+      const { data: uploadData, error: uploadError } = await adminSupabase.storage
         .from("images")
         .upload(filePath, imageFile, {
           cacheControl: "3600",
@@ -130,7 +130,7 @@ export async function updateProduct(id: string, formData: FormData) {
 
     let imageUrl = currentImageUrl
 
-    // Subir nueva imagen si existe
+    // Subir nueva imagen si existe usando adminSupabase
     if (imageFile && imageFile.size > 0) {
       console.log("Actualizando imagen:", imageFile.name, "Tamaño:", imageFile.size)
 
@@ -138,7 +138,7 @@ export async function updateProduct(id: string, formData: FormData) {
       const fileName = `${Date.now()}.${fileExt}`
       const filePath = `${fileName}`
 
-      const { data: uploadData, error: uploadError } = await supabase.storage
+      const { data: uploadData, error: uploadError } = await adminSupabase.storage
         .from("images")
         .upload(filePath, imageFile, {
           cacheControl: "3600",
@@ -152,14 +152,14 @@ export async function updateProduct(id: string, formData: FormData) {
 
       console.log("Imagen subida exitosamente:", uploadData?.path)
 
-      // Eliminar imagen anterior si existe
+      // Eliminar imagen anterior si existe usando adminSupabase
       if (currentImageUrl && !currentImageUrl.startsWith("/placeholder")) {
         try {
           // Extraer el nombre del archivo de la URL
           const fileName = currentImageUrl.split("/").pop()
           if (fileName) {
             console.log("Eliminando imagen anterior:", fileName)
-            await supabase.storage.from("images").remove([fileName])
+            await adminSupabase.storage.from("images").remove([fileName])
           }
         } catch (removeError) {
           console.error("Error al eliminar imagen anterior:", removeError)
@@ -203,14 +203,14 @@ export async function deleteProduct(id: string) {
     // Obtener información del producto para eliminar la imagen
     const { data: product } = await supabase.from("products").select("image_url").eq("id", id).single()
 
-    // Eliminar imagen si existe
+    // Eliminar imagen si existe usando adminSupabase
     if (product?.image_url && !product.image_url.startsWith("/placeholder")) {
       try {
         // Extraer el nombre del archivo de la URL
         const fileName = product.image_url.split("/").pop()
         if (fileName) {
           console.log("Eliminando imagen:", fileName)
-          await supabase.storage.from("images").remove([fileName])
+          await adminSupabase.storage.from("images").remove([fileName])
         }
       } catch (removeError) {
         console.error("Error al eliminar imagen:", removeError)

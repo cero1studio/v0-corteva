@@ -3,6 +3,9 @@
 import { createServerSupabaseClient } from "@/lib/supabase/server"
 import { revalidatePath } from "next/cache"
 
+// Constante para la conversión de clientes a goles (3 clientes = 1 gol)
+const CLIENTES_POR_GOL = 3
+
 export async function registerCompetitorClient(formData: FormData) {
   const supabase = createServerSupabaseClient()
 
@@ -40,75 +43,60 @@ export async function registerCompetitorClient(formData: FormData) {
 
     if (error) throw new Error(`Error al registrar cliente: ${error.message}`)
 
-    // Verificar si se cumple el objetivo semanal para otorgar penalti
-    const startOfWeek = new Date()
-    startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay() + 1) // Lunes de la semana actual
-
-    const { data: weekClients, error: weekClientsError } = await supabase
+    // Verificar si se cumple el objetivo para otorgar goles por clientes captados
+    const { data: teamClients, error: clientsError } = await supabase
       .from("competitor_clients")
       .select("id")
       .eq("team_id", profile.team_id)
-      .gte("capture_date", startOfWeek.toISOString().split("T")[0])
 
-    if (weekClientsError) throw new Error(`Error al obtener clientes semanales: ${weekClientsError.message}`)
+    if (clientsError) throw new Error(`Error al obtener clientes del equipo: ${clientsError.message}`)
 
-    // Obtener configuración del sistema
-    const { data: penaltyConfig, error: configError } = await supabase
+    // Calcular goles basados en la cantidad de clientes (3 clientes = 1 gol)
+    const totalClientes = teamClients?.length || 0
+    const golesGenerados = Math.floor(totalClientes / CLIENTES_POR_GOL)
+
+    // Obtener la configuración de puntos para un gol
+    const { data: puntosConfig, error: puntosError } = await supabase
       .from("system_config")
       .select("value")
-      .eq("key", "penalty_settings")
+      .eq("key", "puntos_para_gol")
+      .maybeSingle()
+
+    // Por defecto 100 puntos = 1 gol si no hay configuración
+    const puntosParaGol = puntosConfig?.value ? Number(puntosConfig.value) : 100
+
+    // Actualizar los puntos y goles del equipo
+    const puntosClientes = golesGenerados * puntosParaGol
+
+    // Obtener puntos actuales del equipo (de ventas)
+    const { data: teamData, error: teamError } = await supabase
+      .from("teams")
+      .select("total_points, goals")
+      .eq("id", profile.team_id)
       .single()
 
-    if (configError) throw new Error(`Error al obtener configuración: ${configError.message}`)
+    if (teamError) throw new Error(`Error al obtener datos del equipo: ${teamError.message}`)
 
-    const config = penaltyConfig.value
-    const clientTarget = 3 // Objetivo de clientes captados (podría ser configurable)
-    const penaltyReward = config.challenge_reward || 1
+    // Sumar los puntos de ventas con los puntos por clientes
+    const totalPoints = (teamData?.total_points || 0) + puntosClientes
+    const totalGoals = Math.floor(totalPoints / puntosParaGol)
 
-    // Verificar si se alcanzó el objetivo de clientes semanales
-    const weeklyCount = weekClients ? weekClients.length : 0
+    // Actualizar el equipo con los nuevos puntos y goles
+    const { error: updateError } = await supabase
+      .from("teams")
+      .update({
+        total_points: totalPoints,
+        goals: totalGoals,
+      })
+      .eq("id", profile.team_id)
 
-    if (weeklyCount >= clientTarget) {
-      // Verificar si ya se otorgó un penalti esta semana por este motivo
-      const { data: existingPenalty, error: penaltyCheckError } = await supabase
-        .from("penalty_history")
-        .select("id")
-        .eq("team_id", profile.team_id)
-        .eq("action", "earned")
-        .gte("created_at", startOfWeek.toISOString())
-        .ilike("description", "%clientes de la competencia%")
-
-      if (penaltyCheckError) throw new Error(`Error al verificar penaltis: ${penaltyCheckError.message}`)
-
-      // Si no se ha otorgado un penalti esta semana, otorgar uno
-      if (!existingPenalty || existingPenalty.length === 0) {
-        // Crear nuevo penalti
-        const { data: penalty, error: penaltyError } = await supabase
-          .from("penalties")
-          .insert({
-            team_id: profile.team_id,
-            quantity: penaltyReward,
-            used: 0,
-            reason: "Objetivo semanal de captación de clientes alcanzado",
-          })
-          .select()
-          .single()
-
-        if (penaltyError) throw new Error(`Error al crear penalti: ${penaltyError.message}`)
-
-        // Registrar en historial
-        await supabase.from("penalty_history").insert({
-          penalty_id: penalty.id,
-          team_id: profile.team_id,
-          action: "earned",
-          quantity: penaltyReward,
-          description: "Objetivo semanal de captación de clientes de la competencia alcanzado",
-        })
-      }
-    }
+    if (updateError) throw new Error(`Error al actualizar equipo: ${updateError.message}`)
 
     revalidatePath("/capitan/dashboard")
+    revalidatePath("/capitan/clientes")
     revalidatePath("/admin/dashboard")
+    revalidatePath("/ranking")
+    revalidatePath("/capitan/ranking")
 
     return { success: true, data }
   } catch (error: any) {
@@ -168,6 +156,34 @@ export async function getCompetitorClientsByUser(userId: string) {
     return { success: true, data }
   } catch (error: any) {
     console.error("Error en getCompetitorClientsByUser:", error)
+    return { success: false, error: error.message }
+  }
+}
+
+export async function getClientGoalsInfo(teamId: string) {
+  const supabase = createServerSupabaseClient()
+
+  try {
+    // Obtener todos los clientes del equipo
+    const { data: clients, error } = await supabase.from("competitor_clients").select("id").eq("team_id", teamId)
+
+    if (error) throw error
+
+    const totalClientes = clients?.length || 0
+    const golesGenerados = Math.floor(totalClientes / CLIENTES_POR_GOL)
+    const clientesParaSiguienteGol = CLIENTES_POR_GOL - (totalClientes % CLIENTES_POR_GOL)
+
+    return {
+      success: true,
+      data: {
+        totalClientes,
+        golesGenerados,
+        clientesParaSiguienteGol,
+        clientesPorGol: CLIENTES_POR_GOL,
+      },
+    }
+  } catch (error: any) {
+    console.error("Error en getClientGoalsInfo:", error)
     return { success: false, error: error.message }
   }
 }

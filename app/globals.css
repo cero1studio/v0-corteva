@@ -100,6 +100,59 @@
   .animate-spin-slow {
     animation: spin 3s linear infinite;
   }
+
+  .sidebar-fixed {
+    position: fixed;
+    left: 0;
+    top: 0;
+    height: 100vh;
+    width: 16rem;
+    z-index: 30;
+  }
+
+  .content-with-sidebar {
+    margin-left: 16rem;
+  }
+
+  @media (max-width: 1024px) {
+    .sidebar-fixed {
+      transform: translateX(-100%);
+      transition: transform 0.3s ease-in-out;
+    }
+
+    .sidebar-fixed.open {
+      transform: translateX(0);
+    }
+
+    .content-with-sidebar {
+      margin-left: 0;
+    }
+  }
+
+  /* Asegurar que el contenido principal sea scrolleable */
+  .main-content {
+    min-height: 100vh;
+    overflow-y: auto;
+  }
+
+  /* Mejorar el responsive del dashboard */
+  .dashboard-grid {
+    display: grid;
+    gap: 1.5rem;
+    grid-template-columns: 1fr;
+  }
+
+  @media (min-width: 768px) {
+    .dashboard-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .dashboard-grid {
+      grid-template-columns: repeat(4, 1fr);
+    }
+  }
 }
 
 @keyframes spin {

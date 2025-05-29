@@ -197,8 +197,8 @@ export default function CrearEquipoPage() {
       }
 
       toast({
-        title: "Equipo creado",
-        description: "El equipo ha sido creado exitosamente",
+        title: "Equipo nombrado",
+        description: "Tu equipo ha sido nombrado exitosamente",
       })
 
       // 3. Redirigir al dashboard
@@ -242,14 +242,14 @@ export default function CrearEquipoPage() {
     <div className="space-y-6 max-w-3xl mx-auto p-8">
       <div>
         <h1 className="text-2xl font-bold">Panel de Capitán</h1>
-        <h2 className="text-3xl font-bold tracking-tight mt-6">Crear Equipo</h2>
+        <h2 className="text-3xl font-bold tracking-tight mt-6">Nombra tu Equipo</h2>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>Crea tu equipo</CardTitle>
+          <CardTitle>Nombra tu equipo</CardTitle>
           <CardDescription>
-            Antes de continuar, necesitas crear tu equipo. Este será el equipo que liderarás como capitán.
+            Antes de continuar, necesitas nombrar tu equipo. Este será el equipo que liderarás como capitán.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -357,7 +357,7 @@ export default function CrearEquipoPage() {
                 disabled={isSubmitting || !zone || !distributor}
                 className="bg-corteva-600 hover:bg-corteva-700"
               >
-                {isSubmitting ? "Creando..." : "Crear Equipo"}
+                {isSubmitting ? "Guardando..." : "Guardar Nombre"}
               </Button>
             </div>
           </form>

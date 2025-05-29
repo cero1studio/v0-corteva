@@ -17,6 +17,7 @@ import { CalendarIcon, ShoppingBag, ArrowLeft } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 import { supabase } from "@/lib/supabase/client"
 import { GoalCelebration } from "@/components/goal-celebration"
+import Image from "next/image"
 
 // Constante para la conversión de puntos a goles
 const PUNTOS_POR_GOL = 100
@@ -34,26 +35,34 @@ export default function RegistrarVentaPage() {
   const [totalPoints, setTotalPoints] = useState(0)
   const [puntosParaGol, setPuntosParaGol] = useState(PUNTOS_POR_GOL)
   const [selectedProductData, setSelectedProductData] = useState<any>(null)
-  const [productImages, setProductImages] = useState<Record<string, string>>({})
 
   const router = useRouter()
   const { toast } = useToast()
 
-  // Función para obtener la URL de la imagen de un producto
-  const getProductImageUrl = async (productId: string) => {
-    try {
-      const { data: files } = await supabase.storage.from("product-images").list("", {
-        search: `${productId}`,
-      })
-
-      if (files && files.length > 0) {
-        const { data: publicUrlData } = supabase.storage.from("product-images").getPublicUrl(files[0].name)
-        return publicUrlData.publicUrl
-      }
-    } catch (error) {
-      console.error(`Error getting image for product ${productId}:`, error)
+  // Función para obtener la URL de imagen del producto (igual que en admin)
+  const getProductImageUrl = (product: any): string => {
+    if (!product?.image_url) {
+      return "/placeholder.svg"
     }
-    return null
+
+    // Si es una URL completa, devolverla tal como está
+    if (product.image_url.startsWith("http")) {
+      return product.image_url
+    }
+
+    // Si es una ruta local, devolverla tal como está
+    if (product.image_url.startsWith("/")) {
+      return product.image_url
+    }
+
+    // Si es una ruta de Supabase Storage, generar la URL pública
+    try {
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+      return `${supabaseUrl}/storage/v1/object/public/images/${product.image_url}`
+    } catch (error) {
+      console.error("Error al generar URL de imagen:", error)
+      return "/placeholder.svg"
+    }
   }
 
   useEffect(() => {
@@ -78,21 +87,16 @@ export default function RegistrarVentaPage() {
           setPuntosParaGol(Number(configData.value) || PUNTOS_POR_GOL)
         }
 
-        // Obtener productos
-        const { data: productsData, error: productsError } = await supabase.from("products").select("*").order("name")
+        // Obtener productos activos
+        const { data: productsData, error: productsError } = await supabase
+          .from("products")
+          .select("*")
+          .eq("active", true)
+          .order("name")
 
         if (productsError) throw productsError
 
-        // Obtener imágenes para cada producto
-        const images: Record<string, string> = {}
-        for (const product of productsData || []) {
-          const imageUrl = await getProductImageUrl(product.id)
-          if (imageUrl) {
-            images[product.id] = imageUrl
-          }
-        }
-
-        setProductImages(images)
+        console.log("Productos cargados:", productsData)
         setProducts(productsData || [])
       } catch (error) {
         console.error("Error al cargar datos:", error)
@@ -112,6 +116,7 @@ export default function RegistrarVentaPage() {
     if (selectedProduct && products.length > 0) {
       const product = products.find((p) => p.id === selectedProduct)
       setSelectedProductData(product || null)
+      console.log("Producto seleccionado:", product)
     } else {
       setSelectedProductData(null)
     }
@@ -149,7 +154,7 @@ export default function RegistrarVentaPage() {
       const { data, error } = await supabase
         .from("sales")
         .insert({
-          user_id: userId,
+          representative_id: userId,
           product_id: selectedProduct,
           quantity,
           points: calculatedTotalPoints,
@@ -222,15 +227,19 @@ export default function RegistrarVentaPage() {
                   {products.map((product) => (
                     <SelectItem key={product.id} value={product.id}>
                       <div className="flex items-center gap-2">
-                        {productImages[product.id] && (
-                          <div className="h-6 w-6 rounded-md border bg-white flex items-center justify-center overflow-hidden">
-                            <img
-                              src={productImages[product.id] || "/placeholder.svg"}
-                              alt={product.name}
-                              className="h-5 w-5 object-contain"
-                            />
-                          </div>
-                        )}
+                        <div className="relative h-6 w-6 overflow-hidden rounded-md border">
+                          <Image
+                            src={getProductImageUrl(product) || "/placeholder.svg"}
+                            alt={product.name}
+                            fill
+                            className="object-cover"
+                            unoptimized
+                            onError={(e) => {
+                              const target = e.target as HTMLImageElement
+                              target.src = "/placeholder.svg"
+                            }}
+                          />
+                        </div>
                         <span>
                           {product.name} ({product.points} puntos)
                         </span>
@@ -244,22 +253,25 @@ export default function RegistrarVentaPage() {
             {selectedProductData && (
               <div className="rounded-md border p-3 bg-gray-50">
                 <div className="flex items-center gap-3">
-                  {productImages[selectedProductData.id] ? (
-                    <div className="h-16 w-16 rounded-md border bg-white flex items-center justify-center overflow-hidden">
-                      <img
-                        src={productImages[selectedProductData.id] || "/placeholder.svg"}
-                        alt={selectedProductData.name}
-                        className="h-14 w-14 object-contain"
-                      />
-                    </div>
-                  ) : (
-                    <div className="h-16 w-16 rounded-md border bg-gray-100 flex items-center justify-center">
-                      <ShoppingBag className="h-8 w-8 text-gray-400" />
-                    </div>
-                  )}
+                  <div className="relative h-16 w-16 overflow-hidden rounded-md border">
+                    <Image
+                      src={getProductImageUrl(selectedProductData) || "/placeholder.svg"}
+                      alt={selectedProductData.name}
+                      fill
+                      className="object-cover"
+                      unoptimized
+                      onError={(e) => {
+                        const target = e.target as HTMLImageElement
+                        target.src = "/placeholder.svg"
+                      }}
+                    />
+                  </div>
                   <div>
                     <p className="font-medium">{selectedProductData.name}</p>
                     <p className="text-sm text-muted-foreground">{selectedProductData.points} puntos por unidad</p>
+                    {selectedProductData.description && (
+                      <p className="text-xs text-muted-foreground mt-1">{selectedProductData.description}</p>
+                    )}
                   </div>
                 </div>
               </div>

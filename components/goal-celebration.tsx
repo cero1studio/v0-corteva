@@ -44,7 +44,7 @@ export function GoalCelebration({
 
   const getMotivationalMessage = () => {
     if (goalCount > 0 && extraPoints > 0) {
-      return `¡${goalCount} ${goalCount === 1 ? "gol anotado" : "goles anotados"} y ${extraPoints} puntos extras! Completa ${pointsNeeded} puntos más para anotar otro gol.`
+      return `¡${goalCount} ${goalCount === 1 ? "gol anotado" : "goles anotados"} y ${extraPoints} puntos a sumar! Completa ${pointsNeeded} puntos más para anotar otro gol.`
     } else if (goalCount > 0 && extraPoints === 0) {
       return `¡${goalCount} ${goalCount === 1 ? "gol perfecto" : "goles perfectos"}! Sigue así para mantener el ritmo.`
     } else if (extraPoints > 0) {
@@ -58,7 +58,7 @@ export function GoalCelebration({
     if (goalCount > 0) {
       return "¡GOOOOOL!"
     } else {
-      return "¡Casi!"
+      return "¡Pegaste en el palo!"
     }
   }
 

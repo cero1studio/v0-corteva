@@ -1,74 +1,158 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Trophy, Medal, Building } from "lucide-react"
-
-// Sample data for rankings - Zona Norte only for captain view
-const zoneRanking = {
-  norte: [
-    {
-      position: 1,
-      team: "Los Campeones",
-      distributor_name: "Distribuidor Norte",
-      distributor_logo: "distribuidor-norte.png",
-      goals: 342,
-      icon: "🥇",
-    },
-    {
-      position: 2,
-      team: "Equipo Estrella",
-      distributor_name: "Distribuidor Norte",
-      distributor_logo: "distribuidor-norte.png",
-      goals: 243,
-      icon: "🥈",
-    },
-    {
-      position: 3,
-      team: "Los Guerreros",
-      distributor_name: "Agro Servicios",
-      distributor_logo: "agro-servicios.png",
-      goals: 198,
-      icon: "🥉",
-    },
-    {
-      position: 4,
-      team: "Equipo Fuerte",
-      distributor_name: "Distribuidor Norte",
-      distributor_logo: "distribuidor-norte.png",
-      goals: 176,
-      icon: "",
-    },
-    {
-      position: 5,
-      team: "Los Tigres",
-      distributor_name: "Distribuidor Norte",
-      distributor_logo: "distribuidor-norte.png",
-      goals: 154,
-      icon: "",
-    },
-  ],
-}
-
-// Distributor rankings for Zona Norte
-const distributorRankings = {
-  norte: [
-    { position: 1, distributor: "Distribuidor Norte", teams: 4, goals: 915, icon: "🥇" },
-    { position: 2, distributor: "Agro Servicios", teams: 1, goals: 198, icon: "🥈" },
-  ],
-}
+import { Trophy, Medal, ShoppingCart, Users } from "lucide-react"
+import { useAuth } from "@/hooks/use-auth"
+import {
+  getTeamRankingByZone,
+  getSalesRankingByZone,
+  getClientsRankingByZone,
+  getUserTeamInfo,
+  getProducts,
+  type TeamRanking,
+  type SalesRanking,
+  type ClientsRanking,
+  type UserTeamInfo,
+} from "@/app/actions/ranking"
+import { Skeleton } from "@/components/ui/skeleton"
 
 export default function CapitanRankingPage() {
+  const { user } = useAuth()
   const [productFilter, setProductFilter] = useState("all")
-  const [distributorFilter, setDistributorFilter] = useState("distribuidor-norte")
+  const [teamRanking, setTeamRanking] = useState<TeamRanking[]>([])
+  const [salesRanking, setSalesRanking] = useState<SalesRanking[]>([])
+  const [clientsRanking, setClientsRanking] = useState<ClientsRanking[]>([])
+  const [userTeamInfo, setUserTeamInfo] = useState<UserTeamInfo | null>(null)
+  const [products, setProducts] = useState<Array<{ id: string; name: string }>>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (user?.id) {
+      loadData()
+    }
+  }, [user?.id])
+
+  const loadData = async () => {
+    try {
+      setLoading(true)
+      setError(null)
+
+      // Cargar información del equipo del usuario (requerido)
+      const userInfoResult = await getUserTeamInfo(user!.id)
+      if (!userInfoResult.success) {
+        throw new Error(userInfoResult.error || "Error al cargar información del equipo")
+      }
+      setUserTeamInfo(userInfoResult.data!)
+
+      const userZoneId = userInfoResult.data!.zone_id
+
+      // Cargar todos los rankings de la zona del usuario
+      const [teamRankingResult, salesRankingResult, clientsRankingResult, productsResult] = await Promise.all([
+        getTeamRankingByZone(userZoneId),
+        getSalesRankingByZone(userZoneId),
+        getClientsRankingByZone(userZoneId),
+        getProducts(),
+      ])
+
+      if (teamRankingResult.success) {
+        setTeamRanking(teamRankingResult.data || [])
+      }
+
+      if (salesRankingResult.success) {
+        setSalesRanking(salesRankingResult.data || [])
+      }
+
+      if (clientsRankingResult.success) {
+        setClientsRanking(clientsRankingResult.data || [])
+      }
+
+      if (productsResult.success) {
+        setProducts(productsResult.data || [])
+      }
+    } catch (error) {
+      console.error("Error loading ranking data:", error)
+      setError(error instanceof Error ? error.message : "Error al cargar los datos")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const getPositionIcon = (position: number) => {
+    switch (position) {
+      case 1:
+        return "🥇"
+      case 2:
+        return "🥈"
+      case 3:
+        return "🥉"
+      default:
+        return ""
+    }
+  }
+
+  const getDistributorLogo = (logoUrl: string | null | undefined) => {
+    if (!logoUrl) return "/placeholder.svg"
+
+    try {
+      // Si la URL ya incluye el prefijo "distributors/", usar el bucket "images"
+      if (logoUrl.includes("distributors/")) {
+        return `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/images/${logoUrl}`
+      } else {
+        // Si no incluye el prefijo, usar el bucket "distributors"
+        return `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/distributors/${logoUrl}`
+      }
+    } catch (error) {
+      console.error("Error generando URL del logo:", error)
+      return "/placeholder.svg"
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="p-6 space-y-6">
+        <div className="flex flex-col items-center justify-between gap-4 md:flex-row">
+          <Skeleton className="h-8 w-64" />
+          <div className="flex items-center gap-4">
+            <Skeleton className="h-10 w-[180px]" />
+          </div>
+        </div>
+        <div className="space-y-6">
+          <Skeleton className="h-[400px] w-full" />
+          <div className="grid gap-6 md:grid-cols-2">
+            <Skeleton className="h-[200px] w-full" />
+            <Skeleton className="h-[200px] w-full" />
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="p-6 flex items-center justify-center min-h-[400px]">
+        <Card className="w-full max-w-md">
+          <CardContent className="pt-6">
+            <div className="text-center">
+              <p className="text-red-500 mb-4">{error}</p>
+              <button onClick={loadData} className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">
+                Reintentar
+              </button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
 
   return (
-    <div className="space-y-6">
+    <div className="p-6 space-y-6">
       <div className="flex flex-col items-center justify-between gap-4 md:flex-row">
-        <h2 className="text-3xl font-bold tracking-tight">Ranking Zona Norte</h2>
+        <h2 className="text-3xl font-bold tracking-tight">Ranking {userTeamInfo?.zone_name || "General"}</h2>
 
         <div className="flex items-center gap-4">
           <Select defaultValue="all" value={productFilter} onValueChange={setProductFilter}>
@@ -77,45 +161,11 @@ export default function CapitanRankingPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Todos los productos</SelectItem>
-              <SelectItem value="a">Producto A</SelectItem>
-              <SelectItem value="b">Producto B</SelectItem>
-              <SelectItem value="c">Producto C</SelectItem>
-              <SelectItem value="d">Producto D</SelectItem>
-            </SelectContent>
-          </Select>
-
-          <Select defaultValue="distribuidor-norte" value={distributorFilter} onValueChange={setDistributorFilter}>
-            <SelectTrigger className="w-[220px]">
-              <SelectValue placeholder="Distribuidor" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all" className="flex items-center gap-2">
-                <span>Todos los distribuidores</span>
-              </SelectItem>
-              <SelectItem value="distribuidor-norte" className="flex items-center gap-2">
-                <div className="flex items-center gap-2">
-                  <div className="h-5 w-5 overflow-hidden rounded-full">
-                    <img
-                      src="/dna-double-helix.png"
-                      alt="Logo Distribuidor Norte"
-                      className="h-full w-full object-cover"
-                    />
-                  </div>
-                  <span>Distribuidor Norte</span>
-                </div>
-              </SelectItem>
-              <SelectItem value="agro-servicios" className="flex items-center gap-2">
-                <div className="flex items-center gap-2">
-                  <div className="h-5 w-5 overflow-hidden rounded-full">
-                    <img
-                      src="/abstract-geometric-as.png"
-                      alt="Logo Agro Servicios"
-                      className="h-full w-full object-cover"
-                    />
-                  </div>
-                  <span>Agro Servicios</span>
-                </div>
-              </SelectItem>
+              {products.map((product) => (
+                <SelectItem key={product.id} value={product.id}>
+                  {product.name}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>
@@ -124,10 +174,13 @@ export default function CapitanRankingPage() {
       <Tabs defaultValue="equipos" className="space-y-6">
         <TabsList className="h-10">
           <TabsTrigger value="equipos" className="text-sm">
-            Ranking de Equipos
+            Ranking General
           </TabsTrigger>
-          <TabsTrigger value="distribuidores" className="text-sm">
-            Ranking de Distribuidores
+          <TabsTrigger value="ventas" className="text-sm">
+            Ranking de Ventas
+          </TabsTrigger>
+          <TabsTrigger value="clientes" className="text-sm">
+            Ranking de Clientes
           </TabsTrigger>
         </TabsList>
 
@@ -136,9 +189,9 @@ export default function CapitanRankingPage() {
             <CardHeader className="pb-2">
               <CardTitle className="flex items-center gap-2">
                 <Trophy className="h-5 w-5 text-yellow-500" />
-                TOP 5 Equipos - Zona Norte
+                TOP Equipos - {userTeamInfo?.zone_name}
               </CardTitle>
-              <CardDescription>Los mejores equipos de tu zona</CardDescription>
+              <CardDescription>Los mejores equipos de tu zona por puntos totales</CardDescription>
             </CardHeader>
             <CardContent>
               <Table>
@@ -146,31 +199,29 @@ export default function CapitanRankingPage() {
                   <TableRow>
                     <TableHead className="w-16">Pos.</TableHead>
                     <TableHead>Equipo</TableHead>
-                    <TableHead>Distribuidor</TableHead>
                     <TableHead className="text-right">Goles</TableHead>
+                    <TableHead className="text-right">Puntos</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {zoneRanking.norte.map((team) => (
-                    <TableRow key={team.position}>
+                  {teamRanking.map((team) => (
+                    <TableRow key={team.team_id} className={team.team_id === userTeamInfo?.team_id ? "bg-blue-50" : ""}>
                       <TableCell className="font-medium">
                         <div className="flex items-center gap-2">
                           {team.position}
-                          {team.icon && <span className="text-lg">{team.icon}</span>}
+                          {getPositionIcon(team.position) && (
+                            <span className="text-lg">{getPositionIcon(team.position)}</span>
+                          )}
                         </div>
                       </TableCell>
-                      <TableCell>{team.team}</TableCell>
-                      <TableCell className="flex items-center">
-                        {team.distributor_logo && (
-                          <img
-                            src={`/logos/${team.distributor_logo}`}
-                            alt={team.distributor_name}
-                            className="h-4 w-auto mr-1"
-                          />
+                      <TableCell className="font-medium">
+                        {team.team_name}
+                        {team.team_id === userTeamInfo?.team_id && (
+                          <span className="ml-2 text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">Tu equipo</span>
                         )}
-                        {team.distributor_name}
                       </TableCell>
                       <TableCell className="text-right font-bold text-green-600">{team.goals}</TableCell>
+                      <TableCell className="text-right font-bold text-blue-600">{team.total_points}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -190,17 +241,25 @@ export default function CapitanRankingPage() {
               <CardContent>
                 <div className="flex items-center justify-center gap-8 py-4">
                   <div className="text-center">
-                    <div className="text-4xl font-bold">2</div>
+                    <div className="text-4xl font-bold">{userTeamInfo?.position || 0}</div>
                     <p className="text-sm text-muted-foreground">Posición</p>
                   </div>
                   <div className="text-center">
-                    <div className="text-4xl font-bold text-green-600">243</div>
+                    <div className="text-4xl font-bold text-green-600">{userTeamInfo?.goals || 0}</div>
                     <p className="text-sm text-muted-foreground">Goles</p>
                   </div>
                   <div className="text-center">
-                    <div className="text-4xl font-bold text-yellow-500">🥈</div>
-                    <p className="text-sm text-muted-foreground">Medalla</p>
+                    <div className="text-4xl font-bold text-blue-600">{userTeamInfo?.total_points || 0}</div>
+                    <p className="text-sm text-muted-foreground">Puntos</p>
                   </div>
+                  {getPositionIcon(userTeamInfo?.position || 0) && (
+                    <div className="text-center">
+                      <div className="text-4xl font-bold text-yellow-500">
+                        {getPositionIcon(userTeamInfo?.position || 0)}
+                      </div>
+                      <p className="text-sm text-muted-foreground">Medalla</p>
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -209,19 +268,23 @@ export default function CapitanRankingPage() {
               <CardHeader className="pb-2">
                 <CardTitle className="flex items-center gap-2">
                   <Trophy className="h-5 w-5 text-yellow-500" />
-                  Próximo Objetivo
+                  Tu Equipo
                 </CardTitle>
-                <CardDescription>Lo que necesitas para subir de posición</CardDescription>
+                <CardDescription>Información de tu equipo</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="flex items-center justify-center gap-8 py-4">
-                  <div className="text-center">
-                    <div className="text-4xl font-bold">100</div>
-                    <p className="text-sm text-muted-foreground">Goles necesarios</p>
+                <div className="space-y-2">
+                  <div className="flex justify-between">
+                    <span className="text-sm text-muted-foreground">Equipo:</span>
+                    <span className="font-medium">{userTeamInfo?.team_name}</span>
                   </div>
-                  <div className="text-center">
-                    <div className="text-4xl font-bold text-yellow-500">🥇</div>
-                    <p className="text-sm text-muted-foreground">Próxima medalla</p>
+                  <div className="flex justify-between">
+                    <span className="text-sm text-muted-foreground">Zona:</span>
+                    <span className="font-medium">{userTeamInfo?.zone_name}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-sm text-muted-foreground">Posición:</span>
+                    <span className="font-bold text-blue-600">#{userTeamInfo?.position}</span>
                   </div>
                 </div>
               </CardContent>
@@ -229,75 +292,104 @@ export default function CapitanRankingPage() {
           </div>
         </TabsContent>
 
-        <TabsContent value="distribuidores" className="space-y-6">
+        <TabsContent value="ventas" className="space-y-6">
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="flex items-center gap-2">
-                <Building className="h-5 w-5 text-yellow-500" />
-                Ranking de Distribuidores - Zona Norte
+                <ShoppingCart className="h-5 w-5 text-green-500" />
+                Ranking de Ventas - {userTeamInfo?.zone_name}
               </CardTitle>
-              <CardDescription>Los mejores distribuidores de tu zona</CardDescription>
+              <CardDescription>Los mejores equipos por volumen de ventas</CardDescription>
             </CardHeader>
             <CardContent>
               <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-16">Pos.</TableHead>
-                    <TableHead>Distribuidor</TableHead>
-                    <TableHead>Equipos</TableHead>
-                    <TableHead className="text-right">Goles</TableHead>
+                    <TableHead>Equipo</TableHead>
+                    <TableHead className="text-right">Ventas</TableHead>
+                    <TableHead className="text-right">Puntos Totales</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {distributorRankings.norte.map((distributor) => (
-                    <TableRow key={distributor.position}>
+                  {salesRanking.map((team) => (
+                    <TableRow
+                      key={team.team_id}
+                      className={team.team_id === userTeamInfo?.team_id ? "bg-green-50" : ""}
+                    >
                       <TableCell className="font-medium">
                         <div className="flex items-center gap-2">
-                          {distributor.position}
-                          {distributor.icon && <span className="text-lg">{distributor.icon}</span>}
+                          {team.position}
+                          {getPositionIcon(team.position) && (
+                            <span className="text-lg">{getPositionIcon(team.position)}</span>
+                          )}
                         </div>
                       </TableCell>
-                      <TableCell>{distributor.distributor}</TableCell>
-                      <TableCell>{distributor.teams}</TableCell>
-                      <TableCell className="text-right font-bold text-green-600">{distributor.goals}</TableCell>
+                      <TableCell className="font-medium">
+                        {team.team_name}
+                        {team.team_id === userTeamInfo?.team_id && (
+                          <span className="ml-2 text-xs bg-green-100 text-green-800 px-2 py-1 rounded">Tu equipo</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right font-bold text-green-600">{team.total_sales}</TableCell>
+                      <TableCell className="text-right font-bold text-blue-600">{team.total_points}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
             </CardContent>
           </Card>
+        </TabsContent>
 
+        <TabsContent value="clientes" className="space-y-6">
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="flex items-center gap-2">
-                <Medal className="h-5 w-5 text-yellow-500" />
-                Tu Distribuidor
+                <Users className="h-5 w-5 text-purple-500" />
+                Ranking de Clientes Competencia - {userTeamInfo?.zone_name}
               </CardTitle>
-              <CardDescription>Información de tu distribuidor</CardDescription>
+              <CardDescription>Los mejores equipos por clientes registrados de la competencia</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="flex items-center justify-center gap-8 py-4">
-                <div className="text-center">
-                  <img
-                    src="/dna-double-helix.png"
-                    alt="Logo Distribuidor Norte"
-                    className="mx-auto h-20 w-20 rounded-full border-4 border-yellow-400"
-                  />
-                  <h3 className="mt-2 text-xl font-bold">Distribuidor Norte</h3>
-                </div>
-                <div className="text-center">
-                  <div className="text-4xl font-bold">1</div>
-                  <p className="text-sm text-muted-foreground">Posición</p>
-                </div>
-                <div className="text-center">
-                  <div className="text-4xl font-bold text-green-600">915</div>
-                  <p className="text-sm text-muted-foreground">Goles totales</p>
-                </div>
-                <div className="text-center">
-                  <div className="text-4xl font-bold">4</div>
-                  <p className="text-sm text-muted-foreground">Equipos</p>
-                </div>
-              </div>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-16">Pos.</TableHead>
+                    <TableHead>Equipo</TableHead>
+                    <TableHead className="text-right">Clientes</TableHead>
+                    <TableHead className="text-right">Puntos</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {clientsRanking.map((team) => (
+                    <TableRow
+                      key={team.team_id}
+                      className={team.team_id === userTeamInfo?.team_id ? "bg-purple-50" : ""}
+                    >
+                      <TableCell className="font-medium">
+                        <div className="flex items-center gap-2">
+                          {team.position}
+                          {getPositionIcon(team.position) && (
+                            <span className="text-lg">{getPositionIcon(team.position)}</span>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell className="font-medium">
+                        {team.team_name}
+                        {team.team_id === userTeamInfo?.team_id && (
+                          <span className="ml-2 text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded">
+                            Tu equipo
+                          </span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right font-bold text-purple-600">{team.total_clients}</TableCell>
+                      <TableCell className="text-right font-bold text-blue-600">
+                        {team.total_points_from_clients}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
             </CardContent>
           </Card>
         </TabsContent>

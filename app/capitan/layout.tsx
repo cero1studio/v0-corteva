@@ -68,46 +68,48 @@ export default function CapitanLayout({ children }: { children: React.ReactNode 
   if (profile?.has_created_team === false) {
     return (
       <div className="flex min-h-screen">
-        {/* Sidebar simplificado - solo logo y usuario */}
-        <div className="flex flex-col border-r bg-white w-64">
-          <div className="p-4">
-            <div className="flex items-center">
-              <Image
-                src="/super-ganaderia-logo.png"
-                alt="Súper Ganadería Logo"
-                width={180}
-                height={60}
-                className="h-auto"
-              />
-            </div>
-          </div>
-
-          <div className="flex-1"></div>
-
-          <div className="border-t p-4">
-            <div className="flex items-center gap-3 rounded-md border p-3">
-              <Avatar>
-                <AvatarImage src="/placeholder.svg" alt={profile?.full_name || "Usuario"} />
-                <AvatarFallback>{profile?.full_name ? getInitials(profile.full_name) : "U"}</AvatarFallback>
-              </Avatar>
-              <div className="flex flex-col">
-                <span className="text-sm font-medium">{profile?.full_name || "Usuario"}</span>
-                <span className="text-xs text-muted-foreground">Capitán</span>
+        {/* Sidebar fijo */}
+        <div className="fixed left-0 top-0 z-30 h-screen w-64 border-r bg-white lg:block hidden">
+          <div className="flex flex-col h-full">
+            <div className="p-4">
+              <div className="flex items-center">
+                <Image
+                  src="/super-ganaderia-logo.png"
+                  alt="Súper Ganadería Logo"
+                  width={180}
+                  height={60}
+                  className="h-auto"
+                />
               </div>
             </div>
 
-            <button
-              onClick={handleSignOut}
-              className="mt-4 flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
-            >
-              <LogOut className="h-4 w-4" />
-              <span>Cerrar Sesión</span>
-            </button>
+            <div className="flex-1"></div>
+
+            <div className="border-t p-4">
+              <div className="flex items-center gap-3 rounded-md border p-3">
+                <Avatar>
+                  <AvatarImage src="/placeholder.svg" alt={profile?.full_name || "Usuario"} />
+                  <AvatarFallback>{profile?.full_name ? getInitials(profile.full_name) : "U"}</AvatarFallback>
+                </Avatar>
+                <div className="flex flex-col">
+                  <span className="text-sm font-medium">{profile?.full_name || "Usuario"}</span>
+                  <span className="text-xs text-muted-foreground">Capitán</span>
+                </div>
+              </div>
+
+              <button
+                onClick={handleSignOut}
+                className="mt-4 flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
+              >
+                <LogOut className="h-4 w-4" />
+                <span>Cerrar Sesión</span>
+              </button>
+            </div>
           </div>
         </div>
 
-        {/* Contenido principal */}
-        <div className="flex-1">{children}</div>
+        {/* Contenido principal con margen para el sidebar */}
+        <div className="flex-1 lg:ml-64 min-h-screen">{children}</div>
       </div>
     )
   }
@@ -115,8 +117,10 @@ export default function CapitanLayout({ children }: { children: React.ReactNode 
   // Si el usuario ha creado equipo, mostrar el layout normal
   return (
     <div className="flex min-h-screen">
-      <DashboardNav role="capitan" />
-      <div className="flex-1">{children}</div>
+      <div className="fixed left-0 top-0 z-30 h-screen w-64 border-r bg-white lg:block hidden">
+        <DashboardNav role="capitan" />
+      </div>
+      <div className="flex-1 lg:ml-64 min-h-screen">{children}</div>
     </div>
   )
 }
