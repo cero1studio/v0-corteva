@@ -58,22 +58,14 @@ export function AdminZonesChart() {
           if (teamIds.length > 0) {
             const teamIdList = teamIds.map((t) => t.id)
 
-            // Verificar la estructura de la tabla sales
-            const { data: salesStructure, error: structureError } = await supabase.from("sales").select().limit(1)
+            const { data: sales, error: salesError } = await supabase
+              .from("sales")
+              .select("points")
+              .in("team_id", teamIdList)
 
-            if (structureError) throw structureError
+            if (salesError) throw salesError
 
-            if (salesStructure && salesStructure.length > 0) {
-              // Identificamos qué columna contiene el ID del equipo
-              const teamIdColumn = salesStructure[0].hasOwnProperty("team_id") ? "team_id" : "id_team"
-
-              const { data: sales, error: salesError } = await supabase
-                .from("sales")
-                .select("points")
-                .in(teamIdColumn, teamIdList)
-
-              if (salesError) throw salesError
-
+            if (sales && sales.length > 0) {
               totalPoints = sales.reduce((sum, sale) => sum + (sale.points || 0), 0)
               totalSales = sales.length
             }

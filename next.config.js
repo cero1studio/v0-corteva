@@ -5,7 +5,8 @@ const nextConfig = {
   // Desactivar el modo estricto de React
   reactStrictMode: false,
   experimental: {
-    serverActions: true,
+    // Cambiado de true a {} para ser compatible con Next.js 15
+    serverActions: {},
   },
   // Configuración de imágenes más permisiva
   images: {

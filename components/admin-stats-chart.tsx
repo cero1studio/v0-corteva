@@ -72,8 +72,11 @@ export function AdminStatsChart() {
         return
       }
 
-      // 2. Obtener todas las ventas
-      const { data: salesData, error: salesError } = await supabase.from("sales").select("*").order("created_at")
+      // 2. Obtener todas las ventas con una consulta más simple
+      const { data: salesData, error: salesError } = await supabase
+        .from("sales")
+        .select("team_id, points, created_at")
+        .order("created_at")
 
       if (salesError) {
         // Si es un error de red y no hemos alcanzado el máximo de reintentos
@@ -112,7 +115,7 @@ export function AdminStatsChart() {
           })
         }
 
-        const teamId = sale.team_id || sale.id_team
+        const teamId = sale.team_id
         if (teamId && weeklyData[weekLabel][teamId] !== undefined) {
           weeklyData[weekLabel][teamId] = (weeklyData[weekLabel][teamId] || 0) + (sale.points || 0)
         }

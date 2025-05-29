@@ -125,7 +125,10 @@ export default function AdminDashboardPage() {
   async function fetchStructure(retry = 0) {
     try {
       // Verificar la estructura de la tabla sales
-      const { data: salesData, error: salesError } = await supabase.from("sales").select().limit(1)
+      const { data: salesData, error: salesError } = await supabase
+        .from("sales")
+        .select("id, team_id, product_id, points, created_at")
+        .limit(1)
 
       if (salesError) {
         // Si es un error de red y no hemos alcanzado el máximo de reintentos
@@ -140,6 +143,9 @@ export default function AdminDashboardPage() {
 
       if (salesData && salesData.length > 0) {
         setSalesStructure(salesData[0])
+      } else {
+        // Si no hay datos, crear estructura por defecto
+        setSalesStructure({ team_id: null, id_team: null })
       }
 
       // Continuar con el resto de las consultas
@@ -240,17 +246,8 @@ export default function AdminDashboardPage() {
 
   async function fetchTopTeams() {
     try {
-      if (!salesStructure) {
-        // Si no tenemos la estructura, no podemos continuar
-        setTopTeams([])
-        return
-      }
-
-      // Identificamos qué columna contiene el ID del equipo
-      const teamIdColumn = salesStructure.hasOwnProperty("team_id") ? "team_id" : "id_team"
-
-      // Obtener todas las ventas
-      const { data: salesData, error: salesError } = await supabase.from("sales").select(`*, ${teamIdColumn}`)
+      // Obtener todas las ventas con una consulta más simple
+      const { data: salesData, error: salesError } = await supabase.from("sales").select("team_id, points")
 
       if (salesError) throw salesError
 
@@ -277,7 +274,7 @@ export default function AdminDashboardPage() {
       const teamPoints: Record<string, { id: string; name: string; zone: string; points: number }> = {}
 
       salesData.forEach((sale) => {
-        const teamId = sale[teamIdColumn]
+        const teamId = sale.team_id
         if (teamId && teamsMap[teamId]) {
           if (!teamPoints[teamId]) {
             const team = teamsMap[teamId]
@@ -308,15 +305,6 @@ export default function AdminDashboardPage() {
 
   async function fetchZoneStats() {
     try {
-      if (!salesStructure) {
-        // Si no tenemos la estructura, no podemos continuar
-        setZoneStats([])
-        return
-      }
-
-      // Identificamos qué columna contiene el ID del equipo
-      const teamIdColumn = salesStructure.hasOwnProperty("team_id") ? "team_id" : "id_team"
-
       // Obtener zonas
       const { data: zones, error: zonesError } = await supabase.from("zones").select("id, name")
 
@@ -354,7 +342,7 @@ export default function AdminDashboardPage() {
             const { data: sales, error: salesError } = await supabase
               .from("sales")
               .select("points")
-              .in(teamIdColumn, teamIdList)
+              .in("team_id", teamIdList)
 
             if (salesError) throw salesError
 
