@@ -147,13 +147,8 @@ export default function RegistrarVentaPage() {
       if (productError) throw new Error(`Error al obtener producto: ${productError.message}`)
       if (!product) throw new Error("Producto no encontrado")
 
-      // Calcular totales - usar la columna 'points' del producto, no 'price'
+      // Calcular totales
       const calculatedTotalPoints = product.points * quantity
-
-      // Validar que los puntos calculados son válidos
-      if (!calculatedTotalPoints || calculatedTotalPoints <= 0) {
-        throw new Error("Los puntos calculados no son válidos")
-      }
 
       // Registrar la venta
       const { data, error } = await supabase

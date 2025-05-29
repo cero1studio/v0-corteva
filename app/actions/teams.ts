@@ -28,14 +28,14 @@ export async function createTeam(formData: FormData) {
   const name = formData.get("name") as string
   const zoneId = formData.get("zoneId") as string
   const distributorId = formData.get("distributorId") as string
-  const goals = Number.parseInt(formData.get("goals") as string) || 0
+  const goal = Number.parseInt(formData.get("goal") as string) || 0
 
   try {
     const { error } = await supabase.from("teams").insert({
       name,
       zone_id: zoneId,
       distributor_id: distributorId,
-      goals,
+      goal,
     })
 
     if (error) {
@@ -76,7 +76,7 @@ export async function getTeams() {
     .select(`
       id,
       name,
-      goals,
+      goal,
       created_at,
       zones (
         id,
@@ -96,59 +96,6 @@ export async function getTeams() {
   }
 
   return data
-}
-
-export async function getAllTeams() {
-  const cookieStore = cookies()
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value
-        },
-        set(name: string, value: string, options: any) {
-          cookieStore.set({ name, value, ...options })
-        },
-        remove(name: string, options: any) {
-          cookieStore.set({ name, value: "", ...options })
-        },
-      },
-    },
-  )
-
-  try {
-    const { data, error } = await supabase
-      .from("teams")
-      .select(`
-        id,
-        name,
-        goals,
-        zone_id,
-        created_at,
-        zones (
-          id,
-          name
-        ),
-        distributors (
-          id,
-          name,
-          logo_url
-        )
-      `)
-      .order("name", { ascending: true })
-
-    if (error) {
-      console.error("Error al obtener todos los equipos:", error)
-      return { success: false, error: error.message }
-    }
-
-    return { success: true, data: data || [] }
-  } catch (error: any) {
-    console.error("Error inesperado al obtener equipos:", error)
-    return { success: false, error: error.message }
-  }
 }
 
 export async function deleteTeam(teamId: string) {
@@ -198,49 +145,4 @@ export async function deleteTeam(teamId: string) {
   } catch (error: any) {
     return { error: error.message || "Error al eliminar el equipo" }
   }
-}
-
-// Alias para mantener consistencia con otras funciones "getAll"
-export const getAllTeamsForAdmin = getAllTeams
-
-// Función adicional para obtener equipos con formato simple
-export async function getTeamsSimple() {
-  const cookieStore = cookies()
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value
-        },
-        set(name: string, value: string, options: any) {
-          cookieStore.set({ name, value, ...options })
-        },
-        remove(name: string, options: any) {
-          cookieStore.set({ name, value: "", ...options })
-        },
-      },
-    },
-  )
-
-  const { data, error } = await supabase
-    .from("teams")
-    .select(`
-      id,
-      name,
-      zone_id,
-      zones (
-        id,
-        name
-      )
-    `)
-    .order("name", { ascending: true })
-
-  if (error) {
-    console.error("Error al obtener equipos:", error)
-    return []
-  }
-
-  return data || []
 }

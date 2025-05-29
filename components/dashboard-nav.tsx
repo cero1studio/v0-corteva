@@ -64,9 +64,8 @@ export function DashboardNav({ role }: NavProps) {
           { href: "/admin/usuarios", label: "Usuarios", icon: User },
           { href: "/admin/productos", label: "Productos", icon: Package },
           { href: "/admin/distribuidores", label: "Distribuidores", icon: ShoppingCart },
-          { href: "/admin/ventas", label: "Ventas", icon: ShoppingCart },
-          { href: "/admin/clientes", label: "Clientes", icon: Users },
           { href: "/admin/ranking", label: "Ranking", icon: Trophy },
+          { href: "/admin/penalties", label: "Penalidades", icon: Flag },
           { href: "/admin/configuracion", label: "Configuración", icon: Settings },
         ]
       case "capitan":

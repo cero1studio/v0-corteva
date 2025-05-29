@@ -10,12 +10,11 @@ import { GoalCelebration } from "@/components/goal-celebration"
 import { LiveFeed } from "@/components/live-feed"
 import Link from "next/link"
 import { supabase } from "@/lib/supabase/client"
-import { useToast } from "@/hooks/use-toast"
+import { useToast } from "@/components/ui/use-toast"
 import { EmptyState } from "@/components/empty-state"
 import { useRouter } from "next/navigation"
 import { Progress } from "@/components/ui/progress"
 import { getImageUrl, getDistributorLogoUrl } from "@/lib/utils/image"
-import { getTeamRankingByZone } from "@/app/actions/ranking"
 
 // Constante para la conversión de puntos a goles
 const PUNTOS_POR_GOL = 100
@@ -135,6 +134,7 @@ export default function CapitanDashboard() {
         // Guardar datos del distribuidor del equipo
         if (teamData.distributors) {
           setDistributorData(teamData.distributors)
+          console.log("Distribuidor del equipo:", teamData.distributors)
         }
       }
 
@@ -156,71 +156,76 @@ export default function CapitanDashboard() {
 
   async function loadTeamData(userId: string, teamId: string) {
     try {
-      console.log("Cargando datos del equipo para usuario:", userId, "equipo:", teamId)
+      console.log("Cargando datos del equipo para usuario:", userId)
 
-      // Obtener todos los miembros del equipo
-      const { data: teamMembers, error: teamError } = await supabase.from("profiles").select("id").eq("team_id", teamId)
-
-      if (teamError) {
-        console.error("Error al obtener miembros del equipo:", teamError)
-        return
-      }
-
-      if (!teamMembers || teamMembers.length === 0) {
-        console.log("No se encontraron miembros en el equipo")
-        return
-      }
-
-      // Obtener IDs de todos los miembros del equipo
-      const memberIds = teamMembers.map((member) => member.id)
-      console.log("IDs de miembros del equipo:", memberIds)
-
-      // Cargar ventas de todos los miembros del equipo
+      // Cargar ventas usando la columna 'representative_id'
       const { data: salesData, error: salesError } = await supabase
         .from("sales")
-        .select(`
-          *,
-          products(id, name, image_url)
-        `)
-        .in("representative_id", memberIds)
+        .select("*, products(id, name, image_url)")
+        .eq("representative_id", userId)
         .order("created_at", { ascending: false })
 
-      if (salesError) {
-        console.error("Error cargando ventas:", salesError)
-      } else {
-        console.log("Ventas cargadas:", salesData?.length || 0)
-        setSalesData(salesData || [])
-      }
+      if (salesError) throw salesError
+      setSalesData(salesData || [])
 
-      // Cargar clientes de todos los miembros del equipo
+      // Cargar clientes
       const { data: clientsData, error: clientsError } = await supabase
         .from("competitor_clients")
         .select("*")
-        .in("representative_id", memberIds)
+        .eq("representative_id", userId)
         .order("created_at", { ascending: false })
 
-      if (clientsError) {
-        console.error("Error cargando clientes:", clientsError)
-      } else {
-        console.log("Clientes cargados:", clientsData?.length || 0)
-        setClientsData(clientsData || [])
+      if (clientsError) throw clientsError
+      setClientsData(clientsData || [])
+
+      // Obtener los puntos totales del equipo directamente de la base de datos
+      const { data: teamData, error: teamError } = await supabase
+        .from("teams")
+        .select("total_points, goals")
+        .eq("id", teamId)
+        .single()
+
+      if (teamError) {
+        console.error("Error al obtener puntos del equipo:", teamError)
+      } else if (teamData) {
+        console.log("Datos del equipo cargados:", teamData)
       }
 
-      // Cargar ranking real de la zona usando las funciones de server actions
+      // Cargar ranking real de la zona
       try {
         if (teamId && teamId !== "null" && teamId !== "undefined") {
           const zoneId = teamData?.zone_id || userData?.zone_id
 
           if (zoneId) {
-            // Usar la función de server action en lugar de fetch
-            const rankingResult = await getTeamRankingByZone(zoneId)
+            // Obtener el ranking de la zona
+            const { data: zoneRankingData, error: zoneRankingError } = await supabase
+              .from("teams")
+              .select(`
+                id,
+                name,
+                total_points,
+                distributors:distributor_id(id, name, logo_url)
+              `)
+              .eq("zone_id", zoneId)
+              .order("total_points", { ascending: false })
 
-            if (rankingResult.success && rankingResult.data) {
-              setZoneRanking(rankingResult.data)
-              const position = rankingResult.data.findIndex((t: any) => t.team_id === teamId) + 1
+            if (zoneRankingError) throw zoneRankingError
+
+            if (zoneRankingData) {
+              // Formatear los datos para que coincidan con el formato esperado
+              const formattedRanking = zoneRankingData.map((team) => ({
+                team_id: team.id,
+                team_name: team.name,
+                total_points: team.total_points || 0,
+                distributor_name: team.distributors?.name || "",
+                distributor_logo: team.distributors?.logo_url || "",
+              }))
+
+              setZoneRanking(formattedRanking)
+
+              // Encontrar la posición del equipo actual en el ranking
+              const position = formattedRanking.findIndex((t) => t.team_id === teamId) + 1
               setRankingPosition(position > 0 ? position : null)
-            } else {
-              console.error("Error en ranking:", rankingResult.error)
             }
           }
         }
@@ -231,12 +236,6 @@ export default function CapitanDashboard() {
       console.error("Error al cargar datos del equipo:", error)
     }
   }
-
-  useEffect(() => {
-    if (team && user) {
-      loadTeamData(user.id, team.id)
-    }
-  }, [team, user])
 
   // Si está cargando, mostrar indicador
   if (loading) {
@@ -264,21 +263,16 @@ export default function CapitanDashboard() {
     )
   }
 
-  // Calcular estadísticas usando datos reales de ventas
+  // Calcular estadísticas incluyendo puntos de clientes - CORREGIDO
   const puntosVentas = salesData.reduce((sum, sale) => sum + (sale.points || 0), 0)
   const puntosClientes = clientsData.length * 200 // 200 puntos por cliente
-  const totalPuntos = puntosVentas + puntosClientes
+  const totalPuntos = puntosVentas + puntosClientes // Sumar correctamente ambos tipos de puntos
   const totalGoles = Math.floor(totalPuntos / puntosParaGol)
   const puntosSobrantes = totalPuntos % puntosParaGol
   const puntosParaSiguienteGol = puntosParaGol - puntosSobrantes
   const porcentajeCompletado = (puntosSobrantes / puntosParaGol) * 100
   const totalSales = salesData.length
   const totalClients = clientsData.length
-
-  // Agregar después de la línea donde se calculan las estadísticas
-  console.log("Datos de ventas:", salesData)
-  console.log("Puntos de ventas calculados:", puntosVentas)
-  console.log("Total de ventas:", totalSales)
 
   return (
     <div className="flex-1 space-y-6 p-6">

@@ -3,53 +3,6 @@
 import { createServerClient } from "@/lib/supabase/server"
 import { revalidatePath } from "next/cache"
 
-// Alias de getUsers para mantener consistencia con otras funciones "getAll"
-export const getAllUsers = getUsers
-
-// Agregar después de la línea donde se define getAllUsers:
-
-// Función adicional para obtener usuarios simples (solo representantes)
-export async function getRepresentatives() {
-  try {
-    const supabase = createServerClient()
-
-    const { data: profiles, error: profilesError } = await supabase
-      .from("profiles")
-      .select(`
-        id, 
-        email, 
-        full_name, 
-        role, 
-        team_id
-      `)
-      .in("role", ["Representante", "Capitan"])
-      .order("full_name")
-
-    if (profilesError) {
-      console.error("Error al obtener representantes:", profilesError)
-      return { error: profilesError.message, data: [] }
-    }
-
-    return { data: profiles || [], error: null }
-  } catch (error: any) {
-    console.error("Error en getRepresentatives:", error)
-    return { error: error.message || "Error al obtener representantes", data: [] }
-  }
-}
-
-// Función para obtener usuarios con formato simple
-export async function getUsersSimple() {
-  try {
-    const result = await getUsers()
-    if (result.error) {
-      return { success: false, data: [], error: result.error }
-    }
-    return { success: true, data: result.data || [], error: null }
-  } catch (error: any) {
-    return { success: false, data: [], error: error.message }
-  }
-}
-
 // Replace the getUsers function with this updated version that uses explicit joins
 export async function getUsers() {
   try {
@@ -1455,7 +1408,7 @@ export async function importUsersFromList() {
         full_name: "Leonardo Perez",
         role: "Capitan",
         zone_id: "d5e6f7a8-b9c0-4d5e-6f7a-3456789abcdef", // Caribe Húmedo
-        distributor_id: "abcdef1234-5678-90ab-cdef-123456789abc", // Insagrin
+        distributor_id: "abcdef1234-5678-90ab-cdef-123456789abc", // Cosechar
       },
       {
         email: "micaela.gomez@llevolasriendas.com",
@@ -1551,6 +1504,9 @@ export async function importUsersFromList() {
         full_name: "Yolanda Castillo",
         role: "Capitan",
         zone_id: "d7e8f9a0-b1c2-6d7e-8f9a-f0123456789abc", // Meta
+        distributor_id: "7890abcdef1-2345-6789-0abc-def123456789", // Cosechar
+      },
+      {
         distributor_id: "7890abcdef1-2345-6789-0abc-def123456789", // Cosechar
       },
       {

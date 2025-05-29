@@ -123,16 +123,3 @@ export async function deleteZone(zoneId: string) {
     return { error: error.message || "Error al eliminar la zona" }
   }
 }
-
-// Alias para mantener consistencia con otras funciones "getAll"
-export const getAllZones = getZones
-
-// Función adicional que devuelve el formato esperado por las páginas admin
-export async function getAllZonesForAdmin() {
-  try {
-    const zones = await getZones()
-    return { success: true, data: zones, error: null }
-  } catch (error: any) {
-    return { success: false, data: [], error: error.message }
-  }
-}

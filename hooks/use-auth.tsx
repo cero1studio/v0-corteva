@@ -24,6 +24,7 @@ type AuthContextType = {
   user: User | null
   profile: UserProfile | null
   isLoading: boolean
+  loadingMessage: string
   error: string | null
   signIn: (email: string, password: string) => Promise<{ error: string | null }>
   signOut: () => Promise<void>
@@ -39,6 +40,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [loadingMessage, setLoadingMessage] = useState("Inicializando...")
   const [error, setError] = useState<string | null>(null)
   const router = useRouter()
   const pathname = usePathname()
@@ -58,8 +60,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Función para obtener la ruta del dashboard según el rol
   const getDashboardRoute = (role: string, hasTeam = true) => {
-    console.log(`getDashboardRoute: rol=${role}, hasTeam=${hasTeam}`)
-
     switch (role) {
       case "admin":
         return "/admin/dashboard"
@@ -72,75 +72,58 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       case "representante":
         return "/representante/dashboard"
       default:
-        console.log(`Rol desconocido: ${role}`)
         return "/login"
     }
   }
 
-  // Función para obtener el perfil del usuario con manejo robusto de errores
-  const fetchUserProfile = async (userId: string, retryCount = 0): Promise<UserProfile | null> => {
-    const maxRetries = 3
-    const retryDelay = 2000 // 2 segundos entre reintentos
+  // Función para redireccionar solo cuando tengamos datos completos
+  const redirectToDashboard = (userProfile: UserProfile) => {
+    console.log(`Redirigiendo usuario con rol ${userProfile.role}`)
 
+    const hasTeam = !!userProfile.team_id
+    const dashboardRoute = getDashboardRoute(userProfile.role, hasTeam)
+
+    console.log(`Redirigiendo a: ${dashboardRoute}`)
+    setLoadingMessage("Redirigiendo al dashboard...")
+
+    // Usar window.location.href para forzar la redirección
+    if (typeof window !== "undefined") {
+      window.location.href = dashboardRoute
+    }
+  }
+
+  // Función para obtener el perfil del usuario
+  const fetchUserProfile = async (userId: string): Promise<UserProfile | null> => {
     try {
-      console.log(`Obteniendo perfil para usuario: ${userId} (intento ${retryCount + 1}/${maxRetries + 1})`)
+      console.log(`Obteniendo perfil para usuario: ${userId}`)
+      setLoadingMessage("Cargando tu perfil...")
 
-      // Verificar que tengamos una sesión válida antes de hacer la consulta
-      const {
-        data: { session: currentSession },
-      } = await supabase.auth.getSession()
-      if (!currentSession) {
-        console.error("No hay sesión activa para obtener el perfil")
-        return null
-      }
-
+      // Consulta directa a la tabla profiles
       const { data, error } = await supabase.from("profiles").select("*").eq("id", userId).single()
 
       if (error) {
-        console.error("Error fetching user profile:", error)
-
-        // Si es un error de red y no hemos alcanzado el máximo de reintentos
-        if (error.message?.includes("Failed to fetch") && retryCount < maxRetries) {
-          console.log(`Error de red, reintentando en ${retryDelay / 1000} segundos...`)
-          await new Promise((resolve) => setTimeout(resolve, retryDelay))
-          return fetchUserProfile(userId, retryCount + 1)
-        }
-
+        console.error("Error al obtener perfil:", error)
         return null
       }
 
-      // Validar que el perfil tenga los datos mínimos necesarios
-      if (!data || !data.role) {
-        console.error("Perfil incompleto o sin rol:", data)
-
-        // Si el perfil está incompleto y no hemos alcanzado el máximo de reintentos
-        if (retryCount < maxRetries) {
-          console.log(`Perfil incompleto, reintentando en ${retryDelay / 1000} segundos...`)
-          await new Promise((resolve) => setTimeout(resolve, retryDelay))
-          return fetchUserProfile(userId, retryCount + 1)
-        }
-
+      if (!data) {
+        console.error("No se encontró el perfil")
         return null
       }
 
       console.log("Perfil obtenido exitosamente:", data)
 
-      // Si el usuario es capitán, intentar obtener el nombre del equipo
+      // Obtener nombre del equipo si es capitán (opcional)
       let teamName = null
       if (data.role === "capitan" && data.team_id) {
         try {
-          const { data: team, error: teamError } = await supabase
-            .from("teams")
-            .select("name")
-            .eq("id", data.team_id)
-            .single()
-
-          if (!teamError && team) {
+          setLoadingMessage("Cargando información del equipo...")
+          const { data: team } = await supabase.from("teams").select("name").eq("id", data.team_id).single()
+          if (team) {
             teamName = team.name
           }
         } catch (err) {
-          console.error("Error al obtener el equipo:", err)
-          // No es crítico, continuamos sin el nombre del equipo
+          console.log("No se pudo obtener el nombre del equipo")
         }
       }
 
@@ -155,20 +138,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         distributor_id: data.distributor_id,
       }
     } catch (error: any) {
-      console.error("Error in fetchUserProfile:", error)
-
-      // Si es un error de red y no hemos alcanzado el máximo de reintentos
-      if (error.message?.includes("Failed to fetch") && retryCount < maxRetries) {
-        console.log(`Error de red, reintentando en ${retryDelay / 1000} segundos...`)
-        await new Promise((resolve) => setTimeout(resolve, retryDelay))
-        return fetchUserProfile(userId, retryCount + 1)
-      }
-
+      console.error("Error al obtener perfil:", error)
       return null
     }
   }
 
-  // Función para refrescar el perfil manualmente
+  // Función para refrescar el perfil
   const refreshProfile = async () => {
     if (!user) return
 
@@ -178,172 +153,151 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
-  // Función para limpiar tokens corruptos
-  const clearCorruptedTokens = () => {
-    try {
-      if (typeof window !== "undefined") {
-        localStorage.removeItem("supabase.auth.token")
-        const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_URL?.split("//")[1]?.split(".")[0]
-        if (supabaseKey) {
-          localStorage.removeItem(`sb-${supabaseKey}-auth-token`)
+  // Función para esperar hasta tener datos completos
+  const waitForCompleteData = async (sessionData: Session) => {
+    console.log("Esperando datos completos...")
+    setLoadingMessage("Verificando tu sesión...")
+
+    let attempts = 0
+    const maxAttempts = 10 // Máximo 30 segundos (10 intentos x 3 segundos)
+
+    const checkData = async (): Promise<boolean> => {
+      attempts++
+      console.log(`Intento ${attempts}/${maxAttempts} para obtener datos completos`)
+      setLoadingMessage(`Cargando datos (${attempts}/${maxAttempts})...`)
+
+      // Verificar que la sesión sigue siendo válida
+      const { data: currentSession } = await supabase.auth.getSession()
+      if (!currentSession?.session) {
+        console.log("Sesión perdida durante la espera")
+        setLoadingMessage("Sesión perdida, reintentando...")
+        return false
+      }
+
+      // Intentar obtener el perfil
+      const userProfile = await fetchUserProfile(sessionData.user.id)
+
+      if (userProfile) {
+        console.log("Datos completos obtenidos!")
+        setLoadingMessage("¡Datos cargados exitosamente!")
+        setSession(sessionData)
+        setUser(sessionData.user)
+        setProfile(userProfile)
+        setError(null)
+        setIsLoading(false)
+
+        // Solo redirigir si estamos en login
+        if (pathname === "/login") {
+          redirectToDashboard(userProfile)
+        }
+
+        return true
+      }
+
+      return false
+    }
+
+    // Intentar inmediatamente
+    const success = await checkData()
+    if (success) return
+
+    // Si no funciona, esperar e intentar cada 3 segundos
+    const interval = setInterval(async () => {
+      const success = await checkData()
+
+      if (success || attempts >= maxAttempts) {
+        clearInterval(interval)
+
+        if (!success) {
+          console.error("No se pudieron obtener los datos después de varios intentos")
+          setError("No se pudo cargar tu perfil. Por favor, recarga la página.")
+          setLoadingMessage("Error al cargar datos")
+          setIsLoading(false)
         }
       }
-    } catch (error) {
-      console.error("Error clearing tokens:", error)
-    }
+    }, 3000)
   }
 
-  // Inicializar la autenticación
+  // Inicializar autenticación
   useEffect(() => {
     let mounted = true
 
     const initAuth = async () => {
       try {
-        setIsLoading(true)
-        setError(null)
         console.log("Inicializando autenticación...")
+        setLoadingMessage("Inicializando aplicación...")
 
-        // Obtener la sesión actual
+        // Obtener sesión actual
         const { data, error } = await supabase.auth.getSession()
 
         if (!mounted) return
 
         if (error) {
-          console.error("Error getting session:", error)
-
-          // Si es un error de refresh token, limpiar tokens y continuar
-          if (
-            error.message?.includes("refresh_token_not_found") ||
-            error.message?.includes("invalid_grant") ||
-            error.message?.includes("refresh_token")
-          ) {
-            console.log("Token corrupto detectado, limpiando...")
-            clearCorruptedTokens()
-            setSession(null)
-            setUser(null)
-            setProfile(null)
-
-            if (!isPublicRoute) {
-              router.push("/login")
+          console.error("Error al obtener sesión:", error)
+          setLoadingMessage("Error de conexión")
+          if (!isPublicRoute) {
+            // Solo redirigir a login si estamos en una ruta protegida
+            if (typeof window !== "undefined") {
+              window.location.href = "/login"
             }
-            return
           }
-
-          throw error
+          setIsLoading(false)
+          return
         }
 
         if (data?.session) {
-          console.log("Sesión encontrada:", data.session.user.id)
-          setSession(data.session)
-          setUser(data.session.user)
-
-          // Obtener el perfil del usuario con reintentos automáticos
-          const userProfile = await fetchUserProfile(data.session.user.id)
-
-          if (!mounted) return
-
-          if (userProfile) {
-            console.log("Perfil obtenido - rol:", userProfile.role)
-            setProfile(userProfile)
-
-            // Redirigir según el rol si estamos en login
-            if (pathname === "/login") {
-              const hasTeam = !!userProfile.team_id
-              const dashboardRoute = getDashboardRoute(userProfile.role, hasTeam)
-              console.log(`Redirigiendo a ${dashboardRoute} desde login`)
-              router.push(dashboardRoute)
+          console.log("Sesión encontrada, esperando datos completos...")
+          setLoadingMessage("Sesión encontrada, cargando datos...")
+          // Esperar hasta tener datos completos
+          await waitForCompleteData(data.session)
+        } else {
+          console.log("No hay sesión activa")
+          setLoadingMessage("No hay sesión activa")
+          if (!isPublicRoute) {
+            // Solo redirigir a login si estamos en una ruta protegida
+            if (typeof window !== "undefined") {
+              window.location.href = "/login"
             }
-          } else {
-            console.error("No se pudo obtener el perfil del usuario después de varios intentos")
-            setError("No se pudo cargar el perfil del usuario. Por favor, recarga la página o inténtalo más tarde.")
-
-            // No redirigir a login si ya tenemos una sesión válida
-            // Permitir que el usuario recargue la página
           }
-        } else if (!isPublicRoute) {
-          // Si no hay sesión y no estamos en una ruta pública, redirigir a login
-          console.log("No hay sesión, redirigiendo a login")
-          router.push("/login")
-        }
-      } catch (error: any) {
-        if (!mounted) return
-
-        console.error("Auth initialization error:", error)
-        setError(error.message)
-
-        // Limpiar tokens si hay error de autenticación
-        if (error.message?.includes("refresh_token") || error.message?.includes("invalid_grant")) {
-          clearCorruptedTokens()
-        }
-
-        if (!isPublicRoute) {
-          router.push("/login")
-        }
-      } finally {
-        if (mounted) {
           setIsLoading(false)
         }
+      } catch (error: any) {
+        console.error("Error de inicialización:", error)
+        setError(error.message)
+        setLoadingMessage("Error de inicialización")
+        setIsLoading(false)
       }
     }
 
     initAuth()
 
-    // Suscribirse a cambios en la autenticación
+    // Suscribirse a cambios de autenticación
     const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (!mounted) return
 
       console.log("Auth state changed:", event)
 
       if (event === "SIGNED_IN" && session) {
-        setSession(session)
-        setUser(session.user)
+        console.log("Usuario autenticado, esperando datos completos...")
+        setLoadingMessage("Autenticación exitosa, cargando datos...")
         setError(null)
         setIsLoading(true)
 
-        // Esperar un momento para que la base de datos se sincronice
-        await new Promise((resolve) => setTimeout(resolve, 2000))
-
-        // Obtener el perfil del usuario con reintentos
-        const userProfile = await fetchUserProfile(session.user.id)
-
-        if (!mounted) return
-
-        if (userProfile) {
-          console.log("Perfil obtenido después de login - rol:", userProfile.role)
-          setProfile(userProfile)
-          setIsLoading(false)
-
-          const hasTeam = !!userProfile.team_id
-          const dashboardRoute = getDashboardRoute(userProfile.role, hasTeam)
-          console.log(`Redirigiendo a ${dashboardRoute} después de iniciar sesión`)
-          router.push(dashboardRoute)
-        } else {
-          console.error("No se pudo obtener el perfil después del login")
-          setError("Error al cargar el perfil del usuario. Por favor, recarga la página.")
-          setIsLoading(false)
-        }
+        // Esperar hasta tener datos completos
+        await waitForCompleteData(session)
       } else if (event === "SIGNED_OUT") {
+        console.log("Usuario desconectado")
+        setLoadingMessage("Cerrando sesión...")
         setSession(null)
         setUser(null)
         setProfile(null)
         setError(null)
         setIsLoading(false)
+
         if (!isPublicRoute) {
-          router.push("/login")
-        }
-      } else if (event === "TOKEN_REFRESHED" && session) {
-        setSession(session)
-        setUser(session.user)
-        setError(null)
-      } else if (event === "TOKEN_REFRESH_FAILED") {
-        console.log("Token refresh failed, clearing session")
-        clearCorruptedTokens()
-        setSession(null)
-        setUser(null)
-        setProfile(null)
-        setIsLoading(false)
-        if (!isPublicRoute) {
-          router.push("/login")
+          if (typeof window !== "undefined") {
+            window.location.href = "/login"
+          }
         }
       }
     })
@@ -352,17 +306,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       mounted = false
       authListener.subscription.unsubscribe()
     }
-  }, [router, pathname, isPublicRoute])
+  }, [isPublicRoute, pathname])
 
   // Función para iniciar sesión
   const signIn = async (email: string, password: string) => {
     try {
       setIsLoading(true)
+      setLoadingMessage("Iniciando sesión...")
       setError(null)
-      console.log("Iniciando sesión con:", email)
 
-      // Limpiar tokens antes de intentar login
-      clearCorruptedTokens()
+      console.log("Iniciando sesión con:", email)
 
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
@@ -370,18 +323,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       })
 
       if (error) {
-        console.error("Error de inicio de sesión:", error)
+        console.error("Error de login:", error)
         setError(error.message)
+        setLoadingMessage("Error en el login")
         setIsLoading(false)
         return { error: error.message }
       }
 
-      console.log("Inicio de sesión exitoso, esperando sincronización...")
-      // El loading se mantiene activo y se desactiva en el listener de onAuthStateChange
+      console.log("Login exitoso, esperando datos completos...")
+      setLoadingMessage("Login exitoso, cargando datos...")
+      // El loading se mantiene hasta que tengamos datos completos
       return { error: null }
     } catch (error: any) {
       console.error("Error en signIn:", error)
       setError(error.message)
+      setLoadingMessage("Error de conexión")
       setIsLoading(false)
       return { error: error.message }
     }
@@ -391,37 +347,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signOut = async () => {
     try {
       setIsLoading(true)
+      setLoadingMessage("Cerrando sesión...")
       console.log("Cerrando sesión...")
 
-      // Primero cerrar sesión en Supabase
-      const { error } = await supabase.auth.signOut()
+      await supabase.auth.signOut()
 
-      if (error) {
-        console.error("Error al cerrar sesión:", error)
-        // No lanzar error, continuar con limpieza local
+      setSession(null)
+      setUser(null)
+      setProfile(null)
+      setError(null)
+
+      if (typeof window !== "undefined") {
+        window.location.href = "/login"
       }
-
-      // Limpiar tokens y estado local
-      clearCorruptedTokens()
-      setSession(null)
-      setUser(null)
-      setProfile(null)
-      setError(null)
-
-      console.log("Sesión cerrada exitosamente")
-
-      // Redireccionar después de limpiar el estado
-      router.push("/login")
-    } catch (error: any) {
-      console.error("Sign out error:", error)
-
-      // Aún si hay error, limpiar estado local y redireccionar
-      clearCorruptedTokens()
-      setSession(null)
-      setUser(null)
-      setProfile(null)
-      setError(null)
-      router.push("/login")
+    } catch (error) {
+      console.error("Error al cerrar sesión:", error)
     } finally {
       setIsLoading(false)
     }
@@ -432,6 +372,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     user,
     profile,
     isLoading,
+    loadingMessage,
     error,
     signIn,
     signOut,
