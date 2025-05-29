@@ -25,7 +25,7 @@ type AuthContextType = {
   profile: UserProfile | null
   isLoading: boolean
   error: string | null
-  signIn: (email: string, password: string) => Promise<{ error: string | null }>
+  signIn: (email: string, password: string) => Promise<{ error: string | null; profile?: UserProfile }>
   signOut: () => Promise<void>
   refreshProfile: () => Promise<void>
 }
@@ -56,31 +56,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Verificar si la ruta actual es pública
   const isPublicRoute = publicRoutes.some((route) => pathname?.startsWith(route))
 
-  // Función para obtener la ruta del dashboard según el rol
-  const getDashboardRoute = (role: string, hasTeam = true) => {
-    switch (role) {
-      case "admin":
-        return "/admin/dashboard"
-      case "capitan":
-        return hasTeam ? "/capitan/dashboard" : "/capitan/crear-equipo"
-      case "director_tecnico":
-        return "/director-tecnico/dashboard"
-      case "supervisor":
-        return "/supervisor/dashboard"
-      case "representante":
-        return "/representante/dashboard"
-      default:
-        return "/login"
-    }
-  }
-
-  // Función simplificada para obtener el perfil del usuario
+  // Función para obtener el perfil del usuario
   const fetchUserProfile = async (userId: string): Promise<UserProfile | null> => {
     try {
       console.log(`Obteniendo perfil para usuario: ${userId}`)
-
-      // Esperar 4 segundos para que la base de datos se sincronice
-      await new Promise((resolve) => setTimeout(resolve, 4000))
 
       const { data, error } = await supabase.from("profiles").select("*").eq("id", userId).single()
 
@@ -135,7 +114,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
-  // Inicializar la autenticación de forma simple
+  // Inicializar la autenticación - SIN REDIRECCIONES AUTOMÁTICAS
   useEffect(() => {
     let mounted = true
 
@@ -154,9 +133,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setSession(null)
           setUser(null)
           setProfile(null)
-          if (!isPublicRoute) {
-            router.push("/login")
-          }
+          setIsLoading(false)
           return
         }
 
@@ -172,33 +149,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           if (userProfile) {
             console.log("Perfil obtenido - rol:", userProfile.role)
             setProfile(userProfile)
-
-            // Solo redirigir si estamos en login
-            if (pathname === "/login") {
-              const hasTeam = !!userProfile.team_id
-              const dashboardRoute = getDashboardRoute(userProfile.role, hasTeam)
-              console.log(`Redirigiendo a ${dashboardRoute}`)
-              router.push(dashboardRoute)
-            }
           } else {
             console.error("No se pudo obtener el perfil del usuario")
             setError("No se pudo cargar el perfil del usuario")
           }
-        } else if (!isPublicRoute) {
-          console.log("No hay sesión, redirigiendo a login")
-          router.push("/login")
         }
+
+        setIsLoading(false)
       } catch (error: any) {
         if (!mounted) return
         console.error("Auth initialization error:", error)
         setError(error.message)
-        if (!isPublicRoute) {
-          router.push("/login")
-        }
-      } finally {
-        if (mounted) {
-          setIsLoading(false)
-        }
+        setIsLoading(false)
       }
     }
 
@@ -216,9 +178,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setProfile(null)
         setError(null)
         setIsLoading(false)
-        if (!isPublicRoute) {
-          router.push("/login")
-        }
       }
     })
 
@@ -226,12 +185,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       mounted = false
       authListener.subscription.unsubscribe()
     }
-  }, [router, pathname, isPublicRoute])
+  }, [])
 
-  // Función simplificada para iniciar sesión
+  // Función para iniciar sesión - SIN REDIRECCIÓN AUTOMÁTICA
   const signIn = async (email: string, password: string) => {
     try {
-      setIsLoading(true)
       setError(null)
       console.log("Iniciando sesión con:", email)
 
@@ -243,7 +201,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (error) {
         console.error("Error de inicio de sesión:", error)
         setError(error.message)
-        setIsLoading(false)
         return { error: error.message }
       }
 
@@ -256,21 +213,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         if (userProfile) {
           setProfile(userProfile)
-          const hasTeam = !!userProfile.team_id
-          const dashboardRoute = getDashboardRoute(userProfile.role, hasTeam)
-          console.log(`Login exitoso, redirigiendo a ${dashboardRoute}`)
-          router.push(dashboardRoute)
+          console.log(`Login exitoso - perfil cargado:`, userProfile)
+
+          // Retornar el perfil para que el componente de login maneje la redirección
+          return { error: null, profile: userProfile }
         } else {
           setError("No se pudo cargar el perfil del usuario")
+          return { error: "No se pudo cargar el perfil del usuario" }
         }
       }
 
-      setIsLoading(false)
       return { error: null }
     } catch (error: any) {
       console.error("Error en signIn:", error)
       setError(error.message)
-      setIsLoading(false)
       return { error: error.message }
     }
   }
