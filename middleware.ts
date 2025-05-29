@@ -42,13 +42,11 @@ export async function middleware(req: NextRequest) {
 
     // Si hay error con el refresh token
     if (sessionError?.message?.includes("refresh_token") || sessionError?.message?.includes("invalid_grant")) {
-      res.cookies.delete("supabase-auth-token")
-      res.cookies.delete("supabase.auth.token")
+      const redirectRes = NextResponse.redirect(new URL("/login", req.url))
+      redirectRes.cookies.delete("supabase-auth-token")
+      redirectRes.cookies.delete("supabase.auth.token")
 
-      if (!isPublicRoute) {
-        return NextResponse.redirect(new URL("/login", req.url))
-      }
-      return res
+      return isPublicRoute ? res : redirectRes
     }
 
     // Si no hay sesión y no es ruta pública
@@ -69,7 +67,6 @@ export async function middleware(req: NextRequest) {
         return res
       }
 
-      // Verificación de accesos por rol
       const role = profile?.role
 
       const redirects: Record<string, string> = {
@@ -80,7 +77,6 @@ export async function middleware(req: NextRequest) {
         representante: "/representante/dashboard",
       }
 
-      // Evitar acceso no autorizado
       const roleAccessPaths: Record<string, string> = {
         "/admin": "admin",
         "/capitan": "capitan",
@@ -94,8 +90,6 @@ export async function middleware(req: NextRequest) {
           return NextResponse.redirect(new URL(redirects[role] || "/login", req.url))
         }
       }
-
-      // ⚠️ NO redirigimos si ya está en /login. Deja que lo maneje el frontend con useAuth
     }
 
     return res
