@@ -11,7 +11,7 @@ export const getAllUsers = getUsers
 // Función adicional para obtener usuarios simples (solo representantes)
 export async function getRepresentatives() {
   try {
-    const supabase = createServerClient()
+    const supabase = await createServerClient()
 
     const { data: profiles, error: profilesError } = await supabase
       .from("profiles")
@@ -53,7 +53,7 @@ export async function getUsersSimple() {
 // Replace the getUsers function with this updated version that uses explicit joins
 export async function getUsers() {
   try {
-    const supabase = createServerClient()
+    const supabase = await createServerClient()
 
     console.log("Obteniendo usuarios...")
 
@@ -120,7 +120,7 @@ export async function getUsers() {
 
 export async function deleteUser(userId: string) {
   try {
-    const supabase = createServerClient()
+    const supabase = await createServerClient()
 
     console.log("Eliminando usuario:", userId)
 
@@ -203,7 +203,7 @@ export async function createUser(formData: FormData) {
       return { error: "La contraseña debe tener al menos 6 caracteres" }
     }
 
-    const supabase = createServerClient()
+    const supabase = await createServerClient()
 
     // Verificar si el usuario ya existe en profiles
     const { data: existingProfile } = await supabase.from("profiles").select("email").eq("email", email).single()
@@ -294,7 +294,8 @@ async function findAuthUserByEmail(supabase: any, email: string) {
 
 export async function updateUser(userId: string, formData: FormData) {
   try {
-    console.log("Iniciando actualización de usuario:", userId)
+    const supabase = await createServerClient()
+    // ... resto del código igual pero usando await supabase
 
     const email = formData.get("email") as string
     const fullName = formData.get("fullName") as string
@@ -326,8 +327,6 @@ export async function updateUser(userId: string, formData: FormData) {
     if (password && password.trim() !== "" && password.length < 6) {
       return { error: "La contraseña debe tener al menos 6 caracteres" }
     }
-
-    const supabase = createServerClient()
 
     // Verificar si el email ya existe en otro usuario
     const { data: existingUser } = await supabase
@@ -822,7 +821,7 @@ export async function migrateEmailDomains() {
 
 export async function getUserById(userId: string) {
   try {
-    const supabase = createServerClient()
+    const supabase = await createServerClient()
 
     const { data, error } = await supabase
       .from("profiles")
@@ -854,7 +853,7 @@ export async function getUserById(userId: string) {
 
 export async function getZones() {
   try {
-    const supabase = createServerClient()
+    const supabase = await createServerClient()
 
     const { data, error } = await supabase.from("zones").select("id, name").order("name")
 
@@ -872,7 +871,7 @@ export async function getZones() {
 
 export async function getDistributors() {
   try {
-    const supabase = createServerClient()
+    const supabase = await createServerClient()
 
     const { data, error } = await supabase.from("distributors").select("id, name, logo_url").order("name")
 
