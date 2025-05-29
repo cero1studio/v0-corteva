@@ -1,86 +1,125 @@
-import Link from "next/link"
+"use client"
+
+import { useEffect } from "react"
+import { useRouter } from "next/navigation"
+import { useAuth } from "@/hooks/use-auth"
+import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { Trophy, Users, Target, TrendingUp } from "lucide-react"
 import Image from "next/image"
 
 export default function HomePage() {
+  const { user, loading } = useAuth()
+  const router = useRouter()
+
+  useEffect(() => {
+    if (!loading && user) {
+      // Redirect based on user role
+      switch (user.role) {
+        case "admin":
+          router.push("/admin/dashboard")
+          break
+        case "capitan":
+          router.push("/capitan/dashboard")
+          break
+        case "director_tecnico":
+          router.push("/director-tecnico/dashboard")
+          break
+        case "supervisor":
+          router.push("/supervisor/dashboard")
+          break
+        case "representante":
+          router.push("/representante/dashboard")
+          break
+        default:
+          router.push("/login")
+      }
+    }
+  }, [user, loading, router])
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-green-600"></div>
+      </div>
+    )
+  }
+
+  if (user) {
+    return null // Will redirect
+  }
+
   return (
-    <div className="flex min-h-screen flex-col">
+    <div className="min-h-screen bg-gradient-to-br from-green-50 to-blue-50">
+      {/* Header */}
+      <header className="bg-white shadow-sm">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center py-6">
+            <div className="flex items-center">
+              <Image
+                src="/super-ganaderia-logo.png"
+                alt="Super Ganadería"
+                width={200}
+                height={60}
+                className="h-12 w-auto"
+              />
+            </div>
+            <Button onClick={() => router.push("/login")}>Iniciar Sesión</Button>
+          </div>
+        </div>
+      </header>
+
       {/* Hero Section */}
-      <div className="bg-gradient-to-b from-corteva-50 to-white py-16">
-        <div className="container mx-auto px-4 text-center">
-          <div className="mb-8 flex justify-center">
-            <Image
-              src="/super-ganaderia-logo-black.png"
-              alt="Súper Ganadería Logo"
-              width={300}
-              height={120}
-              priority
-              className="h-auto"
-            />
-          </div>
-          <h1 className="mb-6 text-4xl font-bold text-corteva-900 md:text-5xl lg:text-6xl">Super Ganadería Concurso</h1>
-          <p className="mx-auto mb-8 max-w-2xl text-lg text-gray-700">
-            Plataforma de competición de ventas para distribuidores y representantes
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        <div className="text-center">
+          <h1 className="text-4xl font-bold text-gray-900 sm:text-5xl md:text-6xl">Super Ganadería</h1>
+          <p className="mt-3 max-w-md mx-auto text-base text-gray-500 sm:text-lg md:mt-5 md:text-xl md:max-w-3xl">
+            Plataforma de competencia de ventas para equipos comerciales
           </p>
-          <div className="flex flex-col items-center justify-center space-y-4 sm:flex-row sm:space-x-4 sm:space-y-0">
-            <Button asChild size="lg" className="bg-corteva-600 hover:bg-corteva-700">
-              <Link href="/login">Iniciar Sesión</Link>
-            </Button>
-            <Button asChild variant="outline" size="lg">
-              <Link href="/ranking-publico">Ver Ranking Público</Link>
+          <div className="mt-5 max-w-md mx-auto sm:flex sm:justify-center md:mt-8">
+            <Button size="lg" onClick={() => router.push("/ranking-publico")} className="w-full sm:w-auto">
+              Ver Ranking Público
             </Button>
           </div>
         </div>
-      </div>
 
-      {/* Features Section */}
-      <div className="py-16">
-        <div className="container mx-auto px-4">
-          <h2 className="mb-12 text-center text-3xl font-bold text-gray-900">Características Principales</h2>
-          <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-3">
-            <FeatureCard
-              title="Seguimiento en Tiempo Real"
-              description="Monitorea el progreso de ventas y metas en tiempo real para todos los equipos."
-            />
-            <FeatureCard
-              title="Ranking Competitivo"
-              description="Visualiza el rendimiento de los equipos en un ranking dinámico y competitivo."
-            />
-            <FeatureCard
-              title="Gestión de Equipos"
-              description="Administra equipos, zonas y distribuidores desde un panel centralizado."
-            />
-            <FeatureCard
-              title="Reportes Detallados"
-              description="Genera reportes detallados de ventas por producto, equipo y zona."
-            />
-            <FeatureCard
-              title="Sistema de Penaltis"
-              description="Implementa un sistema de penaltis para añadir emoción a la competición."
-            />
-            <FeatureCard
-              title="Múltiples Roles"
-              description="Diferentes niveles de acceso para administradores, supervisores, capitanes y representantes."
-            />
+        {/* Features */}
+        <div className="mt-20">
+          <div className="grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-4">
+            <Card>
+              <CardContent className="p-6 text-center">
+                <Trophy className="h-12 w-12 text-yellow-500 mx-auto mb-4" />
+                <h3 className="text-lg font-medium text-gray-900">Competencia</h3>
+                <p className="mt-2 text-sm text-gray-500">Sistema de ranking y competencia entre equipos</p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent className="p-6 text-center">
+                <Users className="h-12 w-12 text-blue-500 mx-auto mb-4" />
+                <h3 className="text-lg font-medium text-gray-900">Equipos</h3>
+                <p className="mt-2 text-sm text-gray-500">Gestión de equipos y miembros</p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent className="p-6 text-center">
+                <Target className="h-12 w-12 text-green-500 mx-auto mb-4" />
+                <h3 className="text-lg font-medium text-gray-900">Objetivos</h3>
+                <p className="mt-2 text-sm text-gray-500">Seguimiento de metas y objetivos</p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent className="p-6 text-center">
+                <TrendingUp className="h-12 w-12 text-purple-500 mx-auto mb-4" />
+                <h3 className="text-lg font-medium text-gray-900">Reportes</h3>
+                <p className="mt-2 text-sm text-gray-500">Analytics y reportes detallados</p>
+              </CardContent>
+            </Card>
           </div>
         </div>
-      </div>
-
-      {/* Footer */}
-      <footer className="mt-auto bg-gray-100 py-8">
-        <div className="container mx-auto px-4 text-center">
-          <p className="text-gray-600">© 2023 Súper Ganadería. Todos los derechos reservados.</p>
-        </div>
-      </footer>
-    </div>
-  )
-}
-
-function FeatureCard({ title, description }: { title: string; description: string }) {
-  return (
-    <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm transition-all hover:shadow-md">
-      <h3 className="mb-3 text-xl font-semibold text-corteva-800">{title}</h3>
-      <p className="text-gray-600">{description}</p>
+      </main>
     </div>
   )
 }
