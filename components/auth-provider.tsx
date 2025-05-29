@@ -1,250 +1,254 @@
 "use client"
 
 import type React from "react"
-
 import { createContext, useContext, useEffect, useState } from "react"
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
+import { supabase } from "@/lib/supabase/client"
+import { useRouter, usePathname } from "next/navigation"
 import type { Session } from "@supabase/supabase-js"
-import type { Database } from "@/types/supabase"
 
-// Define the shape of the user profile
 type UserProfile = {
   id: string
-  email: string
+  email?: string
   role: string
-  name?: string
-  team_id?: string
-  has_created_team?: boolean
+  full_name?: string
+  team_id?: string | null
+  team_name?: string | null
+  zone_id?: string
+  distributor_id?: string
 }
 
-// Define the shape of the auth context
 type AuthContextType = {
-  user: UserProfile | null
   session: Session | null
+  user: UserProfile | null
   isLoading: boolean
   isInitialized: boolean
   error: string | null
   signIn: (email: string, password: string) => Promise<{ error: string | null }>
   signOut: () => Promise<void>
+  refreshProfile: () => Promise<void>
 }
 
-// Create the auth context
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
-// Create the auth provider component
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<UserProfile | null>(null)
   const [session, setSession] = useState<Session | null>(null)
-  const [isLoading, setIsLoading] = useState(false)
+  const [user, setUser] = useState<UserProfile | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
   const [isInitialized, setIsInitialized] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const router = useRouter()
+  const pathname = usePathname()
 
-  // Create the Supabase client
-  const supabase = createClientComponentClient<Database>()
+  const publicRoutes = [
+    "/login",
+    "/register",
+    "/forgot-password",
+    "/reset-password",
+    "/primer-acceso",
+    "/ranking-publico",
+  ]
 
-  // Initialize the auth state
+  const getDashboardRoute = (role: string, teamId?: string | null) => {
+    switch (role) {
+      case "admin":
+        return "/admin/dashboard"
+      case "capitan":
+        return teamId ? "/capitan/dashboard" : "/capitan/crear-equipo"
+      case "director_tecnico":
+        return "/director-tecnico/dashboard"
+      case "supervisor":
+        return "/supervisor/dashboard"
+      case "representante":
+        return "/representante/dashboard"
+      default:
+        return "/login"
+    }
+  }
+
+  const fetchUserProfile = async (userId: string, userEmail?: string): Promise<UserProfile | null> => {
+    try {
+      console.log(`AUTH_PROVIDER: Fetching profile for user: ${userId}`)
+
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("id, full_name, role, team_id, zone_id, distributor_id")
+        .eq("id", userId)
+        .single()
+
+      if (error) {
+        console.error("AUTH_PROVIDER: Error fetching profile:", error)
+        return null
+      }
+
+      if (!data) {
+        console.error("AUTH_PROVIDER: No profile data found")
+        return null
+      }
+
+      // Obtener nombre del equipo si es capitán
+      let teamName = null
+      if (data.role === "capitan" && data.team_id) {
+        try {
+          const { data: teamData } = await supabase.from("teams").select("name").eq("id", data.team_id).single()
+
+          if (teamData) {
+            teamName = teamData.name
+          }
+        } catch (teamError) {
+          console.warn("AUTH_PROVIDER: Could not fetch team name:", teamError)
+        }
+      }
+
+      return {
+        id: data.id,
+        email: userEmail,
+        role: data.role,
+        full_name: data.full_name,
+        team_id: data.team_id,
+        team_name: teamName,
+        zone_id: data.zone_id,
+        distributor_id: data.distributor_id,
+      }
+    } catch (err) {
+      console.error("AUTH_PROVIDER: Exception fetching profile:", err)
+      return null
+    }
+  }
+
   useEffect(() => {
-    const initializeAuth = async () => {
+    let mounted = true
+
+    const initAuth = async () => {
       try {
-        // Get the current session
-        const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+        console.log("AUTH_PROVIDER: Initializing...")
 
-        if (sessionError) {
-          console.error("Error getting session:", sessionError.message)
-          setError(sessionError.message)
-          setIsInitialized(true)
-          return
-        }
+        const {
+          data: { session },
+          error,
+        } = await supabase.auth.getSession()
 
-        setSession(sessionData.session)
+        if (!mounted) return
 
-        // If there's a session, get the user profile
-        if (sessionData.session) {
-          const { data: profileData, error: profileError } = await supabase
-            .from("profiles")
-            .select("*")
-            .eq("id", sessionData.session.user.id)
-            .single()
+        if (error) {
+          console.error("AUTH_PROVIDER: Session error:", error)
+          setSession(null)
+          setUser(null)
+        } else if (session) {
+          console.log("AUTH_PROVIDER: Session found")
+          setSession(session)
 
-          if (profileError) {
-            console.error("Error getting profile:", profileError.message)
-            setError(profileError.message)
-            setIsInitialized(true)
-            return
-          }
+          const profile = await fetchUserProfile(session.user.id, session.user.email)
+          if (mounted && profile) {
+            setUser(profile)
 
-          // Check if the user has created a team (for captains)
-          let hasCreatedTeam = false
-          if (profileData.role === "capitan" && profileData.team_id) {
-            const { data: teamData } = await supabase.from("teams").select("id").eq("id", profileData.team_id).single()
-            hasCreatedTeam = !!teamData
-          }
-
-          // Set the user profile
-          setUser({
-            id: sessionData.session.user.id,
-            email: sessionData.session.user.email || "",
-            role: profileData.role,
-            name: profileData.name,
-            team_id: profileData.team_id,
-            has_created_team: hasCreatedTeam,
-          })
-        }
-
-        // Set up the auth state change listener
-        const { data: authListener } = supabase.auth.onAuthStateChange(async (event, newSession) => {
-          console.log("Auth state change:", event)
-          setSession(newSession)
-
-          if (event === "SIGNED_IN" && newSession) {
-            setIsLoading(true)
-            try {
-              const { data: profileData, error: profileError } = await supabase
-                .from("profiles")
-                .select("*")
-                .eq("id", newSession.user.id)
-                .single()
-
-              if (profileError) {
-                console.error("Error getting profile:", profileError.message)
-                setError(profileError.message)
-                setIsLoading(false)
-                return
-              }
-
-              // Check if the user has created a team (for captains)
-              let hasCreatedTeam = false
-              if (profileData.role === "capitan" && profileData.team_id) {
-                const { data: teamData } = await supabase
-                  .from("teams")
-                  .select("id")
-                  .eq("id", profileData.team_id)
-                  .single()
-                hasCreatedTeam = !!teamData
-              }
-
-              // Set the user profile
-              setUser({
-                id: newSession.user.id,
-                email: newSession.user.email || "",
-                role: profileData.role,
-                name: profileData.name,
-                team_id: profileData.team_id,
-                has_created_team: hasCreatedTeam,
-              })
-            } catch (error) {
-              console.error("Error in auth state change:", error)
-              setError("Error al obtener el perfil de usuario")
-            } finally {
-              setIsLoading(false)
+            // Redirección solo desde login
+            if (pathname === "/login") {
+              const dashboardRoute = getDashboardRoute(profile.role, profile.team_id)
+              console.log(`AUTH_PROVIDER: Redirecting to ${dashboardRoute}`)
+              router.replace(dashboardRoute)
             }
-          } else if (event === "SIGNED_OUT") {
-            setUser(null)
           }
-        })
-
-        setIsInitialized(true)
-        return () => {
-          authListener.subscription.unsubscribe()
+        } else {
+          console.log("AUTH_PROVIDER: No session")
+          setSession(null)
+          setUser(null)
         }
-      } catch (error) {
-        console.error("Error initializing auth:", error)
-        setError("Error al inicializar la autenticación")
-        setIsInitialized(true)
+      } catch (err) {
+        console.error("AUTH_PROVIDER: Init error:", err)
+      } finally {
+        if (mounted) {
+          setIsLoading(false)
+          setIsInitialized(true)
+        }
       }
     }
 
-    initializeAuth()
-  }, [supabase])
+    initAuth()
 
-  // Sign in function
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (!mounted) return
+
+      console.log(`AUTH_PROVIDER: Auth event: ${event}`)
+
+      if (event === "SIGNED_IN" && session) {
+        setSession(session)
+        const profile = await fetchUserProfile(session.user.id, session.user.email)
+        if (profile) {
+          setUser(profile)
+          const dashboardRoute = getDashboardRoute(profile.role, profile.team_id)
+          router.replace(dashboardRoute)
+        }
+      } else if (event === "SIGNED_OUT") {
+        setSession(null)
+        setUser(null)
+        setError(null)
+        router.replace("/login")
+      }
+    })
+
+    return () => {
+      mounted = false
+      subscription.unsubscribe()
+    }
+  }, [pathname, router])
+
   const signIn = async (email: string, password: string) => {
-    setIsLoading(true)
-    setError(null)
-
     try {
-      const { data, error: signInError } = await supabase.auth.signInWithPassword({
+      setIsLoading(true)
+      setError(null)
+
+      const { error } = await supabase.auth.signInWithPassword({
         email,
         password,
       })
 
-      if (signInError) {
-        console.error("Error signing in:", signInError.message)
-        setError(
-          signInError.message === "Invalid login credentials"
-            ? "Credenciales inválidas. Por favor verifica tu correo y contraseña."
-            : signInError.message,
-        )
-        return { error: signInError.message }
+      if (error) {
+        setError(error.message)
+        return { error: error.message }
       }
-
-      // Get the user profile
-      const { data: profileData, error: profileError } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", data.user?.id)
-        .single()
-
-      if (profileError) {
-        console.error("Error getting profile:", profileError.message)
-        setError(profileError.message)
-        return { error: profileError.message }
-      }
-
-      // Check if the user has created a team (for captains)
-      let hasCreatedTeam = false
-      if (profileData.role === "capitan" && profileData.team_id) {
-        const { data: teamData } = await supabase.from("teams").select("id").eq("id", profileData.team_id).single()
-        hasCreatedTeam = !!teamData
-      }
-
-      // Set the user profile
-      setUser({
-        id: data.user?.id || "",
-        email: data.user?.email || "",
-        role: profileData.role,
-        name: profileData.name,
-        team_id: profileData.team_id,
-        has_created_team: hasCreatedTeam,
-      })
 
       return { error: null }
-    } catch (error) {
-      console.error("Error in signIn:", error)
-      const errorMessage = error instanceof Error ? error.message : "Error al iniciar sesión"
-      setError(errorMessage)
-      return { error: errorMessage }
+    } catch (err: any) {
+      setError(err.message)
+      return { error: err.message }
     } finally {
       setIsLoading(false)
     }
   }
 
-  // Sign out function
   const signOut = async () => {
-    setIsLoading(true)
     try {
+      setIsLoading(true)
       await supabase.auth.signOut()
-      setUser(null)
-      setSession(null)
-    } catch (error) {
-      console.error("Error signing out:", error)
-      setError("Error al cerrar sesión")
+    } catch (err) {
+      console.error("AUTH_PROVIDER: Sign out error:", err)
     } finally {
       setIsLoading(false)
     }
   }
 
-  // Return the auth context provider
+  const refreshProfile = async () => {
+    if (!session?.user) return
+
+    const profile = await fetchUserProfile(session.user.id, session.user.email)
+    if (profile) {
+      setUser(profile)
+    }
+  }
+
   return (
     <AuthContext.Provider
       value={{
-        user,
         session,
+        user,
         isLoading,
         isInitialized,
         error,
         signIn,
         signOut,
+        refreshProfile,
       }}
     >
       {children}
@@ -252,10 +256,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   )
 }
 
-// Create the auth hook
 export function useAuth() {
   const context = useContext(AuthContext)
-  if (context === undefined) {
+  if (!context) {
     throw new Error("useAuth must be used within an AuthProvider")
   }
   return context

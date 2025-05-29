@@ -1,49 +1,46 @@
 "use client"
 
 import type React from "react"
-import { createContext, useContext, useEffect, useState } from "react"
+import { createContext, useContext, useEffect, useState, useCallback } from "react"
 import { supabase } from "@/lib/supabase/client"
 import { useRouter, usePathname } from "next/navigation"
 import type { Session, User } from "@supabase/supabase-js"
 
-// Definir el tipo de perfil de usuario
 type UserProfile = {
   id: string
-  email: string
+  email?: string
   role: string
   full_name?: string
-  team_id?: string
-  team_name?: string
+  team_id?: string | null
+  team_name?: string | null
   zone_id?: string
   distributor_id?: string
 }
 
-// Definir el tipo del contexto de autenticación
 type AuthContextType = {
   session: Session | null
   user: User | null
   profile: UserProfile | null
   isLoading: boolean
+  isInitialized: boolean
   error: string | null
-  signIn: (email: string, password: string) => Promise<{ error: string | null; profile?: UserProfile }>
+  signIn: (email: string, password: string) => Promise<{ error: string | null }>
   signOut: () => Promise<void>
   refreshProfile: () => Promise<void>
 }
 
-// Crear el contexto de autenticación
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
-// Proveedor de autenticación
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
   const [user, setUser] = useState<User | null>(null)
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [isInitialized, setIsInitialized] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const router = useRouter()
   const pathname = usePathname()
 
-  // Rutas públicas que no requieren autenticación
   const publicRoutes = [
     "/login",
     "/register",
@@ -53,211 +50,266 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     "/ranking-publico",
   ]
 
-  // Verificar si la ruta actual es pública
-  const isPublicRoute = publicRoutes.some((route) => pathname?.startsWith(route))
+  const getDashboardRoute = useCallback((role: string, teamId?: string | null) => {
+    switch (role) {
+      case "admin":
+        return "/admin/dashboard"
+      case "capitan":
+        return teamId ? "/capitan/dashboard" : "/capitan/crear-equipo"
+      case "director_tecnico":
+        return "/director-tecnico/dashboard"
+      case "supervisor":
+        return "/supervisor/dashboard"
+      case "representante":
+        return "/representante/dashboard"
+      default:
+        return "/login"
+    }
+  }, [])
 
-  // Función para obtener el perfil del usuario
-  const fetchUserProfile = async (userId: string): Promise<UserProfile | null> => {
-    try {
-      console.log(`Obteniendo perfil para usuario: ${userId}`)
+  const fetchUserProfile = useCallback(
+    async (userId: string, userEmail?: string, retries = 3): Promise<UserProfile | null> => {
+      console.log(`AUTH: Fetching profile for user ID: ${userId}, retries left: ${retries}`)
 
-      const { data, error } = await supabase.from("profiles").select("*").eq("id", userId).single()
-
-      if (error) {
-        console.error("Error fetching user profile:", error)
-        return null
-      }
-
-      if (!data || !data.role) {
-        console.error("Perfil incompleto o sin rol:", data)
-        return null
-      }
-
-      console.log("Perfil obtenido exitosamente:", data)
-
-      // Si el usuario es capitán, obtener el nombre del equipo
-      let teamName = null
-      if (data.role === "capitan" && data.team_id) {
+      for (let attempt = 0; attempt < retries; attempt++) {
         try {
-          const { data: team } = await supabase.from("teams").select("name").eq("id", data.team_id).single()
+          // Intentar primero sin join para evitar problemas de relaciones
+          const { data, error: profileError } = await supabase
+            .from("profiles")
+            .select("id, full_name, role, team_id, zone_id, distributor_id")
+            .eq("id", userId)
+            .single()
 
-          if (team) {
-            teamName = team.name
+          if (profileError) {
+            console.error(`AUTH: Error fetching profile (attempt ${attempt + 1}):`, profileError)
+            if (attempt === retries - 1) {
+              setError(`Error al cargar perfil: ${profileError.message}`)
+              return null
+            }
+            // Esperar antes del siguiente intento
+            await new Promise((resolve) => setTimeout(resolve, 1000 * (attempt + 1)))
+            continue
           }
-        } catch (err) {
-          console.error("Error al obtener el equipo:", err)
+
+          if (!data) {
+            console.error("AUTH: No profile data found for user:", userId)
+            if (attempt === retries - 1) {
+              setError("No se encontró el perfil del usuario.")
+              return null
+            }
+            await new Promise((resolve) => setTimeout(resolve, 1000 * (attempt + 1)))
+            continue
+          }
+
+          console.log("AUTH: Profile fetched successfully:", data)
+
+          // Si es capitán y tiene team_id, obtener el nombre del equipo por separado
+          let teamName = null
+          if (data.role === "capitan" && data.team_id) {
+            try {
+              const { data: teamData } = await supabase.from("teams").select("name").eq("id", data.team_id).single()
+
+              if (teamData) {
+                teamName = teamData.name
+              }
+            } catch (teamError) {
+              console.warn("AUTH: Could not fetch team name:", teamError)
+              // No es crítico, continuamos sin el nombre del equipo
+            }
+          }
+
+          return {
+            id: data.id,
+            email: userEmail,
+            role: data.role,
+            full_name: data.full_name,
+            team_id: data.team_id,
+            team_name: teamName,
+            zone_id: data.zone_id,
+            distributor_id: data.distributor_id,
+          }
+        } catch (err: any) {
+          console.error(`AUTH: Exception in fetchUserProfile (attempt ${attempt + 1}):`, err)
+          if (attempt === retries - 1) {
+            setError(`Excepción al cargar perfil: ${err.message}`)
+            return null
+          }
+          await new Promise((resolve) => setTimeout(resolve, 1000 * (attempt + 1)))
         }
       }
 
-      return {
-        id: data.id,
-        email: data.email,
-        role: data.role,
-        full_name: data.full_name,
-        team_id: data.team_id,
-        team_name: teamName,
-        zone_id: data.zone_id,
-        distributor_id: data.distributor_id,
-      }
-    } catch (error: any) {
-      console.error("Error in fetchUserProfile:", error)
       return null
-    }
-  }
+    },
+    [setError],
+  )
 
-  // Función para refrescar el perfil manualmente
-  const refreshProfile = async () => {
-    if (!user) return
-    const userProfile = await fetchUserProfile(user.id)
-    if (userProfile) {
-      setProfile(userProfile)
-    }
-  }
+  // Función separada para manejar redirecciones después de que el perfil esté listo
+  const handleRedirection = useCallback(
+    (userProfile: UserProfile) => {
+      const currentPath = pathname || "/"
+      const dashboardRoute = getDashboardRoute(userProfile.role, userProfile.team_id)
 
-  // Inicializar la autenticación - SIN REDIRECCIONES AUTOMÁTICAS
+      console.log(`AUTH: Checking redirection. Current: ${currentPath}, Dashboard: ${dashboardRoute}`)
+
+      // Solo redirigir desde login o si es capitán sin equipo
+      if (currentPath === "/login") {
+        console.log(`AUTH: Redirecting from login to ${dashboardRoute}`)
+        router.replace(dashboardRoute) // Usar replace en lugar de push
+      } else if (userProfile.role === "capitan" && !userProfile.team_id && currentPath !== "/capitan/crear-equipo") {
+        console.log(`AUTH: Captain without team, redirecting to create team`)
+        router.replace("/capitan/crear-equipo")
+      }
+    },
+    [pathname, getDashboardRoute, router],
+  )
+
+  // Inicialización de la sesión
   useEffect(() => {
     let mounted = true
 
-    const initAuth = async () => {
+    const initializeAuth = async () => {
       try {
-        setIsLoading(true)
-        setError(null)
-        console.log("Inicializando autenticación...")
-
-        const { data, error } = await supabase.auth.getSession()
+        console.log("AUTH: Initializing authentication...")
+        const {
+          data: { session },
+          error,
+        } = await supabase.auth.getSession()
 
         if (!mounted) return
 
         if (error) {
-          console.error("Error getting session:", error)
+          console.error("AUTH: Error getting initial session:", error)
           setSession(null)
           setUser(null)
           setProfile(null)
-          setIsLoading(false)
-          return
-        }
+        } else if (session) {
+          console.log("AUTH: Initial session found")
+          setSession(session)
+          setUser(session.user)
 
-        if (data?.session) {
-          console.log("Sesión encontrada:", data.session.user.id)
-          setSession(data.session)
-          setUser(data.session.user)
-
-          const userProfile = await fetchUserProfile(data.session.user.id)
-
-          if (!mounted) return
-
-          if (userProfile) {
-            console.log("Perfil obtenido - rol:", userProfile.role)
+          // Intentar cargar el perfil
+          const userProfile = await fetchUserProfile(session.user.id, session.user.email)
+          if (mounted && userProfile) {
             setProfile(userProfile)
-          } else {
-            console.error("No se pudo obtener el perfil del usuario")
-            setError("No se pudo cargar el perfil del usuario")
+            // Manejar redirección después de un pequeño delay para asegurar que el DOM esté listo
+            setTimeout(() => {
+              if (mounted) {
+                handleRedirection(userProfile)
+              }
+            }, 100)
           }
+        } else {
+          console.log("AUTH: No initial session")
+          setSession(null)
+          setUser(null)
+          setProfile(null)
         }
-
-        setIsLoading(false)
-      } catch (error: any) {
-        if (!mounted) return
-        console.error("Auth initialization error:", error)
-        setError(error.message)
-        setIsLoading(false)
+      } catch (err) {
+        console.error("AUTH: Error in auth initialization:", err)
+      } finally {
+        if (mounted) {
+          setIsLoading(false)
+          setIsInitialized(true)
+        }
       }
     }
 
-    initAuth()
+    initializeAuth()
 
-    // Suscribirse a cambios en la autenticación
-    const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (!mounted) return
+    return () => {
+      mounted = false
+    }
+  }, [fetchUserProfile, handleRedirection])
 
-      console.log("Auth state changed:", event)
+  // Listener para cambios de autenticación
+  useEffect(() => {
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log(`AUTH: Auth state changed - Event: ${event}`)
 
-      if (event === "SIGNED_OUT") {
+      if (event === "SIGNED_IN" && session) {
+        setSession(session)
+        setUser(session.user)
+        setError(null)
+
+        const userProfile = await fetchUserProfile(session.user.id, session.user.email)
+        if (userProfile) {
+          setProfile(userProfile)
+          setTimeout(() => handleRedirection(userProfile), 100)
+        }
+      } else if (event === "SIGNED_OUT") {
         setSession(null)
         setUser(null)
         setProfile(null)
         setError(null)
-        setIsLoading(false)
+        router.replace("/login")
+      } else if (event === "TOKEN_REFRESHED" && session) {
+        setSession(session)
+        setUser(session.user)
       }
     })
 
-    return () => {
-      mounted = false
-      authListener.subscription.unsubscribe()
-    }
-  }, [])
+    return () => subscription.unsubscribe()
+  }, [fetchUserProfile, handleRedirection, router])
 
-  // Función para iniciar sesión - SIN REDIRECCIÓN AUTOMÁTICA
   const signIn = async (email: string, password: string) => {
     try {
+      setIsLoading(true)
       setError(null)
-      console.log("Iniciando sesión con:", email)
+      console.log("AUTH: Attempting sign in with:", email)
 
-      const { data, error } = await supabase.auth.signInWithPassword({
+      const { error: signInError } = await supabase.auth.signInWithPassword({
         email,
         password,
       })
 
-      if (error) {
-        console.error("Error de inicio de sesión:", error)
-        setError(error.message)
-        return { error: error.message }
+      if (signInError) {
+        console.error("AUTH: Sign in error:", signInError)
+        setError(signInError.message)
+        return { error: signInError.message }
       }
 
-      if (data.session && data.user) {
-        setSession(data.session)
-        setUser(data.user)
-
-        // Obtener perfil después del login exitoso
-        const userProfile = await fetchUserProfile(data.user.id)
-
-        if (userProfile) {
-          setProfile(userProfile)
-          console.log(`Login exitoso - perfil cargado:`, userProfile)
-
-          // Retornar el perfil para que el componente de login maneje la redirección
-          return { error: null, profile: userProfile }
-        } else {
-          setError("No se pudo cargar el perfil del usuario")
-          return { error: "No se pudo cargar el perfil del usuario" }
-        }
-      }
-
+      console.log("AUTH: Sign in successful")
       return { error: null }
-    } catch (error: any) {
-      console.error("Error en signIn:", error)
-      setError(error.message)
-      return { error: error.message }
-    }
-  }
-
-  // Función para cerrar sesión
-  const signOut = async () => {
-    try {
-      setIsLoading(true)
-      console.log("Cerrando sesión...")
-
-      await supabase.auth.signOut()
-
-      setSession(null)
-      setUser(null)
-      setProfile(null)
-      setError(null)
-
-      router.push("/login")
-    } catch (error: any) {
-      console.error("Sign out error:", error)
-      router.push("/login")
+    } catch (err: any) {
+      console.error("AUTH: Exception in signIn:", err)
+      setError(err.message)
+      return { error: err.message }
     } finally {
       setIsLoading(false)
     }
   }
+
+  const signOut = async () => {
+    try {
+      setIsLoading(true)
+      console.log("AUTH: Signing out...")
+      await supabase.auth.signOut()
+    } catch (err: any) {
+      console.error("AUTH: Error signing out:", err)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const refreshProfile = useCallback(async () => {
+    if (!user) return
+
+    setIsLoading(true)
+    const userProfile = await fetchUserProfile(user.id, user.email)
+    if (userProfile) {
+      setProfile(userProfile)
+    }
+    setIsLoading(false)
+  }, [user, fetchUserProfile])
 
   const contextValue = {
     session,
     user,
     profile,
     isLoading,
+    isInitialized,
     error,
     signIn,
     signOut,
@@ -267,7 +319,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   return <AuthContext.Provider value={contextValue}>{children}</AuthContext.Provider>
 }
 
-// Hook para usar el contexto de autenticación
 export function useAuth() {
   const context = useContext(AuthContext)
   if (context === undefined) {

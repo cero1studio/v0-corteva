@@ -44,9 +44,9 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     const dashboardRoute = getDashboardRoute(user.role)
 
     // Si el usuario es capitán y no ha creado equipo, redirigir a crear equipo
-    if (user.role === "capitan" && !user.has_created_team && !currentPath.includes("/capitan/crear-equipo")) {
+    if (user.role === "capitan" && !user.team_id && !currentPath.includes("/capitan/crear-equipo")) {
       setIsRedirecting(true)
-      console.log("🔄 Redirigiendo a capitán sin equipo a crear equipo")
+      console.log("AUTH_GUARD: Redirigiendo a capitán sin equipo (team_id missing) a crear equipo")
       router.push("/capitan/crear-equipo")
       return
     }

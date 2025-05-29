@@ -9,73 +9,33 @@ import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { useAuth } from "@/hooks/use-auth"
 import { Loader2 } from "lucide-react"
-import { useRouter } from "next/navigation"
 
 export default function LoginPage() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [localError, setLocalError] = useState<string | null>(null)
-  const [isSubmitting, setIsSubmitting] = useState(false)
-  const { signIn, error: authError } = useAuth()
-  const router = useRouter()
+  const { signIn, isLoading, error: authError } = useAuth()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLocalError(null)
-    setIsSubmitting(true)
 
     if (!email || !password) {
       setLocalError("Por favor ingresa tu correo y contraseña")
-      setIsSubmitting(false)
       return
     }
 
-    try {
-      // Enviar petición de login y esperar a que se complete
-      const result = await signIn(email, password)
-
-      if (result.error) {
-        setLocalError(result.error)
-        setIsSubmitting(false)
-        return
-      }
-
-      // Si el login fue exitoso y tenemos el perfil, redirigir UNA SOLA VEZ
-      if (result.profile) {
-        const { role, team_id } = result.profile
-
-        let dashboardRoute = "/login"
-
-        switch (role) {
-          case "admin":
-            dashboardRoute = "/admin/dashboard"
-            break
-          case "capitan":
-            dashboardRoute = team_id ? "/capitan/dashboard" : "/capitan/crear-equipo"
-            break
-          case "director_tecnico":
-            dashboardRoute = "/director-tecnico/dashboard"
-            break
-          case "supervisor":
-            dashboardRoute = "/supervisor/dashboard"
-            break
-          case "representante":
-            dashboardRoute = "/representante/dashboard"
-            break
-        }
-
-        console.log(`Redirigiendo a: ${dashboardRoute}`)
-        router.push(dashboardRoute)
-      }
-    } catch (error) {
-      console.error("Error en login:", error)
-      setLocalError("Error al iniciar sesión. Intenta nuevamente.")
-      setIsSubmitting(false)
+    const result = await signIn(email, password)
+    if (result.error) {
+      setLocalError(result.error)
     }
   }
 
   // Mostrar error de autenticación o error local
   const displayError = localError || authError
+
+  // Si está cargando, mostrar spinner en el botón
+  const isSubmitting = isLoading
 
   return (
     <div className="min-h-screen flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
@@ -88,6 +48,20 @@ export default function LoginPage() {
               fill
               style={{ objectFit: "contain" }}
               priority
+              onError={(e) => {
+                // Fallback to a text representation if image fails to load
+                const target = e.target as HTMLImageElement
+                target.onerror = null // Prevent infinite error loop
+                target.style.display = "none"
+                const parent = target.parentElement
+                if (parent) {
+                  const fallback = document.createElement("div")
+                  fallback.textContent = "SÚPER GANADERÍA"
+                  fallback.className =
+                    "text-2xl font-bold text-center text-[#006BA6] w-full h-full flex items-center justify-center"
+                  parent.appendChild(fallback)
+                }
+              }}
             />
           </div>
           <CardTitle className="text-2xl font-bold text-center text-[#006BA6]">Competencia de Ventas</CardTitle>
@@ -142,7 +116,26 @@ export default function LoginPage() {
             </a>
           </p>
           <div className="w-24 h-12 relative">
-            <Image src="/corteva-logo.png" alt="Corteva Logo" fill style={{ objectFit: "contain" }} />
+            <Image
+              src="/corteva-logo.png"
+              alt="Corteva Logo"
+              fill
+              style={{ objectFit: "contain" }}
+              onError={(e) => {
+                // Fallback to a text representation if image fails to load
+                const target = e.target as HTMLImageElement
+                target.onerror = null // Prevent infinite error loop
+                target.style.display = "none"
+                const parent = target.parentElement
+                if (parent) {
+                  const fallback = document.createElement("div")
+                  fallback.textContent = "CORTEVA"
+                  fallback.className =
+                    "text-sm font-bold text-center text-gray-600 w-full h-full flex items-center justify-center"
+                  parent.appendChild(fallback)
+                }
+              }}
+            />
           </div>
         </CardFooter>
       </Card>

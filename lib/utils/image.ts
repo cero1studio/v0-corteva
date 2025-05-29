@@ -7,7 +7,7 @@ const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
 export function getImageUrl(path: string | null): string {
   if (!path) {
-    return "/placeholder.svg"
+    return "/placeholder.svg?height=100&width=100"
   }
 
   // Si es una URL completa, devolverla tal como está
@@ -26,14 +26,19 @@ export function getImageUrl(path: string | null): string {
     return data.publicUrl
   } catch (error) {
     console.error("Error al generar URL de imagen:", error)
-    return "/placeholder.svg"
+    return "/placeholder.svg?height=100&width=100"
   }
 }
 
 export function getDistributorLogoUrl(distributor: { name: string; logo_url: string | null }): string {
   // Si tiene una imagen personalizada en Storage
   if (distributor.logo_url) {
-    return getImageUrl(distributor.logo_url)
+    try {
+      return getImageUrl(distributor.logo_url)
+    } catch (error) {
+      console.error("Error loading distributor logo:", error)
+      // Fall through to the default logo logic
+    }
   }
 
   // Si no tiene imagen, usar logo predefinido basado en el nombre
@@ -62,5 +67,5 @@ export function getDistributorLogoUrl(distributor: { name: string; logo_url: str
   }
 
   // Logo por defecto si no hay coincidencia
-  return "/logos/agralba-antioquia.png"
+  return "/placeholder.svg?height=100&width=100"
 }
