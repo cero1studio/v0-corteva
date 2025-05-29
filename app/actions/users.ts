@@ -53,10 +53,13 @@ export async function getUsersSimple() {
 // Replace the getUsers function with this updated version that uses explicit joins
 export async function getUsers() {
   try {
-    const supabase = createServerClient()
+    // Usar el cliente administrativo para evitar problemas de RLS
+    const { adminSupabase } = await import("@/lib/supabase/server")
 
-    // First, get all profiles
-    const { data: profiles, error: profilesError } = await supabase
+    console.log("Obteniendo usuarios con cliente administrativo...")
+
+    // Obtener todos los perfiles usando el cliente admin
+    const { data: profiles, error: profilesError } = await adminSupabase
       .from("profiles")
       .select(`
         id, 
@@ -74,22 +77,22 @@ export async function getUsers() {
       return { error: profilesError.message, data: null }
     }
 
-    // If no profiles found, return empty array
+    // Si no hay perfiles, retornar array vacío
     if (!profiles || profiles.length === 0) {
       return { data: [], error: null }
     }
 
-    // Get all zones, distributors, and teams in separate queries
-    const { data: zones } = await supabase.from("zones").select("id, name")
-    const { data: distributors } = await supabase.from("distributors").select("id, name, logo_url")
-    const { data: teams } = await supabase.from("teams").select("id, name")
+    // Obtener zonas, distribuidores y equipos por separado
+    const { data: zones } = await adminSupabase.from("zones").select("id, name")
+    const { data: distributors } = await adminSupabase.from("distributors").select("id, name, logo_url")
+    const { data: teams } = await adminSupabase.from("teams").select("id, name")
 
-    // Create lookup maps for faster access
+    // Crear mapas de búsqueda
     const zoneMap = zones ? zones.reduce((map, zone) => ({ ...map, [zone.id]: zone }), {}) : {}
     const distributorMap = distributors ? distributors.reduce((map, dist) => ({ ...map, [dist.id]: dist }), {}) : {}
     const teamMap = teams ? teams.reduce((map, team) => ({ ...map, [team.id]: team }), {}) : {}
 
-    // Transform the data by manually joining with the lookup maps
+    // Transformar los datos
     const formattedData = profiles.map((user) => ({
       id: user.id,
       email: user.email,
@@ -118,10 +121,11 @@ export async function getUsers() {
 
 export async function deleteUser(userId: string) {
   try {
-    const supabase = createServerClient()
+    // Usar el cliente administrativo
+    const { adminSupabase } = await import("@/lib/supabase/server")
 
     // Primero eliminamos el perfil
-    const { error: profileError } = await supabase.from("profiles").delete().eq("id", userId)
+    const { error: profileError } = await adminSupabase.from("profiles").delete().eq("id", userId)
 
     if (profileError) {
       console.error("Error al eliminar perfil:", profileError)
@@ -129,7 +133,7 @@ export async function deleteUser(userId: string) {
     }
 
     // Luego eliminamos el usuario de auth
-    const { error: authError } = await supabase.auth.admin.deleteUser(userId)
+    const { error: authError } = await adminSupabase.auth.admin.deleteUser(userId)
 
     if (authError) {
       console.error("Error al eliminar usuario de auth:", authError)
@@ -198,216 +202,71 @@ export async function createUser(formData: FormData) {
       return { error: "La contraseña debe tener al menos 6 caracteres" }
     }
 
-    const supabase = createServerClient()
+    // Usar el cliente administrativo
+    const { adminSupabase } = await import("@/lib/supabase/server")
 
     // Verificar si el usuario ya existe en profiles
-    const { data: existingProfile } = await supabase.from("profiles").select("email").eq("email", email).single()
+    const { data: existingProfile } = await adminSupabase.from("profiles").select("email").eq("email", email).single()
 
     if (existingProfile) {
       return { error: "Ya existe un usuario con este email en la base de datos" }
     }
 
-    // Verificar si el email ya existe en auth
-    console.log("Verificando si el email existe en auth...")
-    const { user: existingAuthUser, error: findError } = await findAuthUserByEmail(supabase, email)
+    console.log("Creando usuario en auth...")
 
-    if (findError) {
-      console.warn("Error al verificar email en auth:", findError)
-      // Continuar con la creación, pero con advertencia
-    }
-
-    if (existingAuthUser) {
-      console.log("Email ya existe en auth con ID:", existingAuthUser.id)
-
-      // El email ya existe en auth, crear solo el perfil con el ID existente
-      const profileData = {
-        id: existingAuthUser.id,
-        email: email,
+    // Crear usuario en auth
+    const { data: authData, error: authError } = await adminSupabase.auth.admin.createUser({
+      email: email,
+      password: password,
+      email_confirm: true,
+      user_metadata: {
         full_name: fullName,
         role: role,
-        zone_id: zoneId && zoneId !== "none" ? zoneId : null,
-        distributor_id: distributorId && distributorId !== "none" ? distributorId : null,
-      }
+      },
+    })
 
-      console.log("Creando perfil con ID existente:", profileData)
+    if (authError) {
+      console.error("Error al crear usuario en auth:", authError)
+      return { error: `Error al crear usuario: ${authError.message}` }
+    }
 
-      const { error: profileError } = await supabase.from("profiles").insert(profileData)
+    if (!authData.user) {
+      return { error: "No se pudo crear el usuario en el sistema de autenticación" }
+    }
 
-      if (profileError) {
-        console.error("Error al crear perfil:", profileError)
-        return { error: `Error al crear perfil: ${profileError.message}` }
-      }
+    console.log("Usuario creado en auth con ID:", authData.user.id)
 
-      // Actualizar los datos del usuario en auth
+    // Crear perfil en la base de datos
+    const profileData = {
+      id: authData.user.id,
+      email: email,
+      full_name: fullName,
+      role: role,
+      zone_id: zoneId && zoneId !== "none" ? zoneId : null,
+      distributor_id: distributorId && distributorId !== "none" ? distributorId : null,
+    }
+
+    console.log("Creando perfil:", profileData)
+
+    const { error: profileError } = await adminSupabase.from("profiles").insert(profileData)
+
+    if (profileError) {
+      console.error("Error al crear perfil:", profileError)
+
+      // Si falla la creación del perfil, eliminar el usuario de auth
       try {
-        const { error: updateError } = await supabase.auth.admin.updateUserById(existingAuthUser.id, {
-          user_metadata: {
-            full_name: fullName,
-            role: role,
-          },
-        })
-
-        if (updateError) {
-          console.warn("No se pudo actualizar metadata en auth:", updateError.message)
-        }
-      } catch (updateError) {
-        console.warn("Error al actualizar metadata:", updateError)
+        await adminSupabase.auth.admin.deleteUser(authData.user.id)
+        console.log("Usuario de auth eliminado debido a error en perfil")
+      } catch (cleanupError) {
+        console.error("Error al limpiar usuario de auth:", cleanupError)
       }
 
-      console.log("Usuario creado exitosamente usando cuenta de auth existente")
-      revalidatePath("/admin/usuarios")
-      return {
-        success: true,
-        message: "Usuario creado exitosamente usando cuenta de autenticación existente",
-        userId: existingAuthUser.id,
-      }
+      return { error: `Error al crear perfil: ${profileError.message}` }
     }
 
-    // El email no existe en auth, intentar crear nuevo usuario
-    console.log("Email no existe en auth, intentando crear nuevo usuario...")
-
-    try {
-      // Crear usuario en auth
-      const { data: authData, error: authError } = await supabase.auth.admin.createUser({
-        email: email,
-        password: password,
-        email_confirm: true,
-        user_metadata: {
-          full_name: fullName,
-          role: role,
-        },
-      })
-
-      if (authError) {
-        console.error("Error al crear usuario en auth:", authError)
-
-        // Si falla la creación en auth, crear solo el perfil con un ID generado
-        console.log("Creando perfil sin auth debido a error...")
-
-        const generatedId = crypto.randomUUID()
-        const profileData = {
-          id: generatedId,
-          email: email,
-          full_name: fullName,
-          role: role,
-          zone_id: zoneId && zoneId !== "none" ? zoneId : null,
-          distributor_id: distributorId && distributorId !== "none" ? distributorId : null,
-        }
-
-        const { error: profileError } = await supabase.from("profiles").insert(profileData)
-
-        if (profileError) {
-          console.error("Error al crear perfil:", profileError)
-          return { error: `Error al crear perfil: ${profileError.message}` }
-        }
-
-        console.log("Perfil creado sin auth")
-        revalidatePath("/admin/usuarios")
-        return {
-          success: true,
-          warning: `Usuario creado en base de datos, pero no se pudo crear en sistema de autenticación: ${authError.message}. Use 'Sincronizar Usuarios' para completar el proceso.`,
-          userId: generatedId,
-          needsSync: true,
-        }
-      }
-
-      if (!authData.user) {
-        // Si no hay error pero tampoco usuario, crear solo el perfil
-        console.log("No se obtuvo usuario de auth, creando solo perfil...")
-
-        const generatedId = crypto.randomUUID()
-        const profileData = {
-          id: generatedId,
-          email: email,
-          full_name: fullName,
-          role: role,
-          zone_id: zoneId && zoneId !== "none" ? zoneId : null,
-          distributor_id: distributorId && distributorId !== "none" ? distributorId : null,
-        }
-
-        const { error: profileError } = await supabase.from("profiles").insert(profileData)
-
-        if (profileError) {
-          console.error("Error al crear perfil:", profileError)
-          return { error: `Error al crear perfil: ${profileError.message}` }
-        }
-
-        console.log("Perfil creado sin auth (no user returned)")
-        revalidatePath("/admin/usuarios")
-        return {
-          success: true,
-          warning:
-            "Usuario creado en base de datos, pero no se pudo crear en sistema de autenticación. Use 'Sincronizar Usuarios' para completar el proceso.",
-          userId: generatedId,
-          needsSync: true,
-        }
-      }
-
-      console.log("Usuario creado en auth con ID:", authData.user.id)
-
-      // Crear perfil en la base de datos
-      const profileData = {
-        id: authData.user.id,
-        email: email,
-        full_name: fullName,
-        role: role,
-        zone_id: zoneId && zoneId !== "none" ? zoneId : null,
-        distributor_id: distributorId && distributorId !== "none" ? distributorId : null,
-      }
-
-      console.log("Creando perfil:", profileData)
-
-      const { error: profileError } = await supabase.from("profiles").insert(profileData)
-
-      if (profileError) {
-        console.error("Error al crear perfil:", profileError)
-
-        // Si falla la creación del perfil, eliminar el usuario de auth
-        try {
-          await supabase.auth.admin.deleteUser(authData.user.id)
-          console.log("Usuario de auth eliminado debido a error en perfil")
-        } catch (cleanupError) {
-          console.error("Error al limpiar usuario de auth:", cleanupError)
-        }
-
-        return { error: `Error al crear perfil: ${profileError.message}` }
-      }
-
-      console.log("Usuario creado exitosamente")
-      revalidatePath("/admin/usuarios")
-      return { success: true, message: "Usuario creado exitosamente", userId: authData.user.id }
-    } catch (createError: any) {
-      console.error("Error en creación de auth:", createError)
-
-      // Si hay cualquier error en la creación de auth, crear solo el perfil
-      console.log("Creando perfil sin auth debido a excepción...")
-
-      const generatedId = crypto.randomUUID()
-      const profileData = {
-        id: generatedId,
-        email: email,
-        full_name: fullName,
-        role: role,
-        zone_id: zoneId && zoneId !== "none" ? zoneId : null,
-        distributor_id: distributorId && distributorId !== "none" ? distributorId : null,
-      }
-
-      const { error: profileError } = await supabase.from("profiles").insert(profileData)
-
-      if (profileError) {
-        console.error("Error al crear perfil:", profileError)
-        return { error: `Error al crear perfil: ${profileError.message}` }
-      }
-
-      console.log("Perfil creado sin auth (excepción)")
-      revalidatePath("/admin/usuarios")
-      return {
-        success: true,
-        warning: `Usuario creado en base de datos, pero no se pudo crear en sistema de autenticación: ${createError.message}. Use 'Sincronizar Usuarios' para completar el proceso.`,
-        userId: generatedId,
-        needsSync: true,
-      }
-    }
+    console.log("Usuario creado exitosamente")
+    revalidatePath("/admin/usuarios")
+    return { success: true, message: "Usuario creado exitosamente", userId: authData.user.id }
   } catch (error: any) {
     console.error("Error general en createUser:", error)
     return { error: `Error inesperado: ${error.message}` }
