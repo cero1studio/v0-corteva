@@ -1,6 +1,6 @@
 "use server"
 
-import { createServerClient } from "@/lib/supabase/server"
+import { createServerClient, adminSupabase } from "@/lib/supabase/server"
 import { revalidatePath } from "next/cache"
 
 // Alias de getUsers para mantener consistencia con otras funciones "getAll"
@@ -120,7 +120,7 @@ export async function getUsers() {
 
 export async function deleteUser(userId: string) {
   try {
-    const supabase = createServerClient()
+    const supabase = adminSupabase
 
     console.log("Eliminando usuario:", userId)
 
@@ -203,7 +203,7 @@ export async function createUser(formData: FormData) {
       return { error: "La contraseña debe tener al menos 6 caracteres" }
     }
 
-    const supabase = createServerClient()
+    const supabase = adminSupabase
 
     // Verificar si el usuario ya existe en profiles
     const { data: existingProfile } = await supabase.from("profiles").select("email").eq("email", email).single()
@@ -327,7 +327,7 @@ export async function updateUser(userId: string, formData: FormData) {
       return { error: "La contraseña debe tener al menos 6 caracteres" }
     }
 
-    const supabase = createServerClient()
+    const supabase = adminSupabase
 
     // Verificar si el email ya existe en otro usuario
     const { data: existingUser } = await supabase
@@ -416,7 +416,7 @@ export async function syncUserWithAuth(
   password?: string,
 ) {
   try {
-    const supabase = createServerClient()
+    const supabase = adminSupabase
 
     console.log("Sincronizando usuario con auth:", userId)
 

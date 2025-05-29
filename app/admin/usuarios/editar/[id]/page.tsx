@@ -29,11 +29,11 @@ interface Distributor {
 }
 
 interface PageProps {
-  params: Promise<{ id: string }>
+  params: Promise<{ id: string }> | { id: string }
 }
 
 export default function EditarUsuarioPage({ params }: PageProps) {
-  const resolvedParams = use(params)
+  const resolvedParams = params instanceof Promise ? use(params) : params
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [fullName, setFullName] = useState("")
