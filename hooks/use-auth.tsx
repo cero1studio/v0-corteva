@@ -27,6 +27,7 @@ type AuthContextType = {
   error: string | null
   signIn: (email: string, password: string) => Promise<{ error: string | null }>
   signOut: () => Promise<void>
+  refreshProfile: () => Promise<void>
 }
 
 // Crear el contexto de autenticación
@@ -76,21 +77,55 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
-  // Función para obtener el perfil del usuario
-  const fetchUserProfile = async (userId: string) => {
+  // Función para obtener el perfil del usuario con manejo robusto de errores
+  const fetchUserProfile = async (userId: string, retryCount = 0): Promise<UserProfile | null> => {
+    const maxRetries = 3
+    const retryDelay = 2000 // 2 segundos entre reintentos
+
     try {
-      console.log("Obteniendo perfil para usuario:", userId)
+      console.log(`Obteniendo perfil para usuario: ${userId} (intento ${retryCount + 1}/${maxRetries + 1})`)
+
+      // Verificar que tengamos una sesión válida antes de hacer la consulta
+      const {
+        data: { session: currentSession },
+      } = await supabase.auth.getSession()
+      if (!currentSession) {
+        console.error("No hay sesión activa para obtener el perfil")
+        return null
+      }
 
       const { data, error } = await supabase.from("profiles").select("*").eq("id", userId).single()
 
       if (error) {
         console.error("Error fetching user profile:", error)
+
+        // Si es un error de red y no hemos alcanzado el máximo de reintentos
+        if (error.message?.includes("Failed to fetch") && retryCount < maxRetries) {
+          console.log(`Error de red, reintentando en ${retryDelay / 1000} segundos...`)
+          await new Promise((resolve) => setTimeout(resolve, retryDelay))
+          return fetchUserProfile(userId, retryCount + 1)
+        }
+
         return null
       }
 
-      console.log("Perfil obtenido:", data)
+      // Validar que el perfil tenga los datos mínimos necesarios
+      if (!data || !data.role) {
+        console.error("Perfil incompleto o sin rol:", data)
 
-      // Si el usuario es capitán, obtener el nombre del equipo
+        // Si el perfil está incompleto y no hemos alcanzado el máximo de reintentos
+        if (retryCount < maxRetries) {
+          console.log(`Perfil incompleto, reintentando en ${retryDelay / 1000} segundos...`)
+          await new Promise((resolve) => setTimeout(resolve, retryDelay))
+          return fetchUserProfile(userId, retryCount + 1)
+        }
+
+        return null
+      }
+
+      console.log("Perfil obtenido exitosamente:", data)
+
+      // Si el usuario es capitán, intentar obtener el nombre del equipo
       let teamName = null
       if (data.role === "capitan" && data.team_id) {
         try {
@@ -105,6 +140,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           }
         } catch (err) {
           console.error("Error al obtener el equipo:", err)
+          // No es crítico, continuamos sin el nombre del equipo
         }
       }
 
@@ -118,9 +154,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         zone_id: data.zone_id,
         distributor_id: data.distributor_id,
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error in fetchUserProfile:", error)
+
+      // Si es un error de red y no hemos alcanzado el máximo de reintentos
+      if (error.message?.includes("Failed to fetch") && retryCount < maxRetries) {
+        console.log(`Error de red, reintentando en ${retryDelay / 1000} segundos...`)
+        await new Promise((resolve) => setTimeout(resolve, retryDelay))
+        return fetchUserProfile(userId, retryCount + 1)
+      }
+
       return null
+    }
+  }
+
+  // Función para refrescar el perfil manualmente
+  const refreshProfile = async () => {
+    if (!user) return
+
+    const userProfile = await fetchUserProfile(user.id)
+    if (userProfile) {
+      setProfile(userProfile)
     }
   }
 
@@ -129,9 +183,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       if (typeof window !== "undefined") {
         localStorage.removeItem("supabase.auth.token")
-        localStorage.removeItem(
-          "sb-" + process.env.NEXT_PUBLIC_SUPABASE_URL?.split("//")[1]?.split(".")[0] + "-auth-token",
-        )
+        const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_URL?.split("//")[1]?.split(".")[0]
+        if (supabaseKey) {
+          localStorage.removeItem(`sb-${supabaseKey}-auth-token`)
+        }
       }
     } catch (error) {
       console.error("Error clearing tokens:", error)
@@ -140,6 +195,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Inicializar la autenticación
   useEffect(() => {
+    let mounted = true
+
     const initAuth = async () => {
       try {
         setIsLoading(true)
@@ -148,6 +205,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         // Obtener la sesión actual
         const { data, error } = await supabase.auth.getSession()
+
+        if (!mounted) return
 
         if (error) {
           console.error("Error getting session:", error)
@@ -178,8 +237,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setSession(data.session)
           setUser(data.session.user)
 
-          // Obtener el perfil del usuario
+          // Obtener el perfil del usuario con reintentos automáticos
           const userProfile = await fetchUserProfile(data.session.user.id)
+
+          if (!mounted) return
 
           if (userProfile) {
             console.log("Perfil obtenido - rol:", userProfile.role)
@@ -193,10 +254,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               router.push(dashboardRoute)
             }
           } else {
-            console.error("No se pudo obtener el perfil del usuario")
-            if (!isPublicRoute) {
-              router.push("/login")
-            }
+            console.error("No se pudo obtener el perfil del usuario después de varios intentos")
+            setError("No se pudo cargar el perfil del usuario. Por favor, recarga la página o inténtalo más tarde.")
+
+            // No redirigir a login si ya tenemos una sesión válida
+            // Permitir que el usuario recargue la página
           }
         } else if (!isPublicRoute) {
           // Si no hay sesión y no estamos en una ruta pública, redirigir a login
@@ -204,6 +266,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           router.push("/login")
         }
       } catch (error: any) {
+        if (!mounted) return
+
         console.error("Auth initialization error:", error)
         setError(error.message)
 
@@ -216,7 +280,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           router.push("/login")
         }
       } finally {
-        setIsLoading(false)
+        if (mounted) {
+          setIsLoading(false)
+        }
       }
     }
 
@@ -224,29 +290,44 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     // Suscribirse a cambios en la autenticación
     const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (!mounted) return
+
       console.log("Auth state changed:", event)
 
       if (event === "SIGNED_IN" && session) {
         setSession(session)
         setUser(session.user)
         setError(null)
+        setIsLoading(true)
 
-        // Obtener el perfil del usuario
+        // Esperar un momento para que la base de datos se sincronice
+        await new Promise((resolve) => setTimeout(resolve, 2000))
+
+        // Obtener el perfil del usuario con reintentos
         const userProfile = await fetchUserProfile(session.user.id)
+
+        if (!mounted) return
 
         if (userProfile) {
           console.log("Perfil obtenido después de login - rol:", userProfile.role)
           setProfile(userProfile)
+          setIsLoading(false)
+
           const hasTeam = !!userProfile.team_id
           const dashboardRoute = getDashboardRoute(userProfile.role, hasTeam)
           console.log(`Redirigiendo a ${dashboardRoute} después de iniciar sesión`)
           router.push(dashboardRoute)
+        } else {
+          console.error("No se pudo obtener el perfil después del login")
+          setError("Error al cargar el perfil del usuario. Por favor, recarga la página.")
+          setIsLoading(false)
         }
       } else if (event === "SIGNED_OUT") {
         setSession(null)
         setUser(null)
         setProfile(null)
         setError(null)
+        setIsLoading(false)
         if (!isPublicRoute) {
           router.push("/login")
         }
@@ -260,6 +341,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setSession(null)
         setUser(null)
         setProfile(null)
+        setIsLoading(false)
         if (!isPublicRoute) {
           router.push("/login")
         }
@@ -267,6 +349,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     })
 
     return () => {
+      mounted = false
       authListener.subscription.unsubscribe()
     }
   }, [router, pathname, isPublicRoute])
@@ -289,19 +372,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (error) {
         console.error("Error de inicio de sesión:", error)
         setError(error.message)
+        setIsLoading(false)
         return { error: error.message }
       }
 
-      console.log("Inicio de sesión exitoso")
-      // No es necesario hacer nada más aquí, el listener de onAuthStateChange
-      // se encargará de actualizar el estado y redirigir
+      console.log("Inicio de sesión exitoso, esperando sincronización...")
+      // El loading se mantiene activo y se desactiva en el listener de onAuthStateChange
       return { error: null }
     } catch (error: any) {
       console.error("Error en signIn:", error)
       setError(error.message)
-      return { error: error.message }
-    } finally {
       setIsLoading(false)
+      return { error: error.message }
     }
   }
 
@@ -353,6 +435,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     error,
     signIn,
     signOut,
+    refreshProfile,
   }
 
   return <AuthContext.Provider value={contextValue}>{children}</AuthContext.Provider>

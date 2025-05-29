@@ -41,63 +41,102 @@ export default function AdminDashboardPage() {
   const [productStats, setProductStats] = useState<any[]>([])
   const [error, setError] = useState<string | null>(null)
   const [salesStructure, setSalesStructure] = useState<any>(null)
+  const [retryCount, setRetryCount] = useState(0)
+  const maxRetries = 3
 
   useEffect(() => {
     // Verificar sesión primero
-    async function checkSession() {
-      try {
-        const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
-
-        if (sessionError) {
-          console.error("Error al verificar sesión:", sessionError)
-          router.push("/login")
-          return
-        }
-
-        if (!sessionData.session) {
-          console.log("No hay sesión activa")
-          router.push("/login")
-          return
-        }
-
-        // Verificar perfil
-        const { data: profile, error: profileError } = await supabase
-          .from("profiles")
-          .select("role")
-          .eq("id", sessionData.session.user.id)
-          .single()
-
-        if (profileError) {
-          console.error("Error al obtener perfil:", profileError)
-          setError("Error al verificar permisos. Por favor, inicia sesión nuevamente.")
-          return
-        }
-
-        if (profile.role !== "admin") {
-          console.log("Usuario no es admin:", profile.role)
-          router.push(`/${profile.role}/dashboard`)
-          return
-        }
-
-        // Si todo está bien, cargar datos
-        fetchStructure()
-      } catch (error) {
-        console.error("Error al verificar autenticación:", error)
-        setError("Error de conexión. Por favor, verifica tu conexión a internet.")
-        setLoading(false)
-      }
-    }
-
     checkSession()
   }, [router])
 
+  async function checkSession(retry = 0) {
+    try {
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+
+      if (sessionError) {
+        console.error("Error al verificar sesión:", sessionError)
+        if (retry < maxRetries && sessionError.message?.includes("Failed to fetch")) {
+          console.log(`Error de red, reintentando... (${retry + 1}/${maxRetries})`)
+          await new Promise((resolve) => setTimeout(resolve, 2000))
+          return checkSession(retry + 1)
+        }
+        router.push("/login")
+        return
+      }
+
+      if (!sessionData.session) {
+        console.log("No hay sesión activa")
+        router.push("/login")
+        return
+      }
+
+      // Verificar perfil con reintentos
+      await verifyProfile(sessionData.session.user.id, retry)
+    } catch (error) {
+      console.error("Error al verificar autenticación:", error)
+      setError("Error de conexión. Por favor, verifica tu conexión a internet.")
+      setLoading(false)
+    }
+  }
+
+  async function verifyProfile(userId: string, retry = 0) {
+    try {
+      // Esperar un poco para dar tiempo a que se actualice el perfil
+      if (retry === 0) {
+        await new Promise((resolve) => setTimeout(resolve, 1000))
+      }
+
+      const { data: profile, error: profileError } = await supabase
+        .from("profiles")
+        .select("role")
+        .eq("id", userId)
+        .single()
+
+      if (profileError) {
+        console.error("Error al obtener perfil:", profileError)
+
+        // Si es un error de red y no hemos alcanzado el máximo de reintentos
+        if (retry < maxRetries && profileError.message?.includes("Failed to fetch")) {
+          console.log(`Error de red al obtener perfil, reintentando... (${retry + 1}/${maxRetries})`)
+          await new Promise((resolve) => setTimeout(resolve, 2000))
+          return verifyProfile(userId, retry + 1)
+        }
+
+        setError("Error al verificar permisos. Por favor, inicia sesión nuevamente.")
+        return
+      }
+
+      if (profile.role !== "admin") {
+        console.log("Usuario no es admin:", profile.role)
+        router.push(`/${profile.role}/dashboard`)
+        return
+      }
+
+      // Si todo está bien, cargar datos
+      fetchStructure()
+    } catch (error) {
+      console.error("Error al verificar perfil:", error)
+      setError("Error al verificar permisos. Por favor, inicia sesión nuevamente.")
+      setLoading(false)
+    }
+  }
+
   // Obtener la estructura de la tabla sales primero
-  async function fetchStructure() {
+  async function fetchStructure(retry = 0) {
     try {
       // Verificar la estructura de la tabla sales
       const { data: salesData, error: salesError } = await supabase.from("sales").select().limit(1)
 
-      if (salesError) throw salesError
+      if (salesError) {
+        // Si es un error de red y no hemos alcanzado el máximo de reintentos
+        if (retry < maxRetries && salesError.message?.includes("Failed to fetch")) {
+          console.log(`Error de red al obtener estructura, reintentando... (${retry + 1}/${maxRetries})`)
+          await new Promise((resolve) => setTimeout(resolve, 2000))
+          return fetchStructure(retry + 1)
+        }
+
+        throw salesError
+      }
 
       if (salesData && salesData.length > 0) {
         setSalesStructure(salesData[0])
@@ -115,7 +154,7 @@ export default function AdminDashboardPage() {
     }
   }
 
-  async function fetchStats() {
+  async function fetchStats(retry = 0) {
     try {
       setLoading(true)
 
@@ -125,7 +164,16 @@ export default function AdminDashboardPage() {
         .select("*", { count: "exact", head: true })
         .eq("role", "capitan")
 
-      if (capitanesError) throw capitanesError
+      if (capitanesError) {
+        // Si es un error de red y no hemos alcanzado el máximo de reintentos
+        if (retry < maxRetries && capitanesError.message?.includes("Failed to fetch")) {
+          console.log(`Error de red al obtener capitanes, reintentando... (${retry + 1}/${maxRetries})`)
+          await new Promise((resolve) => setTimeout(resolve, 2000))
+          return fetchStats(retry + 1)
+        }
+
+        throw capitanesError
+      }
 
       // Obtener estadísticas de directores técnicos
       const { count: directoresCount, error: directoresError } = await supabase
@@ -171,8 +219,19 @@ export default function AdminDashboardPage() {
         totalProducts: productsCount || 0,
         totalSales: salesCount || 0,
       })
+
+      // Resetear contador de reintentos en caso de éxito
+      setRetryCount(0)
     } catch (error: any) {
       console.error("Error al cargar estadísticas:", error)
+
+      // Si es un error de red y no hemos alcanzado el máximo de reintentos
+      if (retry < maxRetries && error.message?.includes("Failed to fetch")) {
+        setRetryCount(retry + 1)
+        setError(`Error de conexión. Reintentando... (${retry + 1}/${maxRetries})`)
+        return
+      }
+
       setError(`Error al cargar estadísticas: ${error.message}`)
     } finally {
       setLoading(false)
@@ -195,7 +254,7 @@ export default function AdminDashboardPage() {
 
       if (salesError) throw salesError
 
-      if (salesData.length === 0) {
+      if (!salesData || salesData.length === 0) {
         setTopTeams([])
         return
       }
@@ -263,6 +322,11 @@ export default function AdminDashboardPage() {
 
       if (zonesError) throw zonesError
 
+      if (!zones || zones.length === 0) {
+        setZoneStats([])
+        return
+      }
+
       // Para cada zona, obtener equipos y ventas
       const zoneStatsData = await Promise.all(
         zones.map(async (zone) => {
@@ -284,7 +348,7 @@ export default function AdminDashboardPage() {
 
           let totalPoints = 0
 
-          if (teamIds.length > 0) {
+          if (teamIds && teamIds.length > 0) {
             const teamIdList = teamIds.map((t) => t.id)
 
             const { data: sales, error: salesError } = await supabase
@@ -294,7 +358,9 @@ export default function AdminDashboardPage() {
 
             if (salesError) throw salesError
 
-            totalPoints = sales.reduce((sum, sale) => sum + (sale.points || 0), 0)
+            if (sales && sales.length > 0) {
+              totalPoints = sales.reduce((sum, sale) => sum + (sale.points || 0), 0)
+            }
           }
 
           return {
@@ -319,6 +385,11 @@ export default function AdminDashboardPage() {
       const { data: products, error: productsError } = await supabase.from("products").select("id, name, points")
 
       if (productsError) throw productsError
+
+      if (!products || products.length === 0) {
+        setProductStats([])
+        return
+      }
 
       // Para cada producto, obtener ventas
       const productStatsData = await Promise.all(
@@ -354,6 +425,11 @@ export default function AdminDashboardPage() {
     }
   }
 
+  const handleRetry = () => {
+    setError(null)
+    fetchStructure()
+  }
+
   if (error) {
     return (
       <EmptyState
@@ -361,7 +437,7 @@ export default function AdminDashboardPage() {
         title="Error al cargar el dashboard"
         description={error}
         actionLabel="Reintentar"
-        onClick={() => window.location.reload()}
+        onClick={handleRetry}
         className="flex-1 py-20"
         iconClassName="bg-red-50"
       />
@@ -461,7 +537,9 @@ export default function AdminDashboardPage() {
                 <CardDescription>Goles acumulados por equipo y semana</CardDescription>
               </CardHeader>
               <CardContent className="pl-2">
-                <AdminStatsChart />
+                <div className="h-[400px]">
+                  <AdminStatsChart />
+                </div>
               </CardContent>
             </Card>
             <Card className="col-span-3">

@@ -1,7 +1,6 @@
 "use server"
 
-import { createServerClient } from "@/lib/supabase/server"
-import { adminSupabase } from "@/lib/supabase/server"
+import { createServerClient, adminSupabase } from "@/lib/supabase/server"
 import { revalidatePath } from "next/cache"
 
 export async function createDistributor(formData: FormData) {
@@ -10,7 +9,6 @@ export async function createDistributor(formData: FormData) {
   // Obtener datos del formulario
   const name = formData.get("name") as string
   const imageFile = formData.get("logo") as File
-  const zoneId = formData.get("zoneId") as string
 
   try {
     let logoUrl = null
@@ -56,7 +54,6 @@ export async function createDistributor(formData: FormData) {
       .insert({
         name,
         logo_url: logoUrl,
-        zone_id: zoneId === "" ? null : zoneId,
       })
       .select()
       .single()
@@ -107,7 +104,6 @@ export async function updateDistributor(id: string, formData: FormData) {
   const name = formData.get("name") as string
   const imageFile = formData.get("logo") as File
   const currentLogoUrl = (formData.get("currentLogoUrl") as string) || null
-  const zoneId = formData.get("zoneId") as string
 
   try {
     let logoUrl = currentLogoUrl
@@ -151,7 +147,6 @@ export async function updateDistributor(id: string, formData: FormData) {
       .update({
         name,
         logo_url: logoUrl,
-        zone_id: zoneId === "" ? null : zoneId,
         updated_at: new Date().toISOString(),
       })
       .eq("id", id)

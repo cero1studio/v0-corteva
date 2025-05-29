@@ -19,66 +19,73 @@ export function AdminStatsChart() {
   const [data, setData] = useState<WeeklyData[]>([])
   const [teams, setTeams] = useState<{ id: string; name: string; color: string }[]>([])
   const [error, setError] = useState<string | null>(null)
+  const [retryCount, setRetryCount] = useState(0)
+  const maxRetries = 3
 
   useEffect(() => {
     setIsMounted(true)
     fetchData()
   }, [])
 
-  const fetchData = async () => {
+  const fetchData = async (retry = 0) => {
     try {
       setLoading(true)
+      setError(null)
+
+      // Verificar que tengamos una sesión válida
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
+      if (!session) {
+        console.log("No hay sesión activa para cargar el gráfico")
+        setData([])
+        setLoading(false)
+        return
+      }
 
       // 1. Obtener equipos
       const { data: teamsData, error: teamsError } = await supabase.from("teams").select("id, name")
 
-      if (teamsError) throw teamsError
+      if (teamsError) {
+        // Si es un error de red y no hemos alcanzado el máximo de reintentos
+        if (teamsError.message?.includes("Failed to fetch") && retry < maxRetries) {
+          console.log(`Error de red al obtener equipos, reintentando... (${retry + 1}/${maxRetries})`)
+          await new Promise((resolve) => setTimeout(resolve, 2000))
+          return fetchData(retry + 1)
+        }
+        throw teamsError
+      }
 
       // Asignar colores a los equipos
       const colors = ["#f59e0b", "#4ade80", "#3b82f6", "#ec4899", "#8b5cf6", "#14b8a6", "#f43f5e"]
-      const teamsWithColors = teamsData.map((team, index) => ({
+      const teamsWithColors = (teamsData || []).map((team, index) => ({
         ...team,
         color: colors[index % colors.length],
       }))
 
       setTeams(teamsWithColors)
 
-      if (teamsData.length === 0) {
+      if (!teamsData || teamsData.length === 0) {
         // Si no hay equipos, no hay nada que mostrar
         setData([])
         setLoading(false)
         return
       }
 
-      // 2. Verificar la estructura de la tabla sales
-      const { data: salesStructure, error: structureError } = await supabase.from("sales").select().limit(1)
-
-      if (structureError) throw structureError
-
-      // Datos de prueba si no hay ventas
-      if (salesStructure.length === 0 || !salesStructure[0]) {
-        const mockData = [{ name: "Semana 1" }, { name: "Semana 2" }, { name: "Semana 3" }, { name: "Semana 4" }]
-
-        teamsWithColors.forEach((team) => {
-          mockData.forEach((week) => {
-            week[team.id] = 0
-          })
-        })
-
-        setData(mockData)
-        setLoading(false)
-        return
-      }
-
-      // Ahora sabemos qué columnas existen en la tabla sales
-      console.log("Estructura de sales:", salesStructure[0])
-
-      // 3. Obtener todas las ventas
+      // 2. Obtener todas las ventas
       const { data: salesData, error: salesError } = await supabase.from("sales").select("*").order("created_at")
 
-      if (salesError) throw salesError
+      if (salesError) {
+        // Si es un error de red y no hemos alcanzado el máximo de reintentos
+        if (salesError.message?.includes("Failed to fetch") && retry < maxRetries) {
+          console.log(`Error de red al obtener ventas, reintentando... (${retry + 1}/${maxRetries})`)
+          await new Promise((resolve) => setTimeout(resolve, 2000))
+          return fetchData(retry + 1)
+        }
+        throw salesError
+      }
 
-      if (salesData.length === 0) {
+      if (!salesData || salesData.length === 0) {
         // Generar datos de ejemplo vacíos
         const emptyData = Array.from({ length: 4 }, (_, i) => ({
           name: `Semana ${i + 1}`,
@@ -90,11 +97,8 @@ export function AdminStatsChart() {
         return
       }
 
-      // 4. Procesar datos para el gráfico adaptándonos a la estructura real
+      // 3. Procesar datos para el gráfico
       const weeklyData: Record<string, Record<string, number>> = {}
-
-      // Identificamos qué columna contiene el ID del equipo
-      const teamIdColumn = salesStructure[0].hasOwnProperty("team_id") ? "team_id" : "id_team"
 
       salesData.forEach((sale) => {
         const date = new Date(sale.created_at)
@@ -108,13 +112,13 @@ export function AdminStatsChart() {
           })
         }
 
-        const teamId = sale[teamIdColumn]
-        if (teamId) {
+        const teamId = sale.team_id || sale.id_team
+        if (teamId && weeklyData[weekLabel][teamId] !== undefined) {
           weeklyData[weekLabel][teamId] = (weeklyData[weekLabel][teamId] || 0) + (sale.points || 0)
         }
       })
 
-      // 5. Convertir a formato para Recharts
+      // 4. Convertir a formato para Recharts
       const chartData = Object.keys(weeklyData).map((week) => {
         const weekData: WeeklyData = { name: week }
 
@@ -133,9 +137,19 @@ export function AdminStatsChart() {
       })
 
       setData(chartData)
+      setRetryCount(0) // Resetear contador de reintentos en caso de éxito
     } catch (err: any) {
       console.error("Error al cargar datos del gráfico:", err)
+
+      // Si es un error de red genérico y no hemos alcanzado el máximo de reintentos
+      if (err.message?.includes("Failed to fetch") && retry < maxRetries) {
+        console.log(`Error de red general, reintentando... (${retry + 1}/${maxRetries})`)
+        await new Promise((resolve) => setTimeout(resolve, 2000))
+        return fetchData(retry + 1)
+      }
+
       setError(`Error al cargar datos: ${err.message || "Desconocido"}`)
+      setRetryCount(retry)
     } finally {
       setLoading(false)
     }
@@ -162,8 +176,8 @@ export function AdminStatsChart() {
         icon={AlertCircle}
         title="Error al cargar datos"
         description={error}
-        actionLabel="Reintentar"
-        onClick={fetchData}
+        actionLabel={retryCount < maxRetries ? "Reintentar" : "Recargar página"}
+        onClick={retryCount < maxRetries ? () => fetchData(retryCount + 1) : () => window.location.reload()}
         className="h-[300px]"
         iconClassName="bg-red-50"
       />
