@@ -17,7 +17,13 @@ import { getDistributorLogoUrl } from "@/lib/utils/image"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { getZones } from "@/app/actions/zones"
 
-export default function EditarDistribuidorPage({ params }: { params: { id: string } }) {
+interface EditarDistribuidorPageProps {
+  params: {
+    id: string
+  }
+}
+
+export default function EditarDistribuidorPage({ params }: EditarDistribuidorPageProps) {
   const [distributor, setDistributor] = useState<{
     id: string
     name: string
