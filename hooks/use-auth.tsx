@@ -24,7 +24,6 @@ type AuthContextType = {
   user: User | null
   profile: UserProfile | null
   isLoading: boolean
-  loadingMessage: string
   error: string | null
   signIn: (email: string, password: string) => Promise<{ error: string | null }>
   signOut: () => Promise<void>
@@ -40,7 +39,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [isLoading, setIsLoading] = useState(true)
-  const [loadingMessage, setLoadingMessage] = useState("Inicializando...")
   const [error, setError] = useState<string | null>(null)
   const router = useRouter()
   const pathname = usePathname()
@@ -76,54 +74,39 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
-  // Función para redireccionar solo cuando tengamos datos completos
-  const redirectToDashboard = (userProfile: UserProfile) => {
-    console.log(`Redirigiendo usuario con rol ${userProfile.role}`)
-
-    const hasTeam = !!userProfile.team_id
-    const dashboardRoute = getDashboardRoute(userProfile.role, hasTeam)
-
-    console.log(`Redirigiendo a: ${dashboardRoute}`)
-    setLoadingMessage("Redirigiendo al dashboard...")
-
-    // Usar window.location.href para forzar la redirección
-    if (typeof window !== "undefined") {
-      window.location.href = dashboardRoute
-    }
-  }
-
-  // Función para obtener el perfil del usuario
+  // Función simplificada para obtener el perfil del usuario
   const fetchUserProfile = async (userId: string): Promise<UserProfile | null> => {
     try {
       console.log(`Obteniendo perfil para usuario: ${userId}`)
-      setLoadingMessage("Cargando tu perfil...")
 
-      // Consulta directa a la tabla profiles
+      // Esperar 4 segundos para que la base de datos se sincronice
+      await new Promise((resolve) => setTimeout(resolve, 4000))
+
       const { data, error } = await supabase.from("profiles").select("*").eq("id", userId).single()
 
       if (error) {
-        console.error("Error al obtener perfil:", error)
+        console.error("Error fetching user profile:", error)
         return null
       }
 
-      if (!data) {
-        console.error("No se encontró el perfil")
+      if (!data || !data.role) {
+        console.error("Perfil incompleto o sin rol:", data)
         return null
       }
 
       console.log("Perfil obtenido exitosamente:", data)
 
-      // Obtener nombre del equipo si es capitán (opcional)
+      // Si el usuario es capitán, obtener el nombre del equipo
       let teamName = null
       if (data.role === "capitan" && data.team_id) {
         try {
-          setLoadingMessage("Cargando información del equipo...")
           const { data: team } = await supabase.from("teams").select("name").eq("id", data.team_id).single()
+
           if (team) {
             teamName = team.name
           }
         } catch (err) {
-          console.log("No se pudo obtener el nombre del equipo")
+          console.error("Error al obtener el equipo:", err)
         }
       }
 
@@ -138,166 +121,103 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         distributor_id: data.distributor_id,
       }
     } catch (error: any) {
-      console.error("Error al obtener perfil:", error)
+      console.error("Error in fetchUserProfile:", error)
       return null
     }
   }
 
-  // Función para refrescar el perfil
+  // Función para refrescar el perfil manualmente
   const refreshProfile = async () => {
     if (!user) return
-
     const userProfile = await fetchUserProfile(user.id)
     if (userProfile) {
       setProfile(userProfile)
     }
   }
 
-  // Función para esperar hasta tener datos completos
-  const waitForCompleteData = async (sessionData: Session) => {
-    console.log("Esperando datos completos...")
-    setLoadingMessage("Verificando tu sesión...")
-
-    let attempts = 0
-    const maxAttempts = 10 // Máximo 30 segundos (10 intentos x 3 segundos)
-
-    const checkData = async (): Promise<boolean> => {
-      attempts++
-      console.log(`Intento ${attempts}/${maxAttempts} para obtener datos completos`)
-      setLoadingMessage(`Cargando datos (${attempts}/${maxAttempts})...`)
-
-      // Verificar que la sesión sigue siendo válida
-      const { data: currentSession } = await supabase.auth.getSession()
-      if (!currentSession?.session) {
-        console.log("Sesión perdida durante la espera")
-        setLoadingMessage("Sesión perdida, reintentando...")
-        return false
-      }
-
-      // Intentar obtener el perfil
-      const userProfile = await fetchUserProfile(sessionData.user.id)
-
-      if (userProfile) {
-        console.log("Datos completos obtenidos!")
-        setLoadingMessage("¡Datos cargados exitosamente!")
-        setSession(sessionData)
-        setUser(sessionData.user)
-        setProfile(userProfile)
-        setError(null)
-        setIsLoading(false)
-
-        // Solo redirigir si estamos en login
-        if (pathname === "/login") {
-          redirectToDashboard(userProfile)
-        }
-
-        return true
-      }
-
-      return false
-    }
-
-    // Intentar inmediatamente
-    const success = await checkData()
-    if (success) return
-
-    // Si no funciona, esperar e intentar cada 3 segundos
-    const interval = setInterval(async () => {
-      const success = await checkData()
-
-      if (success || attempts >= maxAttempts) {
-        clearInterval(interval)
-
-        if (!success) {
-          console.error("No se pudieron obtener los datos después de varios intentos")
-          setError("No se pudo cargar tu perfil. Por favor, recarga la página.")
-          setLoadingMessage("Error al cargar datos")
-          setIsLoading(false)
-        }
-      }
-    }, 3000)
-  }
-
-  // Inicializar autenticación
+  // Inicializar la autenticación de forma simple
   useEffect(() => {
     let mounted = true
 
     const initAuth = async () => {
       try {
+        setIsLoading(true)
+        setError(null)
         console.log("Inicializando autenticación...")
-        setLoadingMessage("Inicializando aplicación...")
 
-        // Obtener sesión actual
         const { data, error } = await supabase.auth.getSession()
 
         if (!mounted) return
 
         if (error) {
-          console.error("Error al obtener sesión:", error)
-          setLoadingMessage("Error de conexión")
+          console.error("Error getting session:", error)
+          setSession(null)
+          setUser(null)
+          setProfile(null)
           if (!isPublicRoute) {
-            // Solo redirigir a login si estamos en una ruta protegida
-            if (typeof window !== "undefined") {
-              window.location.href = "/login"
-            }
+            router.push("/login")
           }
-          setIsLoading(false)
           return
         }
 
         if (data?.session) {
-          console.log("Sesión encontrada, esperando datos completos...")
-          setLoadingMessage("Sesión encontrada, cargando datos...")
-          // Esperar hasta tener datos completos
-          await waitForCompleteData(data.session)
-        } else {
-          console.log("No hay sesión activa")
-          setLoadingMessage("No hay sesión activa")
-          if (!isPublicRoute) {
-            // Solo redirigir a login si estamos en una ruta protegida
-            if (typeof window !== "undefined") {
-              window.location.href = "/login"
+          console.log("Sesión encontrada:", data.session.user.id)
+          setSession(data.session)
+          setUser(data.session.user)
+
+          const userProfile = await fetchUserProfile(data.session.user.id)
+
+          if (!mounted) return
+
+          if (userProfile) {
+            console.log("Perfil obtenido - rol:", userProfile.role)
+            setProfile(userProfile)
+
+            // Solo redirigir si estamos en login
+            if (pathname === "/login") {
+              const hasTeam = !!userProfile.team_id
+              const dashboardRoute = getDashboardRoute(userProfile.role, hasTeam)
+              console.log(`Redirigiendo a ${dashboardRoute}`)
+              router.push(dashboardRoute)
             }
+          } else {
+            console.error("No se pudo obtener el perfil del usuario")
+            setError("No se pudo cargar el perfil del usuario")
           }
-          setIsLoading(false)
+        } else if (!isPublicRoute) {
+          console.log("No hay sesión, redirigiendo a login")
+          router.push("/login")
         }
       } catch (error: any) {
-        console.error("Error de inicialización:", error)
+        if (!mounted) return
+        console.error("Auth initialization error:", error)
         setError(error.message)
-        setLoadingMessage("Error de inicialización")
-        setIsLoading(false)
+        if (!isPublicRoute) {
+          router.push("/login")
+        }
+      } finally {
+        if (mounted) {
+          setIsLoading(false)
+        }
       }
     }
 
     initAuth()
 
-    // Suscribirse a cambios de autenticación
+    // Suscribirse a cambios en la autenticación
     const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (!mounted) return
 
       console.log("Auth state changed:", event)
 
-      if (event === "SIGNED_IN" && session) {
-        console.log("Usuario autenticado, esperando datos completos...")
-        setLoadingMessage("Autenticación exitosa, cargando datos...")
-        setError(null)
-        setIsLoading(true)
-
-        // Esperar hasta tener datos completos
-        await waitForCompleteData(session)
-      } else if (event === "SIGNED_OUT") {
-        console.log("Usuario desconectado")
-        setLoadingMessage("Cerrando sesión...")
+      if (event === "SIGNED_OUT") {
         setSession(null)
         setUser(null)
         setProfile(null)
         setError(null)
         setIsLoading(false)
-
         if (!isPublicRoute) {
-          if (typeof window !== "undefined") {
-            window.location.href = "/login"
-          }
+          router.push("/login")
         }
       }
     })
@@ -306,15 +226,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       mounted = false
       authListener.subscription.unsubscribe()
     }
-  }, [isPublicRoute, pathname])
+  }, [router, pathname, isPublicRoute])
 
-  // Función para iniciar sesión
+  // Función simplificada para iniciar sesión
   const signIn = async (email: string, password: string) => {
     try {
       setIsLoading(true)
-      setLoadingMessage("Iniciando sesión...")
       setError(null)
-
       console.log("Iniciando sesión con:", email)
 
       const { data, error } = await supabase.auth.signInWithPassword({
@@ -323,21 +241,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       })
 
       if (error) {
-        console.error("Error de login:", error)
+        console.error("Error de inicio de sesión:", error)
         setError(error.message)
-        setLoadingMessage("Error en el login")
         setIsLoading(false)
         return { error: error.message }
       }
 
-      console.log("Login exitoso, esperando datos completos...")
-      setLoadingMessage("Login exitoso, cargando datos...")
-      // El loading se mantiene hasta que tengamos datos completos
+      if (data.session && data.user) {
+        setSession(data.session)
+        setUser(data.user)
+
+        // Obtener perfil después del login exitoso
+        const userProfile = await fetchUserProfile(data.user.id)
+
+        if (userProfile) {
+          setProfile(userProfile)
+          const hasTeam = !!userProfile.team_id
+          const dashboardRoute = getDashboardRoute(userProfile.role, hasTeam)
+          console.log(`Login exitoso, redirigiendo a ${dashboardRoute}`)
+          router.push(dashboardRoute)
+        } else {
+          setError("No se pudo cargar el perfil del usuario")
+        }
+      }
+
+      setIsLoading(false)
       return { error: null }
     } catch (error: any) {
       console.error("Error en signIn:", error)
       setError(error.message)
-      setLoadingMessage("Error de conexión")
       setIsLoading(false)
       return { error: error.message }
     }
@@ -347,7 +279,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signOut = async () => {
     try {
       setIsLoading(true)
-      setLoadingMessage("Cerrando sesión...")
       console.log("Cerrando sesión...")
 
       await supabase.auth.signOut()
@@ -357,11 +288,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setProfile(null)
       setError(null)
 
-      if (typeof window !== "undefined") {
-        window.location.href = "/login"
-      }
-    } catch (error) {
-      console.error("Error al cerrar sesión:", error)
+      router.push("/login")
+    } catch (error: any) {
+      console.error("Sign out error:", error)
+      router.push("/login")
     } finally {
       setIsLoading(false)
     }
@@ -372,7 +302,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     user,
     profile,
     isLoading,
-    loadingMessage,
     error,
     signIn,
     signOut,
