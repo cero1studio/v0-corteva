@@ -307,7 +307,7 @@ export default function EditarUsuarioPage({ params }: PageProps) {
               </Select>
             </div>
 
-            {role !== "admin" && role !== "arbitro" && (
+            {role !== "admin" && (
               <>
                 <div className="space-y-2">
                   <Label htmlFor="zone">Zona</Label>
@@ -362,9 +362,9 @@ export default function EditarUsuarioPage({ params }: PageProps) {
               </>
             )}
 
-            {(role === "admin" || role === "arbitro") && (
+            {role === "admin" && (
               <div className="p-3 bg-gray-50 rounded-md text-sm text-gray-500">
-                Los administradores y árbitros no pueden tener equipos, zonas o distribuidores asignados.
+                Los administradores no pueden tener equipos, zonas o distribuidores asignados.
               </div>
             )}
           </CardContent>

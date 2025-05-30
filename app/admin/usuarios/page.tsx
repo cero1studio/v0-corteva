@@ -131,6 +131,12 @@ export default function UsuariosPage() {
             Director Técnico
           </Badge>
         )
+      case "arbitro":
+        return (
+          <Badge variant="default" className="bg-purple-600">
+            Árbitro
+          </Badge>
+        )
       default:
         return <Badge variant="outline">{role}</Badge>
     }
