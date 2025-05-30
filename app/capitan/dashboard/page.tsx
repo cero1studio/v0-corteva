@@ -17,7 +17,6 @@ import { Progress } from "@/components/ui/progress"
 import { getImageUrl, getDistributorLogoUrl } from "@/lib/utils/image"
 import { getTeamRankingByZone } from "@/app/actions/ranking"
 import { AuthGuard } from "@/components/auth-guard"
-import { getCompetitorClientsByTeam } from "@/app/actions/clients"
 
 // Constante para la conversión de puntos a goles
 const PUNTOS_POR_GOL = 100
@@ -194,17 +193,18 @@ function CapitanDashboardContent() {
         setSalesData(salesData || [])
       }
 
-      // Cargar clientes usando la misma función que en la página de clientes
-      try {
-        const result = await getCompetitorClientsByTeam(teamId)
-        if (result.success) {
-          setClientsData(result.data || [])
-          console.log("Clientes cargados:", result.data?.length || 0)
-        } else {
-          console.error("Error al cargar clientes:", result.error)
-        }
-      } catch (clientError) {
-        console.error("Error al cargar clientes:", clientError)
+      // Cargar clientes de todos los miembros del equipo
+      const { data: clientsData, error: clientsError } = await supabase
+        .from("competitor_clients")
+        .select("*")
+        .in("representative_id", memberIds)
+        .order("created_at", { ascending: false })
+
+      if (clientsError) {
+        console.error("Error cargando clientes:", clientsError)
+      } else {
+        console.log("Clientes cargados:", clientsData?.length || 0)
+        setClientsData(clientsData || [])
       }
 
       // Cargar ranking real de la zona usando las funciones de server actions
@@ -530,14 +530,14 @@ function CapitanDashboardContent() {
                     {clientsData.slice(0, 5).map((client) => (
                       <div key={client.id} className="flex justify-between items-center border-b pb-2">
                         <div>
-                          <p className="font-medium">{client.client_name || "Cliente"}</p>
+                          <p className="font-medium">{client.ganadero_name || client.name || "Cliente"}</p>
                           <p className="text-sm text-muted-foreground">
                             {new Date(client.created_at).toLocaleDateString()}
                           </p>
                         </div>
                         <div className="text-right">
                           <p className="text-sm text-muted-foreground">
-                            {client.profiles?.full_name || "No especificado"}
+                            {client.producto_anterior || "Competidor no especificado"}
                           </p>
                         </div>
                       </div>

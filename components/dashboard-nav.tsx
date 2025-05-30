@@ -1,37 +1,21 @@
 "use client"
-
-import { useState } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import Image from "next/image"
 import { cn } from "@/lib/utils"
-import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import {
-  Home,
-  Package,
-  Users,
-  LogOut,
-  Trophy,
-  User,
-  Settings,
-  Flag,
-  ShoppingCart,
-  FileText,
-  Menu,
-  X,
-} from "lucide-react"
+import { Home, Package, Users, LogOut, Trophy, User, Settings, Flag, ShoppingCart, FileText } from "lucide-react"
 import { useAuth } from "@/components/auth-provider"
 
 interface NavProps {
   role: "admin" | "capitan" | "supervisor" | "director-tecnico" | "representante"
+  onMobileMenuClose?: () => void
 }
 
-export function DashboardNav({ role }: NavProps) {
+export function DashboardNav({ role, onMobileMenuClose }: NavProps) {
   const pathname = usePathname()
   const { user, signOut } = useAuth()
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
 
   // Función para obtener las iniciales del nombre
   const getInitials = (name: string) => {
@@ -50,6 +34,13 @@ export function DashboardNav({ role }: NavProps) {
       await signOut()
     } catch (error) {
       console.error("Error al cerrar sesión:", error)
+    }
+  }
+
+  // Función para manejar clic en enlace móvil
+  const handleLinkClick = () => {
+    if (onMobileMenuClose) {
+      onMobileMenuClose()
     }
   }
 
@@ -86,8 +77,9 @@ export function DashboardNav({ role }: NavProps) {
         return [
           { href: "/director-tecnico/dashboard", label: "Dashboard", icon: Home },
           { href: "/director-tecnico/equipos", label: "Equipos", icon: Users },
-          { href: "/director-tecnico/ventas", label: "Ventas", icon: ShoppingCart },
-          { href: "/director-tecnico/clientes", label: "Clientes", icon: Users },
+          { href: "/director-tecnico/ranking", label: "Ranking", icon: Trophy },
+          { href: "/director-tecnico/reportes", label: "Reportes", icon: FileText },
+          { href: "/director-tecnico/perfil", label: "Perfil", icon: User },
         ]
       case "representante":
         return [
@@ -102,156 +94,70 @@ export function DashboardNav({ role }: NavProps) {
   const navLinks = getNavLinks()
 
   return (
-    <>
-      {/* Botón de menú móvil */}
-      <Button
-        variant="outline"
-        size="icon"
-        className="fixed top-4 right-4 z-50 lg:hidden"
-        onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-      >
-        {isMobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-      </Button>
-
-      {/* Sidebar para desktop */}
-      <div className="hidden lg:flex flex-col h-full">
-        <div className="p-4">
-          <div className="flex items-center">
-            <Image
-              src="/super-ganaderia-logo.png"
-              alt="Súper Ganadería Logo"
-              width={180}
-              height={60}
-              className="h-auto"
-            />
-          </div>
-        </div>
-
-        <ScrollArea className="flex-1 px-3">
-          <div className="space-y-1 py-2">
-            {navLinks.map((link) => (
-              <Link
-                key={link.href}
-                href={link.href}
-                className={cn(
-                  "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
-                  pathname === link.href
-                    ? "bg-corteva-50 text-corteva-900"
-                    : "text-muted-foreground hover:bg-corteva-50 hover:text-corteva-900",
-                )}
-              >
-                <link.icon className="h-4 w-4" />
-                <span>{link.label}</span>
-              </Link>
-            ))}
-          </div>
-        </ScrollArea>
-
-        <div className="border-t p-4">
-          <div className="flex items-center gap-3 rounded-md border p-3">
-            <Avatar>
-              <AvatarImage src="/placeholder.svg" alt={user?.full_name || "Usuario"} />
-              <AvatarFallback>{user?.full_name ? getInitials(user.full_name) : "U"}</AvatarFallback>
-            </Avatar>
-            <div className="flex flex-col">
-              <span className="text-sm font-medium">{user?.full_name || "Usuario"}</span>
-              <span className="text-xs text-muted-foreground">
-                {role === "admin"
-                  ? "Administrador"
-                  : role === "capitan"
-                    ? "Capitán"
-                    : role === "supervisor"
-                      ? "Supervisor"
-                      : role === "director-tecnico"
-                        ? "Director Técnico"
-                        : "Representante"}
-              </span>
-            </div>
-          </div>
-
-          <button
-            onClick={handleSignOut}
-            className="mt-4 flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
-          >
-            <LogOut className="h-4 w-4" />
-            <span>Cerrar Sesión</span>
-          </button>
+    <div className="flex flex-col h-full">
+      <div className="p-4">
+        <div className="flex items-center">
+          <Image
+            src="/super-ganaderia-logo.png"
+            alt="Súper Ganadería Logo"
+            width={180}
+            height={60}
+            className="h-auto"
+          />
         </div>
       </div>
 
-      {/* Sidebar para móvil */}
-      {isMobileMenuOpen && (
-        <div className="fixed inset-0 z-40 lg:hidden">
-          <div className="fixed inset-0 bg-black/50" onClick={() => setIsMobileMenuOpen(false)} />
-          <div className="fixed inset-y-0 left-0 w-64 bg-white shadow-lg">
-            <div className="flex flex-col h-full">
-              <div className="p-4">
-                <div className="flex items-center">
-                  <Image
-                    src="/super-ganaderia-logo.png"
-                    alt="Súper Ganadería Logo"
-                    width={180}
-                    height={60}
-                    className="h-auto"
-                  />
-                </div>
-              </div>
+      <ScrollArea className="flex-1 px-3">
+        <div className="space-y-1 py-2">
+          {navLinks.map((link) => (
+            <Link
+              key={link.href}
+              href={link.href}
+              onClick={handleLinkClick}
+              className={cn(
+                "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+                pathname === link.href
+                  ? "bg-corteva-50 text-corteva-900"
+                  : "text-muted-foreground hover:bg-corteva-50 hover:text-corteva-900",
+              )}
+            >
+              <link.icon className="h-4 w-4" />
+              <span>{link.label}</span>
+            </Link>
+          ))}
+        </div>
+      </ScrollArea>
 
-              <ScrollArea className="flex-1 px-3">
-                <div className="space-y-1 py-2">
-                  {navLinks.map((link) => (
-                    <Link
-                      key={link.href}
-                      href={link.href}
-                      onClick={() => setIsMobileMenuOpen(false)}
-                      className={cn(
-                        "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
-                        pathname === link.href
-                          ? "bg-corteva-50 text-corteva-900"
-                          : "text-muted-foreground hover:bg-corteva-50 hover:text-corteva-900",
-                      )}
-                    >
-                      <link.icon className="h-4 w-4" />
-                      <span>{link.label}</span>
-                    </Link>
-                  ))}
-                </div>
-              </ScrollArea>
-
-              <div className="border-t p-4">
-                <div className="flex items-center gap-3 rounded-md border p-3">
-                  <Avatar>
-                    <AvatarImage src="/placeholder.svg" alt={user?.full_name || "Usuario"} />
-                    <AvatarFallback>{user?.full_name ? getInitials(user.full_name) : "U"}</AvatarFallback>
-                  </Avatar>
-                  <div className="flex flex-col">
-                    <span className="text-sm font-medium">{user?.full_name || "Usuario"}</span>
-                    <span className="text-xs text-muted-foreground">
-                      {role === "admin"
-                        ? "Administrador"
-                        : role === "capitan"
-                          ? "Capitán"
-                          : role === "supervisor"
-                            ? "Supervisor"
-                            : role === "director-tecnico"
-                              ? "Director Técnico"
-                              : "Representante"}
-                    </span>
-                  </div>
-                </div>
-
-                <button
-                  onClick={handleSignOut}
-                  className="mt-4 flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
-                >
-                  <LogOut className="h-4 w-4" />
-                  <span>Cerrar Sesión</span>
-                </button>
-              </div>
-            </div>
+      <div className="border-t p-4">
+        <div className="flex items-center gap-3 rounded-md border p-3">
+          <Avatar>
+            <AvatarImage src="/placeholder.svg" alt={user?.full_name || "Usuario"} />
+            <AvatarFallback>{user?.full_name ? getInitials(user.full_name) : "U"}</AvatarFallback>
+          </Avatar>
+          <div className="flex flex-col">
+            <span className="text-sm font-medium">{user?.full_name || "Usuario"}</span>
+            <span className="text-xs text-muted-foreground">
+              {role === "admin"
+                ? "Administrador"
+                : role === "capitan"
+                  ? "Capitán"
+                  : role === "supervisor"
+                    ? "Supervisor"
+                    : role === "director-tecnico"
+                      ? "Director Técnico"
+                      : "Representante"}
+            </span>
           </div>
         </div>
-      )}
-    </>
+
+        <button
+          onClick={handleSignOut}
+          className="mt-4 flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
+        >
+          <LogOut className="h-4 w-4" />
+          <span>Cerrar Sesión</span>
+        </button>
+      </div>
+    </div>
   )
 }

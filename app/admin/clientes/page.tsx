@@ -89,10 +89,6 @@ const columns: ColumnDef<CompetitorClient>[] = [
   {
     accessorKey: "representative_profile.full_name",
     header: "Capitán",
-    cell: ({ row }) => {
-      const captain = row.original.representative_profile
-      return captain ? <Badge variant="outline">{captain.full_name}</Badge> : "N/A"
-    },
   },
   {
     accessorKey: "team.name",
@@ -266,14 +262,12 @@ export default function AdminClientesPage() {
     const teamName = client.team?.name || ""
     const zoneName = client.team?.zone?.name || ""
     const volumenVentaEstimado = client.volumen_venta_estimado || ""
-    const captainName = client.representative_profile?.full_name || ""
 
     const matchesSearch =
       ganaderoName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       clientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       teamName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       zoneName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      captainName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       volumenVentaEstimado.toLowerCase().includes(searchTerm.toLowerCase())
 
     const matchesZone = selectedZone === "all" || client.team?.zone?.id === selectedZone

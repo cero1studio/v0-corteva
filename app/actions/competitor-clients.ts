@@ -3,42 +3,6 @@
 import { createServerSupabaseClient } from "@/lib/supabase/server"
 import { revalidatePath } from "next/cache"
 
-export async function getAllCompetitorClients() {
-  const supabase = createServerSupabaseClient()
-
-  try {
-    const { data, error } = await supabase
-      .from("competitor_clients")
-      .select(`
-        *,
-        representative_profile:representative_id(
-          id, 
-          full_name,
-          team_id,
-          team:team_id(
-            id,
-            name,
-            zone:zone_id(id, name)
-          )
-        )
-      `)
-      .order("created_at", { ascending: false })
-
-    if (error) throw error
-
-    // Transformar los datos para que coincidan con la estructura esperada
-    const transformedData = data?.map((client) => ({
-      ...client,
-      team: client.representative_profile?.team || null,
-    }))
-
-    return { success: true, data: transformedData }
-  } catch (error: any) {
-    console.error("Error en getAllCompetitorClients:", error)
-    return { success: false, error: error.message }
-  }
-}
-
 export async function createCompetitorClient(formData: FormData) {
   const supabase = createServerSupabaseClient()
 
@@ -56,7 +20,7 @@ export async function createCompetitorClient(formData: FormData) {
       producto_anterior: formData.get("producto_anterior") as string,
       producto_super_ganaderia: formData.get("producto_super_ganaderia") as string,
       volumen_venta_estimado: formData.get("volumen_venta_estimado") as string,
-      representative_id: formData.get("representative") as string,
+      representative: formData.get("representative") as string,
       points: formData.get("points") ? Number.parseInt(formData.get("points") as string) : 5,
     }
 
@@ -64,7 +28,7 @@ export async function createCompetitorClient(formData: FormData) {
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
       .select("team_id")
-      .eq("id", clientData.representative_id)
+      .eq("id", clientData.representative)
       .single()
 
     if (profileError) throw new Error(`Error al obtener perfil: ${profileError.message}`)
@@ -84,7 +48,7 @@ export async function createCompetitorClient(formData: FormData) {
         producto_anterior: clientData.producto_anterior,
         producto_super_ganaderia: clientData.producto_super_ganaderia,
         volumen_venta_estimado: clientData.volumen_venta_estimado,
-        representative_id: clientData.representative_id,
+        representative: clientData.representative,
         points: clientData.points,
         team_id: profile.team_id,
       })
@@ -99,6 +63,90 @@ export async function createCompetitorClient(formData: FormData) {
     return { success: true, data }
   } catch (error: any) {
     console.error("Error en createCompetitorClient:", error)
+    return { success: false, error: error.message }
+  }
+}
+
+export async function getAllCompetitorClients() {
+  const supabase = createServerSupabaseClient()
+
+  try {
+    // Primero obtenemos los clientes
+    const { data: clients, error: clientsError } = await supabase
+      .from("competitor_clients")
+      .select("*")
+      .order("created_at", { ascending: false })
+
+    if (clientsError) throw clientsError
+
+    if (!clients || clients.length === 0) {
+      return { success: true, data: [] }
+    }
+
+    // Obtenemos los IDs únicos de representantes y equipos
+    const representativeIds = [...new Set(clients.map((c) => c.representative).filter(Boolean))]
+    const teamIds = [...new Set(clients.map((c) => c.team_id).filter(Boolean))]
+
+    // Obtenemos los datos de los representantes
+    const { data: representatives, error: repError } = await supabase
+      .from("profiles")
+      .select("id, full_name")
+      .in("id", representativeIds)
+
+    if (repError) {
+      console.error("Error loading representatives:", repError)
+    }
+
+    // Obtenemos los datos de los equipos con sus zonas
+    const { data: teams, error: teamsError } = await supabase
+      .from("teams")
+      .select(`
+        id,
+        name,
+        zone_id,
+        zones (
+          id,
+          name
+        )
+      `)
+      .in("id", teamIds)
+
+    if (teamsError) {
+      console.error("Error loading teams:", teamsError)
+    }
+
+    // Combinamos los datos
+    const enrichedClients = clients.map((client) => {
+      const representative = representatives?.find((rep) => rep.id === client.representative)
+      const team = teams?.find((t) => t.id === client.team_id)
+
+      return {
+        ...client,
+        representative_profile: representative
+          ? {
+              id: representative.id,
+              full_name: representative.full_name,
+            }
+          : null,
+        team: team
+          ? {
+              id: team.id,
+              name: team.name,
+              zone:
+                team.zones && team.zones.length > 0
+                  ? {
+                      id: team.zones[0].id,
+                      name: team.zones[0].name,
+                    }
+                  : null,
+            }
+          : null,
+      }
+    })
+
+    return { success: true, data: enrichedClients }
+  } catch (error: any) {
+    console.error("Error en getAllCompetitorClients:", error)
     return { success: false, error: error.message }
   }
 }
@@ -120,7 +168,7 @@ export async function updateCompetitorClient(id: string, formData: FormData) {
       producto_anterior: formData.get("producto_anterior") as string,
       producto_super_ganaderia: formData.get("producto_super_ganaderia") as string,
       volumen_venta_estimado: formData.get("volumen_venta_estimado") as string,
-      representative_id: formData.get("representative") as string,
+      representative: formData.get("representative") as string,
       points: formData.get("points") ? Number.parseInt(formData.get("points") as string) : 5,
     }
 
@@ -128,7 +176,7 @@ export async function updateCompetitorClient(id: string, formData: FormData) {
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
       .select("team_id")
-      .eq("id", clientData.representative_id)
+      .eq("id", clientData.representative)
       .single()
 
     if (profileError) throw new Error(`Error al obtener perfil: ${profileError.message}`)
@@ -147,7 +195,7 @@ export async function updateCompetitorClient(id: string, formData: FormData) {
         producto_anterior: clientData.producto_anterior,
         producto_super_ganaderia: clientData.producto_super_ganaderia,
         volumen_venta_estimado: clientData.volumen_venta_estimado,
-        representative_id: clientData.representative_id,
+        representative: clientData.representative,
         points: clientData.points,
         team_id: profile.team_id,
       })
@@ -212,7 +260,7 @@ export async function getCompetitorClientsByRepresentative(representativeId: str
     const { data, error } = await supabase
       .from("competitor_clients")
       .select("*")
-      .eq("representative_id", representativeId)
+      .eq("representative", representativeId)
       .order("created_at", { ascending: false })
 
     if (error) throw error

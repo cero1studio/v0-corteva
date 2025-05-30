@@ -10,7 +10,7 @@ export async function registerCompetitorClient(formData: FormData) {
   const supabase = createServerSupabaseClient()
 
   // Obtener datos del formulario
-  const clientName = formData.get("name") as string
+  const name = formData.get("name") as string
   const previousSupplier = formData.get("previousSupplier") as string
   const contactInfo = formData.get("contactInfo") as string
   const notes = formData.get("notes") as string
@@ -31,12 +31,13 @@ export async function registerCompetitorClient(formData: FormData) {
     const { data, error } = await supabase
       .from("competitor_clients")
       .insert({
-        client_name: clientName,
-        competitor_name: previousSupplier,
-        ganadero_name: contactInfo,
-        representative_id: capturedBy,
+        name,
+        previous_supplier: previousSupplier,
+        contact_info: contactInfo,
+        notes,
+        captured_by: capturedBy,
         team_id: profile.team_id,
-        points: 0,
+        capture_date: new Date().toISOString().split("T")[0],
       })
       .select()
 
@@ -112,33 +113,16 @@ export async function getCompetitorClientsByTeam(teamId: string) {
       .from("competitor_clients")
       .select(`
         id,
-        client_name,
+        name,
+        previous_supplier,
+        contact_info,
+        notes,
+        capture_date,
         created_at,
-        team_id,
-        representative_id,
-        profiles:representative_id (
-          id, 
-          full_name,
-          team_id,
-          teams:team_id (
-            id,
-            name,
-            zone_id,
-            zones:zone_id (
-              id,
-              name
-            ),
-            distributor_id,
-            distributors:distributor_id (
-              id,
-              name,
-              logo_url
-            )
-          )
-        )
+        profiles (id, full_name)
       `)
       .eq("team_id", teamId)
-      .order("created_at", { ascending: false })
+      .order("capture_date", { ascending: false })
 
     if (error) throw error
 
@@ -157,32 +141,15 @@ export async function getCompetitorClientsByUser(userId: string) {
       .from("competitor_clients")
       .select(`
         id,
-        client_name,
-        created_at,
-        representative_id,
-        profiles:representative_id (
-          id, 
-          full_name,
-          team_id,
-          teams:team_id (
-            id,
-            name,
-            zone_id,
-            zones:zone_id (
-              id,
-              name
-            ),
-            distributor_id,
-            distributors:distributor_id (
-              id,
-              name,
-              logo_url
-            )
-          )
-        )
+        name,
+        previous_supplier,
+        contact_info,
+        notes,
+        capture_date,
+        created_at
       `)
-      .eq("representative_id", userId)
-      .order("created_at", { ascending: false })
+      .eq("captured_by", userId)
+      .order("capture_date", { ascending: false })
 
     if (error) throw error
 

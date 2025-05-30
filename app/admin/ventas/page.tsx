@@ -81,7 +81,6 @@ interface User {
   id: string
   full_name: string
   team_id: string
-  role?: string
 }
 
 interface Distributor {
@@ -101,7 +100,6 @@ export default function AdminVentasPage() {
   const [selectedZone, setSelectedZone] = useState<string>("all")
   const [selectedTeam, setSelectedTeam] = useState<string>("all")
   const [selectedDistributor, setSelectedDistributor] = useState<string>("all")
-  const [selectedCaptain, setSelectedCaptain] = useState<string>("all")
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [editingSale, setEditingSale] = useState<Sale | null>(null)
@@ -205,21 +203,18 @@ export default function AdminVentasPage() {
     const teamName = sale.team?.name || ""
     const zoneName = sale.zone?.name || ""
     const distributorName = sale.distributor?.name || ""
-    const captainName = sale.representative?.full_name || ""
 
     const matchesSearch =
       productName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       teamName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       zoneName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      distributorName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      captainName.toLowerCase().includes(searchTerm.toLowerCase())
+      distributorName.toLowerCase().includes(searchTerm.toLowerCase())
 
     const matchesZone = selectedZone === "all" || sale.zone?.id === selectedZone
     const matchesTeam = selectedTeam === "all" || sale.team?.id === selectedTeam
     const matchesDistributor = selectedDistributor === "all" || sale.distributor?.id === selectedDistributor
-    const matchesCaptain = selectedCaptain === "all" || sale.representative?.id === selectedCaptain
 
-    return matchesSearch && matchesZone && matchesTeam && matchesDistributor && matchesCaptain
+    return matchesSearch && matchesZone && matchesTeam && matchesDistributor
   })
 
   const filteredTeams = selectedZone === "all" ? teams : teams.filter((team) => team.zone_id === selectedZone)
@@ -542,7 +537,7 @@ export default function AdminVentasPage() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
             <div>
               <Label htmlFor="search">Buscar</Label>
               <div className="relative">
@@ -604,24 +599,6 @@ export default function AdminVentasPage() {
                 </SelectContent>
               </Select>
             </div>
-            <div>
-              <Label htmlFor="captain">Capitán</Label>
-              <Select value={selectedCaptain} onValueChange={setSelectedCaptain}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Todos los capitanes" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos los capitanes</SelectItem>
-                  {users
-                    .filter((user) => user.role === "Capitan")
-                    .map((captain) => (
-                      <SelectItem key={captain.id} value={captain.id}>
-                        {captain.full_name}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
-            </div>
             <div className="flex items-end">
               <Button
                 variant="outline"
@@ -630,7 +607,6 @@ export default function AdminVentasPage() {
                   setSelectedZone("all")
                   setSelectedTeam("all")
                   setSelectedDistributor("all")
-                  setSelectedCaptain("all")
                 }}
                 className="w-full"
               >
@@ -666,7 +642,6 @@ export default function AdminVentasPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Producto</TableHead>
-                  <TableHead>Capitán</TableHead>
                   <TableHead>Distribuidor</TableHead>
                   <TableHead>Equipo</TableHead>
                   <TableHead>Zona</TableHead>
@@ -691,11 +666,6 @@ export default function AdminVentasPage() {
                         />
                         <span className="font-medium">{sale.products?.name || "N/A"}</span>
                       </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className="bg-green-50">
-                        {sale.representative?.full_name || "N/A"}
-                      </Badge>
                     </TableCell>
                     <TableCell>
                       <Badge variant="outline" className="bg-blue-50">
