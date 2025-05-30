@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { getUsers, deleteUser } from "@/app/actions/users"
+import { getUsers, deleteUser, getZones } from "@/app/actions/users"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -21,6 +21,7 @@ import Link from "next/link"
 import { Badge } from "@/components/ui/badge"
 import { EmptyState } from "@/components/empty-state"
 import { getDistributorLogoUrl } from "@/lib/utils/image"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 export default function UsuariosPage() {
   const [users, setUsers] = useState<any[]>([])
@@ -28,15 +29,18 @@ export default function UsuariosPage() {
   const [userToDelete, setUserToDelete] = useState<string | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
   const { toast } = useToast()
+  const [zones, setZones] = useState<any[]>([])
+  const [selectedZone, setSelectedZone] = useState<string>("all")
 
   useEffect(() => {
     fetchUsers()
-  }, [])
+    fetchZones()
+  }, [selectedZone])
 
   async function fetchUsers() {
     try {
       setLoading(true)
-      const result = await getUsers()
+      const result = await getUsers(selectedZone)
 
       console.log("Resultado de getUsers:", result)
 
@@ -60,6 +64,17 @@ export default function UsuariosPage() {
       setUsers([])
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function fetchZones() {
+    try {
+      const result = await getZones()
+      if (result.data) {
+        setZones(result.data)
+      }
+    } catch (error) {
+      console.error("Error al obtener zonas:", error)
     }
   }
 
@@ -143,14 +158,37 @@ export default function UsuariosPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-3xl font-bold tracking-tight">Usuarios</h2>
-        <Button asChild>
-          <Link href="/admin/usuarios/nuevo">
-            <Plus className="mr-2 h-4 w-4" />
-            Nuevo Usuario
-          </Link>
-        </Button>
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-3xl font-bold tracking-tight">Usuarios</h2>
+          <Button asChild>
+            <Link href="/admin/usuarios/nuevo">
+              <Plus className="mr-2 h-4 w-4" />
+              Nuevo Usuario
+            </Link>
+          </Button>
+        </div>
+
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <label htmlFor="zone-filter" className="text-sm font-medium">
+              Filtrar por zona:
+            </label>
+            <Select value={selectedZone} onValueChange={setSelectedZone}>
+              <SelectTrigger className="w-[200px]">
+                <SelectValue placeholder="Seleccionar zona" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todas las zonas</SelectItem>
+                {zones.map((zone) => (
+                  <SelectItem key={zone.id} value={zone.id}>
+                    {zone.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
       </div>
 
       <Card>

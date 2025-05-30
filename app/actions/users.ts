@@ -50,17 +50,15 @@ export async function getUsersSimple() {
   }
 }
 
-// Replace the getUsers function with this updated version that uses explicit joins
-export async function getUsers() {
+// Replace the getUsers function with this updated version that supports zone filtering
+export async function getUsers(zoneFilter?: string) {
   try {
     const supabase = createServerClient()
 
     console.log("Obteniendo usuarios...")
 
-    // Obtener todos los perfiles
-    const { data: profiles, error: profilesError } = await supabase
-      .from("profiles")
-      .select(`
+    // Build the query with optional zone filter
+    let query = supabase.from("profiles").select(`
         id, 
         email, 
         full_name, 
@@ -69,8 +67,15 @@ export async function getUsers() {
         distributor_id, 
         team_id
       `)
-      .order("full_name")
 
+    // Apply zone filter if provided
+    if (zoneFilter && zoneFilter !== "all") {
+      query = query.eq("zone_id", zoneFilter)
+    }
+
+    const { data: profiles, error: profilesError } = await query.order("full_name")
+
+    // Rest of the function remains the same...
     if (profilesError) {
       console.error("Error al obtener usuarios:", profilesError)
       return { error: profilesError.message, data: null }
