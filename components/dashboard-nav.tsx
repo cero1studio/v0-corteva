@@ -88,11 +88,11 @@ export function DashboardNav({ role, onMobileMenuClose }: NavProps) {
         ]
       case "arbitro":
         return [
-          { href: "/arbitro/dashboard", label: "Dashboard", icon: Home },
-          { href: "/arbitro/equipos", label: "Equipos", icon: Users },
-          { href: "/arbitro/ranking", label: "Ranking", icon: Trophy },
-          { href: "/arbitro/reportes", label: "Reportes", icon: FileText },
-          { href: "/arbitro/perfil", label: "Perfil", icon: User },
+          { href: "/director-tecnico/dashboard", label: "Dashboard", icon: Home },
+          { href: "/director-tecnico/equipos", label: "Equipos", icon: Users },
+          { href: "/director-tecnico/ranking", label: "Ranking", icon: Trophy },
+          { href: "/director-tecnico/reportes", label: "Reportes", icon: FileText },
+          { href: "/director-tecnico/perfil", label: "Perfil", icon: User },
         ]
       default:
         return []

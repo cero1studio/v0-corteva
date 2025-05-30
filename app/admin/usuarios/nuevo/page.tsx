@@ -100,7 +100,7 @@ export default function NuevoUsuarioPage() {
       const formData = new FormData(event.currentTarget)
 
       // Si el rol es capitán o director técnico, necesitamos guardar la zona y distribuidor
-      if (role === "capitan" || role === "director_tecnico") {
+      if (role === "capitan" || role === "director_tecnico" || role === "arbitro") {
         formData.append("zoneId", selectedZone)
         formData.append("distributorId", selectedDistributor)
         // No asignamos equipo, el capitán lo creará
@@ -174,6 +174,7 @@ export default function NuevoUsuarioPage() {
                       <SelectItem value="admin">Administrador</SelectItem>
                       <SelectItem value="capitan">Capitán</SelectItem>
                       <SelectItem value="director_tecnico">Director Técnico</SelectItem>
+                      <SelectItem value="arbitro">Árbitro</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
