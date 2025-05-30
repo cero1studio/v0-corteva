@@ -22,7 +22,7 @@ import {
   Menu,
   X,
 } from "lucide-react"
-import { useAuth } from "@/components/auth-provider" // Corregido: usar el useAuth del auth-provider
+import { useAuth } from "@/components/auth-provider"
 
 interface NavProps {
   role: "admin" | "capitan" | "supervisor" | "director-tecnico" | "representante"
@@ -30,7 +30,7 @@ interface NavProps {
 
 export function DashboardNav({ role }: NavProps) {
   const pathname = usePathname()
-  const { user, signOut } = useAuth() // Corregido: usar user en lugar de profile
+  const { user, signOut } = useAuth()
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
 
   // Función para obtener las iniciales del nombre
@@ -86,9 +86,8 @@ export function DashboardNav({ role }: NavProps) {
         return [
           { href: "/director-tecnico/dashboard", label: "Dashboard", icon: Home },
           { href: "/director-tecnico/equipos", label: "Equipos", icon: Users },
-          { href: "/director-tecnico/ranking", label: "Ranking", icon: Trophy },
-          { href: "/director-tecnico/reportes", label: "Reportes", icon: FileText },
-          { href: "/director-tecnico/perfil", label: "Perfil", icon: User },
+          { href: "/director-tecnico/ventas", label: "Ventas", icon: ShoppingCart },
+          { href: "/director-tecnico/clientes", label: "Clientes", icon: Users },
         ]
       case "representante":
         return [

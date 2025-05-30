@@ -3,172 +3,202 @@
 import type React from "react"
 
 import { useState } from "react"
+import { useRouter } from "next/navigation"
+import { supabase } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { useToast } from "@/hooks/use-toast"
-import { createDistributor } from "@/app/actions/distributors"
-import { useRouter } from "next/navigation"
-import { Upload } from "lucide-react"
-import Image from "next/image"
+import { useToast } from "@/components/ui/use-toast"
+import { ArrowLeft, Save, Building } from "lucide-react"
+import Link from "next/link"
 
 export default function NuevoDistribuidorPage() {
-  const { toast } = useToast()
   const router = useRouter()
-  const [isLoading, setIsLoading] = useState(false)
-  const [imagePreview, setImagePreview] = useState<string | null>(null)
-  const [formData, setFormData] = useState({
+  const { toast } = useToast()
+  const [loading, setLoading] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const [distributor, setDistributor] = useState({
     name: "",
+    logo_url: "",
   })
+  const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [previewUrl, setPreviewUrl] = useState<string>("")
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target
-    setFormData((prev) => ({ ...prev, [name]: value }))
-  }
-
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
+  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
     if (file) {
-      // Validar tamaño (máximo 2MB)
-      if (file.size > 2 * 1024 * 1024) {
-        toast({
-          title: "Error",
-          description: "La imagen no debe superar los 2MB",
-          variant: "destructive",
-        })
-        e.target.value = ""
-        return
-      }
-
-      // Validar tipo
-      if (!file.type.startsWith("image/")) {
-        toast({
-          title: "Error",
-          description: "El archivo debe ser una imagen",
-          variant: "destructive",
-        })
-        e.target.value = ""
-        return
-      }
-
+      setSelectedFile(file)
       const reader = new FileReader()
-      reader.onloadend = () => {
-        setImagePreview(reader.result as string)
+      reader.onload = (e) => {
+        setPreviewUrl(e.target?.result as string)
       }
       reader.readAsDataURL(file)
     }
   }
 
+  const uploadImage = async (): Promise<string | null> => {
+    if (!selectedFile) return null
+
+    setUploading(true)
+    try {
+      const fileExt = selectedFile.name.split(".").pop()
+      const fileName = `distributor-${Date.now()}.${fileExt}`
+      const filePath = `distributors/${fileName}`
+
+      const { error: uploadError } = await supabase.storage.from("distributor-logos").upload(filePath, selectedFile)
+
+      if (uploadError) {
+        console.error("Error uploading image:", uploadError)
+        return null
+      }
+
+      const { data } = supabase.storage.from("distributor-logos").getPublicUrl(filePath)
+
+      return data.publicUrl
+    } catch (error) {
+      console.error("Error in uploadImage:", error)
+      return null
+    } finally {
+      setUploading(false)
+    }
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setIsLoading(true)
 
-    try {
-      const formDataObj = new FormData()
-      formDataObj.append("name", formData.name)
-
-      // Añadir la imagen si existe
-      const imageInput = document.getElementById("logo") as HTMLInputElement
-      if (imageInput.files && imageInput.files[0]) {
-        formDataObj.append("logo", imageInput.files[0])
-      }
-
-      console.log("Enviando formulario con imagen:", imageInput.files?.[0]?.name)
-
-      const result = await createDistributor(formDataObj)
-
-      if (result.success) {
-        toast({
-          title: "Distribuidor creado",
-          description: "El distribuidor ha sido creado exitosamente",
-        })
-        router.push("/admin/distribuidores")
-      } else {
-        toast({
-          title: "Error",
-          description: result.error || "Ha ocurrido un error al crear el distribuidor",
-          variant: "destructive",
-        })
-      }
-    } catch (error) {
-      console.error(error)
+    if (!distributor.name.trim()) {
       toast({
         title: "Error",
-        description: "Ha ocurrido un error al crear el distribuidor",
+        description: "El nombre del distribuidor es requerido",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setLoading(true)
+    try {
+      let logoUrl = distributor.logo_url
+
+      // Si hay una imagen seleccionada, subirla primero
+      if (selectedFile) {
+        const uploadedUrl = await uploadImage()
+        if (uploadedUrl) {
+          logoUrl = uploadedUrl
+        } else {
+          toast({
+            title: "Error",
+            description: "No se pudo subir la imagen. Intenta de nuevo.",
+            variant: "destructive",
+          })
+          setLoading(false)
+          return
+        }
+      }
+
+      const { data, error } = await supabase
+        .from("distributors")
+        .insert({
+          name: distributor.name.trim(),
+          logo_url: logoUrl || null,
+        })
+        .select()
+
+      if (error) throw error
+
+      toast({
+        title: "Distribuidor creado",
+        description: "El distribuidor ha sido creado exitosamente",
+      })
+
+      router.push("/admin/distribuidores")
+    } catch (error) {
+      console.error("Error creating distributor:", error)
+      toast({
+        title: "Error",
+        description: "No se pudo crear el distribuidor",
         variant: "destructive",
       })
     } finally {
-      setIsLoading(false)
+      setLoading(false)
     }
   }
 
   return (
-    <div className="container mx-auto py-10">
-      <Card>
+    <div className="space-y-6">
+      <div className="flex items-center gap-4">
+        <Button variant="ghost" size="icon" asChild>
+          <Link href="/admin/distribuidores">
+            <ArrowLeft className="h-4 w-4" />
+          </Link>
+        </Button>
+        <h2 className="text-3xl font-bold tracking-tight">Nuevo Distribuidor</h2>
+      </div>
+
+      <Card className="max-w-2xl">
         <CardHeader>
-          <CardTitle>Crear Nuevo Distribuidor</CardTitle>
-          <CardDescription>Completa el formulario para crear un nuevo distribuidor en el sistema</CardDescription>
+          <CardTitle className="flex items-center gap-2">
+            <Building className="h-5 w-5" />
+            Crear Distribuidor
+          </CardTitle>
+          <CardDescription>Ingresa la información del nuevo distribuidor</CardDescription>
         </CardHeader>
-        <form onSubmit={handleSubmit} encType="multipart/form-data">
-          <CardContent className="space-y-4">
+        <CardContent>
+          <form onSubmit={handleSubmit} className="space-y-6">
             <div className="space-y-2">
-              <Label htmlFor="name">
-                Nombre del Distribuidor <span className="text-red-500">*</span>
-              </Label>
+              <Label htmlFor="name">Nombre del distribuidor *</Label>
               <Input
                 id="name"
-                name="name"
-                placeholder="Nombre del distribuidor"
-                value={formData.name}
-                onChange={handleChange}
+                value={distributor.name}
+                onChange={(e) => setDistributor({ ...distributor, name: e.target.value })}
+                placeholder="Ej: Distribuidora Norte"
                 required
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="logo">Logo del Distribuidor</Label>
-              <div className="flex items-center gap-4">
-                {imagePreview ? (
-                  <div className="relative h-24 w-24 overflow-hidden rounded-md border">
-                    <Image
-                      src={imagePreview || "/placeholder.svg"}
-                      alt="Vista previa"
-                      fill
-                      className="object-cover"
-                      unoptimized
-                    />
-                  </div>
-                ) : (
-                  <div className="flex h-24 w-24 items-center justify-center rounded-md border bg-muted">
-                    <Upload className="h-8 w-8 text-muted-foreground" />
+              <Label htmlFor="logo">Logo del distribuidor</Label>
+              <div className="space-y-4">
+                <Input id="logo" type="file" accept="image/*" onChange={handleFileSelect} className="cursor-pointer" />
+                <p className="text-xs text-muted-foreground">
+                  Selecciona una imagen para el logo del distribuidor (PNG, JPG, etc.)
+                </p>
+
+                {previewUrl && (
+                  <div className="flex items-center gap-4">
+                    <div className="w-16 h-16 border rounded-lg overflow-hidden bg-white">
+                      <img
+                        src={previewUrl || "/placeholder.svg"}
+                        alt="Vista previa"
+                        className="w-full h-full object-contain"
+                      />
+                    </div>
+                    <span className="text-sm text-muted-foreground">Vista previa</span>
                   </div>
                 )}
-                <div className="flex-1">
-                  <Input
-                    id="logo"
-                    name="logo"
-                    type="file"
-                    accept="image/jpeg,image/png,image/gif"
-                    onChange={handleImageChange}
-                    className="cursor-pointer"
-                  />
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Formatos aceptados: JPG, PNG, GIF. Tamaño máximo: 2MB
-                  </p>
-                </div>
               </div>
             </div>
-          </CardContent>
-          <CardFooter className="flex justify-between">
-            <Button variant="outline" type="button" onClick={() => router.push("/admin/distribuidores")}>
-              Cancelar
-            </Button>
-            <Button type="submit" disabled={isLoading} className="bg-corteva-500 hover:bg-corteva-600">
-              {isLoading ? "Creando..." : "Crear Distribuidor"}
-            </Button>
-          </CardFooter>
-        </form>
+
+            <div className="flex gap-4 pt-4">
+              <Button type="button" variant="outline" onClick={() => router.push("/admin/distribuidores")}>
+                Cancelar
+              </Button>
+              <Button type="submit" disabled={loading || uploading}>
+                {loading || uploading ? (
+                  <>
+                    <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent"></div>
+                    {uploading ? "Subiendo imagen..." : "Creando..."}
+                  </>
+                ) : (
+                  <>
+                    <Save className="mr-2 h-4 w-4" />
+                    Crear Distribuidor
+                  </>
+                )}
+              </Button>
+            </div>
+          </form>
+        </CardContent>
       </Card>
     </div>
   )

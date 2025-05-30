@@ -1,77 +1,157 @@
 "use client"
 
 import type React from "react"
-import { use, useState, useEffect } from "react"
-import { useRouter } from "next/navigation"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+
+import { useState, useEffect } from "react"
+import { useRouter, useParams } from "next/navigation"
+import { supabase } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useToast } from "@/components/ui/use-toast"
-import { ArrowLeft, Loader2, Upload } from "lucide-react"
+import { ArrowLeft, Save, Building } from "lucide-react"
 import Link from "next/link"
-import Image from "next/image"
-import { getDistributorById, updateDistributor } from "@/app/actions/distributors"
-import { getDistributorLogoUrl } from "@/lib/utils/image"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { getZones } from "@/app/actions/zones"
 
-interface PageProps {
-  params: Promise<{ id: string }>
+interface Distributor {
+  id: string
+  name: string
+  logo_url?: string
+  created_at: string
 }
 
-export default function EditarDistribuidorPage({ params }: PageProps) {
-  const resolvedParams = use(params)
-  const [distributor, setDistributor] = useState<{
-    id: string
-    name: string
-    logo_url: string | null
-    zone_id: string | null
-  }>({
-    id: "",
-    name: "",
-    logo_url: null,
-    zone_id: null,
-  })
-  const [zones, setZones] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [logoPreview, setLogoPreview] = useState<string | null>(null)
-  const [logoKey, setLogoKey] = useState<number>(Date.now())
+export default function EditarDistribuidorPage() {
   const router = useRouter()
+  const params = useParams()
   const { toast } = useToast()
+  const [loading, setLoading] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const [initialLoading, setInitialLoading] = useState(true)
+  const [distributor, setDistributor] = useState<Distributor | null>(null)
+  const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [previewUrl, setPreviewUrl] = useState<string>("")
 
   useEffect(() => {
-    if (resolvedParams.id) {
-      fetchDistributor(resolvedParams.id)
-      fetchZones()
+    if (params.id) {
+      fetchDistributor(params.id as string)
     }
-  }, [resolvedParams.id])
+  }, [params.id])
 
-  async function fetchDistributor(id: string) {
+  const fetchDistributor = async (id: string) => {
     try {
-      setLoading(true)
-      const data = await getDistributorById(id)
+      const { data, error } = await supabase.from("distributors").select("*").eq("id", id).single()
 
-      if (data) {
-        console.log("Distribuidor obtenido:", data)
-        setDistributor({
-          id: data.id,
-          name: data.name,
-          logo_url: data.logo_url,
-          zone_id: data.zone_id,
-        })
+      if (error) throw error
 
-        // Configurar la vista previa del logo
-        const logoUrl = getDistributorLogoUrl(data)
-        console.log("URL del logo para preview:", logoUrl)
-        setLogoPreview(logoUrl)
+      setDistributor(data)
+      if (data.logo_url) {
+        setPreviewUrl(data.logo_url)
       }
     } catch (error) {
-      console.error("Error al cargar distribuidor:", error)
+      console.error("Error fetching distributor:", error)
       toast({
         title: "Error",
-        description: "No se pudo cargar la información del distribuidor",
+        description: "No se pudo cargar el distribuidor",
+        variant: "destructive",
+      })
+      router.push("/admin/distribuidores")
+    } finally {
+      setInitialLoading(false)
+    }
+  }
+
+  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (file) {
+      setSelectedFile(file)
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        setPreviewUrl(e.target?.result as string)
+      }
+      reader.readAsDataURL(file)
+    }
+  }
+
+  const uploadImage = async (): Promise<string | null> => {
+    if (!selectedFile) return null
+
+    setUploading(true)
+    try {
+      const fileExt = selectedFile.name.split(".").pop()
+      const fileName = `distributor-${Date.now()}.${fileExt}`
+      const filePath = `distributors/${fileName}`
+
+      const { error: uploadError } = await supabase.storage.from("distributor-logos").upload(filePath, selectedFile)
+
+      if (uploadError) {
+        console.error("Error uploading image:", uploadError)
+        return null
+      }
+
+      const { data } = supabase.storage.from("distributor-logos").getPublicUrl(filePath)
+
+      return data.publicUrl
+    } catch (error) {
+      console.error("Error in uploadImage:", error)
+      return null
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+
+    if (!distributor || !distributor.name.trim()) {
+      toast({
+        title: "Error",
+        description: "El nombre del distribuidor es requerido",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setLoading(true)
+    try {
+      let logoUrl = distributor.logo_url
+
+      // Si hay una imagen seleccionada, subirla primero
+      if (selectedFile) {
+        const uploadedUrl = await uploadImage()
+        if (uploadedUrl) {
+          logoUrl = uploadedUrl
+        } else {
+          toast({
+            title: "Error",
+            description: "No se pudo subir la imagen. Intenta de nuevo.",
+            variant: "destructive",
+          })
+          setLoading(false)
+          return
+        }
+      }
+
+      const { error } = await supabase
+        .from("distributors")
+        .update({
+          name: distributor.name.trim(),
+          logo_url: logoUrl || null,
+        })
+        .eq("id", distributor.id)
+
+      if (error) throw error
+
+      toast({
+        title: "Distribuidor actualizado",
+        description: "El distribuidor ha sido actualizado exitosamente",
+      })
+
+      router.push("/admin/distribuidores")
+    } catch (error) {
+      console.error("Error updating distributor:", error)
+      toast({
+        title: "Error",
+        description: "No se pudo actualizar el distribuidor",
         variant: "destructive",
       })
     } finally {
@@ -79,114 +159,46 @@ export default function EditarDistribuidorPage({ params }: PageProps) {
     }
   }
 
-  async function fetchZones() {
-    try {
-      const data = await getZones()
-      setZones(data || [])
-    } catch (error) {
-      console.error("Error al cargar zonas:", error)
-      toast({
-        title: "Error",
-        description: "No se pudieron cargar las zonas",
-        variant: "destructive",
-      })
-    }
-  }
-
-  function handleLogoChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
-
-    console.log("Archivo seleccionado:", file.name, "Tamaño:", file.size)
-
-    // Crear preview y forzar la actualización del componente Image
-    const reader = new FileReader()
-    reader.onload = (e) => {
-      const result = e.target?.result as string
-      console.log("Preview generado:", result.substring(0, 50) + "...")
-      setLogoPreview(result)
-      setLogoKey(Date.now()) // Actualizar la clave para forzar la actualización
-    }
-    reader.readAsDataURL(file)
-  }
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-
-    if (!distributor.name.trim()) {
-      toast({
-        title: "Error",
-        description: "El nombre del distribuidor es obligatorio",
-        variant: "destructive",
-      })
-      return
-    }
-
-    try {
-      setSaving(true)
-
-      // Crear FormData para enviar los datos
-      const formData = new FormData()
-      formData.append("name", distributor.name)
-      if (distributor.zone_id) {
-        formData.append("zoneId", distributor.zone_id)
-      }
-
-      // Añadir la URL actual del logo si existe
-      if (distributor.logo_url) {
-        formData.append("currentLogoUrl", distributor.logo_url)
-      }
-
-      // Añadir el archivo de logo si se seleccionó uno nuevo
-      const logoInput = document.getElementById("logo") as HTMLInputElement
-      if (logoInput.files && logoInput.files[0]) {
-        console.log("Añadiendo archivo al FormData:", logoInput.files[0].name)
-        formData.append("logo", logoInput.files[0])
-      }
-
-      // Enviar los datos al servidor
-      console.log("Enviando datos al servidor...")
-      const result = await updateDistributor(distributor.id, formData)
-
-      if (result.success) {
-        toast({
-          title: "Distribuidor actualizado",
-          description: "El distribuidor ha sido actualizado exitosamente",
-        })
-        router.push("/admin/distribuidores")
-        router.refresh()
-      } else {
-        console.error("Error del servidor:", result.error)
-        toast({
-          title: "Error",
-          description: result.error || "No se pudo actualizar el distribuidor",
-          variant: "destructive",
-        })
-      }
-    } catch (error) {
-      console.error("Error al actualizar distribuidor:", error)
-      toast({
-        title: "Error",
-        description: "No se pudo actualizar el distribuidor",
-        variant: "destructive",
-      })
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  if (loading) {
+  if (initialLoading) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <Loader2 className="h-8 w-8 animate-spin" />
+      <div className="space-y-6">
+        <div className="flex items-center gap-4">
+          <div className="h-10 w-10 bg-gray-200 rounded animate-pulse"></div>
+          <div className="h-8 w-48 bg-gray-200 rounded animate-pulse"></div>
+        </div>
+        <div className="max-w-2xl">
+          <div className="rounded-lg border p-6 space-y-4">
+            <div className="h-6 w-32 bg-gray-200 rounded animate-pulse"></div>
+            <div className="h-4 w-64 bg-gray-200 rounded animate-pulse"></div>
+            <div className="space-y-4">
+              <div className="h-10 w-full bg-gray-200 rounded animate-pulse"></div>
+              <div className="h-10 w-full bg-gray-200 rounded animate-pulse"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (!distributor) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center gap-4">
+          <Button variant="ghost" size="icon" asChild>
+            <Link href="/admin/distribuidores">
+              <ArrowLeft className="h-4 w-4" />
+            </Link>
+          </Button>
+          <h2 className="text-3xl font-bold tracking-tight">Distribuidor no encontrado</h2>
+        </div>
       </div>
     )
   }
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-2">
-        <Button variant="outline" size="icon" asChild>
+      <div className="flex items-center gap-4">
+        <Button variant="ghost" size="icon" asChild>
           <Link href="/admin/distribuidores">
             <ArrowLeft className="h-4 w-4" />
           </Link>
@@ -194,98 +206,73 @@ export default function EditarDistribuidorPage({ params }: PageProps) {
         <h2 className="text-3xl font-bold tracking-tight">Editar Distribuidor</h2>
       </div>
 
-      <Card>
-        <form onSubmit={handleSubmit}>
-          <CardHeader>
-            <CardTitle>Información del Distribuidor</CardTitle>
-            <CardDescription>Actualiza la información del distribuidor</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
+      <Card className="max-w-2xl">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Building className="h-5 w-5" />
+            Editar {distributor.name}
+          </CardTitle>
+          <CardDescription>Modifica la información del distribuidor</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSubmit} className="space-y-6">
             <div className="space-y-2">
-              <Label htmlFor="name">Nombre del Distribuidor</Label>
+              <Label htmlFor="name">Nombre del distribuidor *</Label>
               <Input
                 id="name"
                 value={distributor.name}
                 onChange={(e) => setDistributor({ ...distributor, name: e.target.value })}
-                placeholder="Nombre del distribuidor"
+                placeholder="Ej: Distribuidora Norte"
                 required
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="zoneId">Zona</Label>
-              <Select
-                name="zoneId"
-                value={distributor.zone_id || ""}
-                onValueChange={(value) => setDistributor({ ...distributor, zone_id: value })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecciona una zona" />
-                </SelectTrigger>
-                <SelectContent>
-                  {zones.map((zone) => (
-                    <SelectItem key={zone.id} value={zone.id}>
-                      {zone.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+              <Label htmlFor="logo">Logo del distribuidor</Label>
+              <div className="space-y-4">
+                <Input id="logo" type="file" accept="image/*" onChange={handleFileSelect} className="cursor-pointer" />
+                <p className="text-xs text-muted-foreground">Selecciona una nueva imagen para cambiar el logo actual</p>
 
-            <div className="space-y-2">
-              <Label htmlFor="logo">Logo</Label>
-              <div className="flex items-center gap-4">
-                {logoPreview ? (
-                  <div className="relative h-20 w-40 overflow-hidden rounded-md border">
-                    <Image
-                      key={logoKey}
-                      src={logoPreview || "/placeholder.svg"}
-                      alt="Logo preview"
-                      fill
-                      className="object-contain"
-                      onError={(e) => {
-                        console.error("Error al cargar preview:", logoPreview)
-                        e.currentTarget.src = "/placeholder.svg"
-                      }}
-                      onLoad={() => {
-                        console.log("Preview cargado exitosamente:", logoPreview)
-                      }}
-                    />
-                  </div>
-                ) : (
-                  <div className="flex h-20 w-40 items-center justify-center rounded-md border bg-muted">
-                    <Upload className="h-8 w-8 text-muted-foreground" />
+                {previewUrl && (
+                  <div className="flex items-center gap-4">
+                    <div className="w-16 h-16 border rounded-lg overflow-hidden bg-white">
+                      <img
+                        src={previewUrl || "/placeholder.svg"}
+                        alt="Vista previa"
+                        className="w-full h-full object-contain"
+                        onError={(e) => {
+                          e.currentTarget.src = "/placeholder.svg?height=64&width=64&text=Logo"
+                        }}
+                      />
+                    </div>
+                    <span className="text-sm text-muted-foreground">
+                      {selectedFile ? "Nueva imagen" : "Imagen actual"}
+                    </span>
                   </div>
                 )}
-                <div className="flex-1">
-                  <Input
-                    id="logo"
-                    type="file"
-                    accept="image/*"
-                    onChange={handleLogoChange}
-                    className="cursor-pointer"
-                  />
-                  <p className="mt-1 text-xs text-muted-foreground">Formatos aceptados: JPG, PNG. Tamaño máximo: 5MB</p>
-                </div>
               </div>
             </div>
-          </CardContent>
-          <CardFooter className="flex justify-between">
-            <Button variant="outline" asChild>
-              <Link href="/admin/distribuidores">Cancelar</Link>
-            </Button>
-            <Button type="submit" disabled={saving}>
-              {saving ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Guardando...
-                </>
-              ) : (
-                "Guardar Cambios"
-              )}
-            </Button>
-          </CardFooter>
-        </form>
+
+            <div className="flex gap-4 pt-4">
+              <Button type="button" variant="outline" onClick={() => router.push("/admin/distribuidores")}>
+                Cancelar
+              </Button>
+              <Button type="submit" disabled={loading || uploading}>
+                {loading || uploading ? (
+                  <>
+                    <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent"></div>
+                    {uploading ? "Subiendo imagen..." : "Actualizando..."}
+                  </>
+                ) : (
+                  <>
+                    <Save className="mr-2 h-4 w-4" />
+                    Actualizar Distribuidor
+                  </>
+                )}
+              </Button>
+            </div>
+          </form>
+        </CardContent>
       </Card>
     </div>
   )
