@@ -9,7 +9,7 @@ import { Home, Package, Users, LogOut, Trophy, User, Settings, Flag, ShoppingCar
 import { useAuth } from "@/components/auth-provider"
 
 interface NavProps {
-  role: "admin" | "capitan" | "supervisor" | "director-tecnico" | "representante"
+  role: "admin" | "capitan" | "supervisor" | "director-tecnico" | "representante" | "arbitro"
   onMobileMenuClose?: () => void
 }
 
@@ -86,6 +86,14 @@ export function DashboardNav({ role, onMobileMenuClose }: NavProps) {
           { href: "/representante/dashboard", label: "Dashboard", icon: Home },
           { href: "/representante/registrar-venta", label: "Registrar Venta", icon: ShoppingCart },
         ]
+      case "arbitro":
+        return [
+          { href: "/arbitro/dashboard", label: "Dashboard", icon: Home },
+          { href: "/arbitro/equipos", label: "Equipos", icon: Users },
+          { href: "/arbitro/ranking", label: "Ranking", icon: Trophy },
+          { href: "/arbitro/reportes", label: "Reportes", icon: FileText },
+          { href: "/arbitro/perfil", label: "Perfil", icon: User },
+        ]
       default:
         return []
     }
@@ -145,7 +153,11 @@ export function DashboardNav({ role, onMobileMenuClose }: NavProps) {
                     ? "Supervisor"
                     : role === "director-tecnico"
                       ? "Director Técnico"
-                      : "Representante"}
+                      : role === "representante"
+                        ? "Representante"
+                        : role === "arbitro"
+                          ? "Árbitro"
+                          : "Usuario"}
             </span>
           </div>
         </div>
