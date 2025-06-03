@@ -13,7 +13,7 @@ import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
-import { CalendarIcon, ShoppingBag, ArrowLeft } from "lucide-react"
+import { CalendarIcon, ShoppingBag, ArrowLeft, Plus, Minus } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 import { supabase } from "@/lib/supabase/client"
 import { GoalCelebration } from "@/components/goal-celebration"
@@ -284,13 +284,42 @@ export default function RegistrarVentaPage() {
 
             <div className="space-y-2">
               <Label htmlFor="quantity">Cantidad</Label>
-              <Input
-                id="quantity"
-                type="number"
-                min={1}
-                value={quantity}
-                onChange={(e) => setQuantity(Number.parseInt(e.target.value) || 1)}
-              />
+              <div className="flex items-center space-x-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className="h-10 w-10 shrink-0"
+                  onClick={() => setQuantity(Math.max(1, quantity - 1))}
+                  disabled={quantity <= 1}
+                >
+                  <Minus className="h-4 w-4" />
+                </Button>
+                <Input
+                  id="quantity"
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  value={quantity}
+                  onChange={(e) => {
+                    const value = e.target.value.replace(/[^0-9]/g, "")
+                    const numValue = value === "" ? 1 : Number.parseInt(value)
+                    setQuantity(Math.max(1, numValue))
+                  }}
+                  onFocus={(e) => e.target.select()}
+                  className="text-center text-lg font-medium h-10"
+                  placeholder="1"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className="h-10 w-10 shrink-0"
+                  onClick={() => setQuantity(quantity + 1)}
+                >
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
 
             {selectedProductData && quantity > 0 && (
