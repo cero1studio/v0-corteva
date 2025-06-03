@@ -288,7 +288,7 @@ export default function RegistrarClientePage() {
             )}
 
             <div className="space-y-2">
-              <Label htmlFor="farmLocation">Ubicación de la Finca *</Label>
+              <Label htmlFor="farmLocation">Ubicación de la Finca del ganadero *</Label>
               <Input
                 id="farmLocation"
                 value={farmLocation}
