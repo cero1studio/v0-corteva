@@ -19,6 +19,7 @@ export default function RegistrarClientePage() {
   const [farmerName, setFarmerName] = useState("")
   const [businessName, setBusinessName] = useState("")
   const [saleType, setSaleType] = useState("")
+  const [storeName, setStoreName] = useState("")
   const [farmLocation, setFarmLocation] = useState("")
   const [farmAreaHectares, setFarmAreaHectares] = useState("")
   const [previousProduct, setPreviousProduct] = useState("")
@@ -83,6 +84,16 @@ export default function RegistrarClientePage() {
       return
     }
 
+    // Validar que se ingrese nombre de almacén si el tipo de venta es por almacén
+    if (saleType === "Venta por Almacén" && !storeName) {
+      toast({
+        title: "Error",
+        description: "Por favor ingresa el nombre del almacén",
+        variant: "destructive",
+      })
+      return
+    }
+
     // Validar volumen mínimo
     const volumen = Number.parseInt(volumenFacturado)
     if (volumen < 100) {
@@ -116,6 +127,7 @@ export default function RegistrarClientePage() {
           ganadero_name: farmerName,
           razon_social: businessName,
           tipo_venta: saleType,
+          nombre_almacen: saleType === "Venta por Almacén" ? storeName : null,
           ubicacion_finca: farmLocation,
           area_finca_hectareas: farmAreaHectares ? Number.parseFloat(farmAreaHectares) : null,
           producto_anterior: previousProduct,
@@ -194,6 +206,7 @@ export default function RegistrarClientePage() {
     setFarmerName("")
     setBusinessName("")
     setSaleType("")
+    setStoreName("")
     setFarmLocation("")
     setFarmAreaHectares("")
     setPreviousProduct("")
@@ -260,6 +273,19 @@ export default function RegistrarClientePage() {
                 <option value="Venta por Almacén">Venta por Almacén</option>
               </select>
             </div>
+
+            {saleType === "Venta por Almacén" && (
+              <div className="space-y-2">
+                <Label htmlFor="storeName">Nombre del Almacén *</Label>
+                <Input
+                  id="storeName"
+                  value={storeName}
+                  onChange={(e) => setStoreName(e.target.value)}
+                  placeholder="Nombre del almacén"
+                  required
+                />
+              </div>
+            )}
 
             <div className="space-y-2">
               <Label htmlFor="farmLocation">Ubicación de la Finca *</Label>
