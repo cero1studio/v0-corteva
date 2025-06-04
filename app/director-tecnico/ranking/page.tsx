@@ -190,7 +190,7 @@ function DirectorTecnicoRankingContent() {
                             {team.total_points || 0}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                            <TeamLevelBadge points={team.total_points || 0} />
+                            <TeamLevelBadge position={index + 1} />
                           </td>
                         </tr>
                       ))}
@@ -277,7 +277,7 @@ function DirectorTecnicoRankingContent() {
                             {team.total_points || 0}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                            <TeamLevelBadge points={team.total_points || 0} />
+                            <TeamLevelBadge position={index + 1} />
                           </td>
                         </tr>
                       ))}
