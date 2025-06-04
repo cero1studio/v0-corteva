@@ -5,7 +5,19 @@ import Image from "next/image"
 import { cn } from "@/lib/utils"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Home, Package, Users, LogOut, Trophy, User, Settings, Flag, ShoppingCart, FileText } from "lucide-react"
+import {
+  Home,
+  Package,
+  Users,
+  LogOut,
+  Trophy,
+  User,
+  Settings,
+  Flag,
+  ShoppingCart,
+  FileText,
+  Target,
+} from "lucide-react"
 import { useAuth } from "@/components/auth-provider"
 
 interface NavProps {
@@ -58,6 +70,7 @@ export function DashboardNav({ role, onMobileMenuClose }: NavProps) {
           { href: "/admin/ventas", label: "Ventas", icon: ShoppingCart },
           { href: "/admin/clientes", label: "Clientes", icon: Users },
           { href: "/admin/ranking", label: "Ranking", icon: Trophy },
+          { href: "/admin/retos", label: "Retos", icon: Target },
           { href: "/admin/configuracion", label: "Configuración", icon: Settings },
         ]
       case "capitan":

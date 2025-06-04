@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Trophy, Award, Flag, User, Package } from "lucide-react"
+import { Trophy, Award, Flag, User, Package, Target } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
@@ -39,6 +39,7 @@ function CapitanDashboardContent() {
   const [distributorData, setDistributorData] = useState<any>(null)
   const [puntosParaGol, setPuntosParaGol] = useState(PUNTOS_POR_GOL)
   const [systemConfig, setSystemConfig] = useState<any>(null)
+  const [retoActual, setRetoActual] = useState<string>("")
 
   const [showCelebration, setShowCelebration] = useState(false)
 
@@ -59,6 +60,17 @@ function CapitanDashboardContent() {
       if (!configError && configData) {
         setSystemConfig(configData)
         setPuntosParaGol(Number(configData.value) || PUNTOS_POR_GOL)
+      }
+
+      // Cargar reto actual
+      const { data: retoData, error: retoError } = await supabase
+        .from("system_config")
+        .select("*")
+        .eq("key", "reto_actual")
+        .single()
+
+      if (!retoError && retoData && retoData.value) {
+        setRetoActual(retoData.value)
       }
     } catch (error) {
       console.error("Error al cargar configuración:", error)
@@ -310,6 +322,23 @@ function CapitanDashboardContent() {
           </p>
         </div>
       </div>
+
+      {/* Reto del mes */}
+      {retoActual && (
+        <Card className="border-2 border-corteva-200 bg-gradient-to-r from-corteva-50 to-orange-50">
+          <CardContent className="p-6">
+            <div className="flex items-start gap-4">
+              <div className="rounded-full p-3 bg-corteva-500 text-white">
+                <Target className="h-6 w-6" />
+              </div>
+              <div className="flex-1">
+                <h3 className="font-bold text-corteva-900 mb-2 text-lg">🎯 Reto del Mes</h3>
+                <p className="text-corteva-700 leading-relaxed">{retoActual}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
         <Card className="border-2 border-corteva-100">

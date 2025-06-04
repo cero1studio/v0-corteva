@@ -22,6 +22,7 @@ const roleRoutes: Record<string, string[]> = {
   admin: ["/admin"],
   capitan: ["/capitan"],
   director_tecnico: ["/director-tecnico"],
+  arbitro: ["/director-tecnico"], // Árbitro usa las mismas rutas que director técnico
   supervisor: ["/supervisor"],
   representante: ["/representante"],
 }
@@ -33,16 +34,19 @@ export function RouteGuard({ children }: { children: React.ReactNode }) {
   const [authorized, setAuthorized] = useState(false)
 
   useEffect(() => {
-    // Verificar autorización cuando cambia la ruta o el perfil
     const checkAuth = () => {
+      console.log(`ROUTE_GUARD: Checking auth for path: ${pathname}`)
+
       // Si la ruta es pública, permitir acceso
       if (publicRoutes.some((route) => pathname?.startsWith(route))) {
+        console.log("ROUTE_GUARD: Public route, allowing access")
         setAuthorized(true)
         return
       }
 
       // Si no hay perfil y no estamos cargando, redirigir a login
       if (!profile && !isLoading) {
+        console.log("ROUTE_GUARD: No profile and not loading, redirecting to login")
         setAuthorized(false)
         router.push("/login")
         return
@@ -53,18 +57,18 @@ export function RouteGuard({ children }: { children: React.ReactNode }) {
         const allowedRoutes = roleRoutes[profile.role] || []
         const hasAccess = allowedRoutes.some((route) => pathname?.startsWith(route))
 
+        console.log(
+          `ROUTE_GUARD: User role: ${profile.role}, allowed routes: ${allowedRoutes}, has access: ${hasAccess}`,
+        )
+
         if (hasAccess) {
           setAuthorized(true)
         } else {
           // Si no tiene acceso, redirigir al dashboard correspondiente
           setAuthorized(false)
-          if (profile.role === "capitan" && !profile.has_created_team) {
-            router.push("/capitan/crear-equipo")
-          } else {
-            const dashboardRoute = `/
-${profile.role}/dashboard`
-            router.push(dashboardRoute)
-          }
+          const dashboardRoute = getDashboardRoute(profile.role, profile.team_id)
+          console.log(`ROUTE_GUARD: No access, redirecting to: ${dashboardRoute}`)
+          router.push(dashboardRoute)
         }
       }
     }
@@ -84,4 +88,24 @@ ${profile.role}/dashboard`
 
   // Si está autorizado, mostrar los hijos
   return authorized ? <>{children}</> : null
+}
+
+// Función helper para obtener ruta de dashboard
+const getDashboardRoute = (role: string, teamId?: string | null) => {
+  switch (role) {
+    case "admin":
+      return "/admin/dashboard"
+    case "capitan":
+      return teamId ? "/capitan/dashboard" : "/capitan/crear-equipo"
+    case "director_tecnico":
+      return "/director-tecnico/dashboard"
+    case "arbitro":
+      return "/director-tecnico/dashboard"
+    case "supervisor":
+      return "/supervisor/dashboard"
+    case "representante":
+      return "/representante/dashboard"
+    default:
+      return "/login"
+  }
 }
