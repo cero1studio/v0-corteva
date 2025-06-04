@@ -353,12 +353,12 @@ export default function RegistrarClientePage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="contactInfo">Información de Contacto</Label>
+              <Label htmlFor="contactInfo">Celular del Ganadero</Label>
               <Input
                 id="contactInfo"
                 value={contactInfo}
                 onChange={(e) => setContactInfo(e.target.value)}
-                placeholder="Teléfono, email, etc."
+                placeholder="Número de celular del ganadero"
               />
             </div>
 

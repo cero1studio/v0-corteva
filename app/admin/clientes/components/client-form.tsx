@@ -57,6 +57,7 @@ export function ClientForm({ open, setOpen, zones, teams, users, onSuccess }: Cl
     producto_super_ganaderia: "",
     volumen_venta_estimado: "",
     points: "5", // Valor por defecto
+    contact_info: "",
   })
 
   const filteredTeams = selectedZone ? teams.filter((team) => team.zone_id === selectedZone) : teams
@@ -128,6 +129,7 @@ export function ClientForm({ open, setOpen, zones, teams, users, onSuccess }: Cl
           producto_super_ganaderia: "",
           volumen_venta_estimado: "",
           points: "5",
+          contact_info: "",
         })
         setSelectedZone("")
         setSelectedTeam("")
@@ -248,6 +250,16 @@ export function ClientForm({ open, setOpen, zones, teams, users, onSuccess }: Cl
                   value={formData.client_name_competitora}
                   onChange={(e) => setFormData({ ...formData, client_name_competitora: e.target.value })}
                   placeholder="Nombre en empresa competidora"
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="contact_info">Celular del Ganadero</Label>
+                <Input
+                  id="contact_info"
+                  value={formData.contact_info}
+                  onChange={(e) => setFormData({ ...formData, contact_info: e.target.value })}
+                  placeholder="Número de celular del ganadero"
                 />
               </div>
             </div>
