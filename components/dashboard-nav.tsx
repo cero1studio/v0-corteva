@@ -56,6 +56,34 @@ export function DashboardNav({ role, onMobileMenuClose }: NavProps) {
     }
   }
 
+  // Función para obtener el rol real del usuario autenticado
+  const getUserRole = () => {
+    if (user?.role) {
+      return user.role
+    }
+    return role
+  }
+
+  // Función para obtener el label del rol
+  const getRoleLabel = (userRole: string) => {
+    switch (userRole) {
+      case "admin":
+        return "Administrador"
+      case "capitan":
+        return "Capitán"
+      case "supervisor":
+        return "Supervisor"
+      case "director-tecnico":
+        return "Director Técnico"
+      case "representante":
+        return "Representante"
+      case "arbitro":
+        return "Árbitro"
+      default:
+        return "Usuario"
+    }
+  }
+
   // Definir los enlaces de navegación según el rol
   const getNavLinks = () => {
     switch (role) {
@@ -113,6 +141,7 @@ export function DashboardNav({ role, onMobileMenuClose }: NavProps) {
   }
 
   const navLinks = getNavLinks()
+  const actualUserRole = getUserRole()
 
   return (
     <div className="flex flex-col h-full">
@@ -157,21 +186,7 @@ export function DashboardNav({ role, onMobileMenuClose }: NavProps) {
           </Avatar>
           <div className="flex flex-col">
             <span className="text-sm font-medium">{user?.full_name || "Usuario"}</span>
-            <span className="text-xs text-muted-foreground">
-              {role === "admin"
-                ? "Administrador"
-                : role === "capitan"
-                  ? "Capitán"
-                  : role === "supervisor"
-                    ? "Supervisor"
-                    : role === "director-tecnico"
-                      ? "Director Técnico"
-                      : role === "representante"
-                        ? "Representante"
-                        : role === "arbitro"
-                          ? "Árbitro"
-                          : "Usuario"}
-            </span>
+            <span className="text-xs text-muted-foreground">{getRoleLabel(actualUserRole)}</span>
           </div>
         </div>
 
