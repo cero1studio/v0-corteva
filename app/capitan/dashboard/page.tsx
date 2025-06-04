@@ -323,7 +323,7 @@ function CapitanDashboardContent() {
         </div>
       </div>
 
-      {/* Reto del mes */}
+      {/* Tiro libre sin arquero */}
       {retoActual && (
         <Card className="border-2 border-corteva-200 bg-gradient-to-r from-corteva-50 to-orange-50">
           <CardContent className="p-6">
@@ -332,7 +332,7 @@ function CapitanDashboardContent() {
                 <Target className="h-6 w-6" />
               </div>
               <div className="flex-1">
-                <h3 className="font-bold text-corteva-900 mb-2 text-lg">🎯 Reto del Mes</h3>
+                <h3 className="font-bold text-corteva-900 mb-2 text-lg">⚽ Tiro libre sin arquero</h3>
                 <p className="text-corteva-700 leading-relaxed">{retoActual}</p>
               </div>
             </div>

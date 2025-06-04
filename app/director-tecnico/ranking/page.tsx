@@ -167,22 +167,7 @@ function DirectorTecnicoRankingContent() {
                               {index + 1}
                             </div>
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                            <div className="flex items-center">
-                              {team.distributors?.logo_url ? (
-                                <img
-                                  src={team.distributors?.logo_url || "/placeholder.svg"}
-                                  alt={team.name}
-                                  className="w-8 h-8 mr-3 rounded-full object-cover"
-                                />
-                              ) : (
-                                <div className="w-8 h-8 mr-3 rounded-full bg-gray-200 flex items-center justify-center text-gray-500">
-                                  {team.name.charAt(0)}
-                                </div>
-                              )}
-                              {team.name}
-                            </div>
-                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{team.name}</td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                             {team.distributors?.name || "Sin distribuidor"}
                           </td>
@@ -251,22 +236,7 @@ function DirectorTecnicoRankingContent() {
                               {index + 1}
                             </div>
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                            <div className="flex items-center">
-                              {team.distributors?.logo_url ? (
-                                <img
-                                  src={team.distributors?.logo_url || "/placeholder.svg"}
-                                  alt={team.name}
-                                  className="w-8 h-8 mr-3 rounded-full object-cover"
-                                />
-                              ) : (
-                                <div className="w-8 h-8 mr-3 rounded-full bg-gray-200 flex items-center justify-center text-gray-500">
-                                  {team.name.charAt(0)}
-                                </div>
-                              )}
-                              {team.name}
-                            </div>
-                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{team.name}</td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                             {team.zones?.name || "Sin zona"}
                           </td>
@@ -301,7 +271,7 @@ function DirectorTecnicoRankingContent() {
 
 export default function DirectorTecnicoRanking() {
   return (
-    <AuthGuard allowedRoles={["Director Tecnico"]}>
+    <AuthGuard allowedRoles={["Director Tecnico", "arbitro"]}>
       <DirectorTecnicoRankingContent />
     </AuthGuard>
   )
