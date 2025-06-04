@@ -14,10 +14,11 @@ import { useToast } from "@/hooks/use-toast"
 import { EmptyState } from "@/components/empty-state"
 import { useRouter } from "next/navigation"
 import { Progress } from "@/components/ui/progress"
-import { getImageUrl, getDistributorLogoUrl } from "@/lib/utils/image"
+import { getImageUrl } from "@/lib/utils/image"
 import { getTeamRankingByZone } from "@/app/actions/ranking"
 import { AuthGuard } from "@/components/auth-guard"
 import { getCompetitorClientsByTeam } from "@/app/actions/clients"
+import { getFreeKickGoalsByTeam } from "@/app/actions/free-kick-goals"
 
 // Constante para la conversión de puntos a goles
 const PUNTOS_POR_GOL = 100
@@ -32,6 +33,7 @@ function CapitanDashboardContent() {
   const [teamData, setTeamData] = useState<any>(null)
   const [salesData, setSalesData] = useState<any[]>([])
   const [clientsData, setClientsData] = useState<any[]>([])
+  const [freeKickData, setFreeKickData] = useState<any[]>([])
   const [rankingPosition, setRankingPosition] = useState<number | null>(null)
   const [hasTeam, setHasTeam] = useState(false)
   const [zoneRanking, setZoneRanking] = useState<any[]>([])
@@ -40,6 +42,7 @@ function CapitanDashboardContent() {
   const [puntosParaGol, setPuntosParaGol] = useState(PUNTOS_POR_GOL)
   const [systemConfig, setSystemConfig] = useState<any>(null)
   const [retoActual, setRetoActual] = useState<string>("")
+  const [retoActivo, setRetoActivo] = useState(false)
 
   const [showCelebration, setShowCelebration] = useState(false)
 
@@ -71,6 +74,17 @@ function CapitanDashboardContent() {
 
       if (!retoError && retoData && retoData.value) {
         setRetoActual(retoData.value)
+      }
+
+      // Cargar estado del reto
+      const { data: activoData, error: activoError } = await supabase
+        .from("system_config")
+        .select("*")
+        .eq("key", "reto_activo")
+        .single()
+
+      if (!activoError && activoData) {
+        setRetoActivo(activoData.value === "true" || activoData.value === true)
       }
     } catch (error) {
       console.error("Error al cargar configuración:", error)
@@ -219,6 +233,19 @@ function CapitanDashboardContent() {
         console.error("Error al cargar clientes:", clientError)
       }
 
+      // Cargar tiros libres del equipo
+      try {
+        const freeKickResult = await getFreeKickGoalsByTeam(teamId)
+        if (freeKickResult.error) {
+          console.error("Error al cargar tiros libres:", freeKickResult.error)
+        } else {
+          setFreeKickData(freeKickResult.data || [])
+          console.log("Tiros libres cargados:", freeKickResult.data?.length || 0)
+        }
+      } catch (freeKickError) {
+        console.error("Error al cargar tiros libres:", freeKickError)
+      }
+
       // Cargar ranking real de la zona usando las funciones de server actions
       try {
         if (teamId && teamId !== "null" && teamId !== "undefined") {
@@ -277,21 +304,18 @@ function CapitanDashboardContent() {
     )
   }
 
-  // Calcular estadísticas usando datos reales de ventas
+  // Calcular estadísticas usando datos reales de ventas, clientes y tiros libres
   const puntosVentas = salesData.reduce((sum, sale) => sum + (sale.points || 0), 0)
   const puntosClientes = clientsData.length * 200 // 200 puntos por cliente
-  const totalPuntos = puntosVentas + puntosClientes
+  const puntosTirosLibres = freeKickData.reduce((sum, goal) => sum + (goal.points || 0), 0)
+  const totalPuntos = puntosVentas + puntosClientes + puntosTirosLibres
   const totalGoles = Math.floor(totalPuntos / puntosParaGol)
   const puntosSobrantes = totalPuntos % puntosParaGol
   const puntosParaSiguienteGol = puntosParaGol - puntosSobrantes
   const porcentajeCompletado = (puntosSobrantes / puntosParaGol) * 100
   const totalSales = salesData.length
   const totalClients = clientsData.length
-
-  // Agregar después de la línea donde se calculan las estadísticas
-  console.log("Datos de ventas:", salesData)
-  console.log("Puntos de ventas calculados:", puntosVentas)
-  console.log("Total de ventas:", totalSales)
+  const totalFreeKicks = freeKickData.length
 
   return (
     <div className="flex-1 space-y-6 p-6">
@@ -306,25 +330,13 @@ function CapitanDashboardContent() {
           </div>
           <p className="text-muted-foreground flex items-center gap-2 mt-1">
             Zona: {zoneData?.name || "N/A"} |
-            <span className="flex items-center">
-              Distribuidor:
-              {distributorData && (
-                <img
-                  src={getDistributorLogoUrl(distributorData) || "/placeholder.svg"}
-                  alt={distributorData.name || "Distribuidor"}
-                  className="h-6 w-auto ml-2"
-                  onError={(e) => {
-                    e.currentTarget.src = "/placeholder.svg"
-                  }}
-                />
-              )}
-            </span>
+            <span className="flex items-center">Distribuidor: {distributorData?.name || "N/A"}</span>
           </p>
         </div>
       </div>
 
-      {/* Tiro libre sin arquero */}
-      {retoActual && (
+      {/* Tiro libre sin arquero - Solo mostrar si está activo */}
+      {retoActivo && retoActual && (
         <Card className="border-2 border-corteva-200 bg-gradient-to-r from-corteva-50 to-orange-50">
           <CardContent className="p-6">
             <div className="flex items-start gap-4">
@@ -394,6 +406,12 @@ function CapitanDashboardContent() {
                   <span>Puntos por clientes:</span>
                   <span>{puntosClientes.toLocaleString()}</span>
                 </div>
+                {puntosTirosLibres > 0 && (
+                  <div className="flex justify-between text-xs text-muted-foreground">
+                    <span>Puntos por tiros libres:</span>
+                    <span>{puntosTirosLibres.toLocaleString()}</span>
+                  </div>
+                )}
                 <div className="border-t pt-1 flex justify-between text-xs font-medium">
                   <span>Total puntos:</span>
                   <span>{totalPuntos.toLocaleString()}</span>
@@ -441,18 +459,23 @@ function CapitanDashboardContent() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Clientes Registrados</CardTitle>
+            <CardTitle className="text-sm font-medium">Clientes + Tiros Libres</CardTitle>
             <User className="h-4 w-4 text-corteva-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{totalClients}</div>
-            {totalClients > 0 ? (
-              <p className="text-xs text-muted-foreground mt-2">
-                Último registro: {clientsData[0] ? new Date(clientsData[0].created_at).toLocaleDateString() : "N/A"}
-              </p>
-            ) : (
-              <p className="text-xs text-muted-foreground mt-2">No has registrado clientes aún</p>
-            )}
+            <div className="text-2xl font-bold">{totalClients + totalFreeKicks}</div>
+            <div className="mt-2 space-y-1">
+              <div className="flex justify-between text-xs text-muted-foreground">
+                <span>Clientes:</span>
+                <span>{totalClients}</span>
+              </div>
+              {totalFreeKicks > 0 && (
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  <span>Tiros libres:</span>
+                  <span>{totalFreeKicks}</span>
+                </div>
+              )}
+            </div>
           </CardContent>
           {totalClients === 0 && (
             <CardFooter>
@@ -468,6 +491,7 @@ function CapitanDashboardContent() {
         <TabsList>
           <TabsTrigger value="ventas">Ventas</TabsTrigger>
           <TabsTrigger value="clientes">Clientes</TabsTrigger>
+          {totalFreeKicks > 0 && <TabsTrigger value="tiros-libres">Tiros Libres</TabsTrigger>}
         </TabsList>
 
         <TabsContent value="ventas" className="space-y-4">
@@ -587,6 +611,38 @@ function CapitanDashboardContent() {
             </Card>
           </div>
         </TabsContent>
+
+        {totalFreeKicks > 0 && (
+          <TabsContent value="tiros-libres" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Target className="h-5 w-5 text-corteva-500" />
+                  Tiros Libres Otorgados
+                </CardTitle>
+                <CardDescription>Puntos adicionales otorgados por el administrador</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {freeKickData.slice(0, 5).map((goal) => (
+                    <div key={goal.id} className="flex justify-between items-center border-b pb-2">
+                      <div>
+                        <p className="font-medium">{goal.reason || "Tiro libre"}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {new Date(goal.created_at).toLocaleDateString()}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-medium text-green-600">+{goal.points || 0} puntos</p>
+                        <p className="text-sm text-muted-foreground">Tiro libre</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        )}
       </Tabs>
 
       <GoalCelebration
