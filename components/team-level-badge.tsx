@@ -1,15 +1,28 @@
 import { cn } from "@/lib/utils"
 
 interface TeamLevelBadgeProps {
-  level: "bronce" | "plata" | "oro" | "platino" | "diamante" | "leyenda"
+  level?: "bronce" | "plata" | "oro" | "platino" | "diamante" | "leyenda"
+  points?: number
   size?: "sm" | "md" | "lg"
   showLabel?: boolean
   className?: string
 }
 
-export function TeamLevelBadge({ level, size = "md", showLabel = true, className }: TeamLevelBadgeProps) {
+const getTeamLevel = (points: number): "bronce" | "plata" | "oro" | "platino" | "diamante" | "leyenda" => {
+  if (points >= 10000) return "leyenda"
+  if (points >= 5000) return "diamante"
+  if (points >= 2500) return "platino"
+  if (points >= 1000) return "oro"
+  if (points >= 500) return "plata"
+  return "bronce"
+}
+
+export function TeamLevelBadge({ level, points, size = "md", showLabel = true, className }: TeamLevelBadgeProps) {
+  // Determinar el nivel basado en puntos si no se proporciona level
+  const teamLevel = level || (points !== undefined ? getTeamLevel(points) : "bronce")
+
   const getLevelColor = () => {
-    switch (level) {
+    switch (teamLevel) {
       case "bronce":
         return "from-amber-300 to-amber-600 text-amber-950"
       case "plata":
@@ -41,7 +54,7 @@ export function TeamLevelBadge({ level, size = "md", showLabel = true, className
   }
 
   const getLevelLabel = () => {
-    switch (level) {
+    switch (teamLevel) {
       case "bronce":
         return "Bronce"
       case "plata":
@@ -68,7 +81,7 @@ export function TeamLevelBadge({ level, size = "md", showLabel = true, className
           getSizeClasses(),
         )}
       >
-        {level.charAt(0).toUpperCase()}
+        {teamLevel.charAt(0).toUpperCase()}
       </div>
       {showLabel && <span className="text-sm font-medium">{getLevelLabel()}</span>}
     </div>
