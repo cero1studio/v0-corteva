@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils"
+import { Trophy, Medal, Award } from "lucide-react"
 
 interface TeamLevelBadgeProps {
   position: number
@@ -54,6 +55,19 @@ export function TeamLevelBadge({ position, size = "md", showLabel = true, classN
     }
   }
 
+  const getIconSize = () => {
+    switch (size) {
+      case "sm":
+        return 12
+      case "md":
+        return 16
+      case "lg":
+        return 20
+      default:
+        return 16
+    }
+  }
+
   const getLevelLabel = () => {
     switch (level) {
       case "bronce":
@@ -67,16 +81,17 @@ export function TeamLevelBadge({ position, size = "md", showLabel = true, classN
     }
   }
 
-  const getMedal = () => {
+  const getIcon = () => {
+    const iconSize = getIconSize()
     switch (position) {
       case 1:
-        return "🥇"
+        return <Trophy size={iconSize} />
       case 2:
-        return "🥈"
+        return <Medal size={iconSize} />
       case 3:
-        return "🥉"
+        return <Award size={iconSize} />
       default:
-        return ""
+        return null
     }
   }
 
@@ -89,7 +104,7 @@ export function TeamLevelBadge({ position, size = "md", showLabel = true, classN
           getSizeClasses(),
         )}
       >
-        {getMedal()}
+        {getIcon()}
       </div>
       {showLabel && <span className="text-sm font-medium">{getLevelLabel()}</span>}
     </div>
