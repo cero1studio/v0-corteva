@@ -49,7 +49,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   ]
 
   const getDashboardRoute = (role: string, teamId?: string | null) => {
-    console.log(`AUTH_PROVIDER: Getting dashboard route for role: ${role}, teamId: ${teamId}`)
     switch (role) {
       case "admin":
         return "/admin/dashboard"
@@ -64,7 +63,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       case "representante":
         return "/representante/dashboard"
       default:
-        console.warn(`AUTH_PROVIDER: Unknown role: ${role}`)
         return "/login"
     }
   }
@@ -121,20 +119,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     let mounted = true
-    let initializationTimeout: NodeJS.Timeout
 
     const initAuth = async () => {
       try {
-        console.log("AUTH_PROVIDER: Initializing authentication...")
-
-        // Timeout para evitar carga infinita
-        initializationTimeout = setTimeout(() => {
-          if (mounted) {
-            console.log("AUTH_PROVIDER: Initialization timeout, setting as initialized")
-            setIsLoading(false)
-            setIsInitialized(true)
-          }
-        }, 5000)
+        console.log("AUTH_PROVIDER: Initializing...")
 
         const {
           data: { session },
@@ -143,33 +131,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         if (!mounted) return
 
-        // Limpiar timeout si la inicialización fue exitosa
-        if (initializationTimeout) {
-          clearTimeout(initializationTimeout)
-        }
-
         if (error) {
           console.error("AUTH_PROVIDER: Session error:", error)
           setSession(null)
           setUser(null)
-          setError(error.message)
         } else if (session) {
-          console.log("AUTH_PROVIDER: Session found, fetching profile...")
+          console.log("AUTH_PROVIDER: Session found")
           setSession(session)
 
           const profile = await fetchUserProfile(session.user.id, session.user.email)
           if (mounted && profile) {
             setUser(profile)
-            console.log("AUTH_PROVIDER: Profile loaded successfully")
+
+            // Redirección solo desde login
+            if (pathname === "/login") {
+              const dashboardRoute = getDashboardRoute(profile.role, profile.team_id)
+              console.log(`AUTH_PROVIDER: Redirecting to ${dashboardRoute}`)
+              router.replace(dashboardRoute)
+            }
           }
         } else {
-          console.log("AUTH_PROVIDER: No session found")
+          console.log("AUTH_PROVIDER: No session")
           setSession(null)
           setUser(null)
         }
       } catch (err) {
         console.error("AUTH_PROVIDER: Init error:", err)
-        setError("Error de inicialización")
       } finally {
         if (mounted) {
           setIsLoading(false)
@@ -189,27 +176,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (event === "SIGNED_IN" && session) {
         setSession(session)
-        setError(null)
         const profile = await fetchUserProfile(session.user.id, session.user.email)
         if (profile) {
           setUser(profile)
+          const dashboardRoute = getDashboardRoute(profile.role, profile.team_id)
+          console.log(`AUTH_PROVIDER: Login successful, redirecting to ${dashboardRoute}`)
+          router.replace(dashboardRoute)
         }
       } else if (event === "SIGNED_OUT") {
         setSession(null)
         setUser(null)
         setError(null)
-        // Solo redirigir si no estamos ya en login
-        if (pathname !== "/login") {
-          router.replace("/login")
-        }
+        router.replace("/login")
       }
     })
 
     return () => {
       mounted = false
-      if (initializationTimeout) {
-        clearTimeout(initializationTimeout)
-      }
       subscription.unsubscribe()
     }
   }, [pathname, router])
@@ -241,24 +224,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signOut = async () => {
     try {
       setIsLoading(true)
-      setError(null)
-      console.log("AUTH_PROVIDER: Signing out...")
-
-      const { error } = await supabase.auth.signOut()
-      if (error) {
-        console.error("AUTH_PROVIDER: Sign out error:", error)
-        setError(error.message)
-      }
-
-      // Limpiar estado local inmediatamente
-      setSession(null)
-      setUser(null)
-
-      // Redirigir a login
-      router.replace("/login")
-    } catch (err: any) {
-      console.error("AUTH_PROVIDER: Sign out exception:", err)
-      setError(err.message)
+      await supabase.auth.signOut()
+    } catch (err) {
+      console.error("AUTH_PROVIDER: Sign out error:", err)
     } finally {
       setIsLoading(false)
     }
