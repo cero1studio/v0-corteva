@@ -25,31 +25,18 @@ export default function ClientesPage() {
   const [searchTerm, setSearchTerm] = useState("")
 
   useEffect(() => {
-    // Log para diagnosticar el problema
-    console.log("Usuario en ClientesPage:", user)
-
     if (user?.team_id) {
-      console.log("Team ID encontrado:", user.team_id)
       loadClients(user.team_id)
-    } else {
-      console.log("Team ID no disponible en el usuario:", user)
-      setLoading(false)
     }
-  }, [user])
+  }, [user?.team_id])
 
   const loadClients = async (teamId: string) => {
     try {
       setLoading(true)
-      console.log("Cargando clientes para equipo:", teamId)
-
       const result = await getCompetitorClientsByTeam(teamId)
-      console.log("Resultado de getCompetitorClientsByTeam:", result)
-
       if (result.success) {
         setClients(result.data || [])
-        console.log("Clientes cargados:", result.data?.length || 0)
       } else {
-        console.error("Error al cargar clientes:", result.error)
         toast({
           title: "Error",
           description: "No se pudieron cargar los clientes",
@@ -78,9 +65,6 @@ export default function ClientesPage() {
         <div className="text-center">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-corteva-500 mx-auto"></div>
           <p className="mt-2 text-muted-foreground">Cargando clientes...</p>
-          <p className="mt-1 text-sm text-gray-400">
-            {user ? `Usuario: ${user.id || "N/A"}` : "Usuario no disponible"}
-          </p>
         </div>
       </div>
     )
@@ -150,23 +134,6 @@ export default function ClientesPage() {
             </div>
           </div>
         </div>
-
-        {/* Debug Info */}
-        <Card className="bg-yellow-50 border-yellow-200">
-          <CardContent className="p-4">
-            <p className="text-sm text-yellow-800">
-              <strong>Debug:</strong> User ID: {user?.id || "No disponible"} | Team ID:{" "}
-              {user?.team_id || "No disponible"} | Clientes encontrados: {clients.length}
-            </p>
-            <Button
-              onClick={() => (user?.team_id ? loadClients(user.team_id) : alert("No hay team_id disponible"))}
-              size="sm"
-              className="mt-2 bg-yellow-600 hover:bg-yellow-700"
-            >
-              Recargar Clientes
-            </Button>
-          </CardContent>
-        </Card>
 
         {/* Search Section */}
         <Card className="shadow-sm border-gray-200">
