@@ -7,7 +7,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { AlertCircle, LineChartIcon } from "lucide-react"
 import { EmptyState } from "./empty-state"
 
-// Estructura simplificada para datos del gráfico
+// Estructura para datos del gráfico
 type WeeklyData = {
   name: string
   [key: string]: any
@@ -47,7 +47,6 @@ export function AdminStatsChart() {
       const { data: teamsData, error: teamsError } = await supabase.from("teams").select("id, name")
 
       if (teamsError) {
-        // Si es un error de red y no hemos alcanzado el máximo de reintentos
         if (teamsError.message?.includes("Failed to fetch") && retry < maxRetries) {
           console.log(`Error de red al obtener equipos, reintentando... (${retry + 1}/${maxRetries})`)
           await new Promise((resolve) => setTimeout(resolve, 2000))
@@ -66,20 +65,18 @@ export function AdminStatsChart() {
       setTeams(teamsWithColors)
 
       if (!teamsData || teamsData.length === 0) {
-        // Si no hay equipos, no hay nada que mostrar
         setData([])
         setLoading(false)
         return
       }
 
-      // 2. Obtener todas las ventas con una consulta más simple
+      // 2. Obtener ventas y tiros libres para calcular goles totales
       const { data: salesData, error: salesError } = await supabase
         .from("sales")
         .select("team_id, points, created_at")
         .order("created_at")
 
       if (salesError) {
-        // Si es un error de red y no hemos alcanzado el máximo de reintentos
         if (salesError.message?.includes("Failed to fetch") && retry < maxRetries) {
           console.log(`Error de red al obtener ventas, reintentando... (${retry + 1}/${maxRetries})`)
           await new Promise((resolve) => setTimeout(resolve, 2000))
@@ -88,7 +85,44 @@ export function AdminStatsChart() {
         throw salesError
       }
 
-      if (!salesData || salesData.length === 0) {
+      // 3. Obtener tiros libres
+      const { data: freeKickData, error: freeKickError } = await supabase
+        .from("free_kick_goals")
+        .select("team_id, goals, created_at")
+        .order("created_at")
+
+      if (freeKickError) {
+        console.log("Error al obtener tiros libres, continuando sin ellos:", freeKickError)
+      }
+
+      // 4. Combinar datos de ventas y tiros libres
+      const allGoalData = []
+
+      // Agregar goles de ventas
+      if (salesData && salesData.length > 0) {
+        salesData.forEach((sale) => {
+          allGoalData.push({
+            team_id: sale.team_id,
+            goals: sale.points || 0,
+            created_at: sale.created_at,
+            type: "venta",
+          })
+        })
+      }
+
+      // Agregar goles de tiros libres
+      if (freeKickData && freeKickData.length > 0) {
+        freeKickData.forEach((freeKick) => {
+          allGoalData.push({
+            team_id: freeKick.team_id,
+            goals: freeKick.goals || 0,
+            created_at: freeKick.created_at,
+            type: "tiro_libre",
+          })
+        })
+      }
+
+      if (allGoalData.length === 0) {
         // Generar datos de ejemplo vacíos
         const emptyData = Array.from({ length: 4 }, (_, i) => ({
           name: `Semana ${i + 1}`,
@@ -100,11 +134,11 @@ export function AdminStatsChart() {
         return
       }
 
-      // 3. Procesar datos para el gráfico
+      // 5. Procesar datos por semana
       const weeklyData: Record<string, Record<string, number>> = {}
 
-      salesData.forEach((sale) => {
-        const date = new Date(sale.created_at)
+      allGoalData.forEach((goalRecord) => {
+        const date = new Date(goalRecord.created_at)
         const weekNumber = getWeekNumber(date)
         const weekLabel = `Semana ${weekNumber}`
 
@@ -115,13 +149,13 @@ export function AdminStatsChart() {
           })
         }
 
-        const teamId = sale.team_id
+        const teamId = goalRecord.team_id
         if (teamId && weeklyData[weekLabel][teamId] !== undefined) {
-          weeklyData[weekLabel][teamId] = (weeklyData[weekLabel][teamId] || 0) + (sale.points || 0)
+          weeklyData[weekLabel][teamId] = (weeklyData[weekLabel][teamId] || 0) + goalRecord.goals
         }
       })
 
-      // 4. Convertir a formato para Recharts
+      // 6. Convertir a formato acumulativo para Recharts
       const chartData = Object.keys(weeklyData).map((week) => {
         const weekData: WeeklyData = { name: week }
 
@@ -132,19 +166,31 @@ export function AdminStatsChart() {
         return weekData
       })
 
-      // Ordenar por número de semana
+      // Ordenar por número de semana y hacer acumulativo
       chartData.sort((a, b) => {
         const weekA = Number.parseInt(a.name.replace("Semana ", ""))
         const weekB = Number.parseInt(b.name.replace("Semana ", ""))
         return weekA - weekB
       })
 
-      setData(chartData)
-      setRetryCount(0) // Resetear contador de reintentos en caso de éxito
+      // Hacer los datos acumulativos
+      const accumulativeData = chartData.map((weekData, index) => {
+        const newWeekData = { ...weekData }
+
+        if (index > 0) {
+          teamsWithColors.forEach((team) => {
+            newWeekData[team.id] = (chartData[index - 1][team.id] || 0) + (weekData[team.id] || 0)
+          })
+        }
+
+        return newWeekData
+      })
+
+      setData(accumulativeData)
+      setRetryCount(0)
     } catch (err: any) {
       console.error("Error al cargar datos del gráfico:", err)
 
-      // Si es un error de red genérico y no hemos alcanzado el máximo de reintentos
       if (err.message?.includes("Failed to fetch") && retry < maxRetries) {
         console.log(`Error de red general, reintentando... (${retry + 1}/${maxRetries})`)
         await new Promise((resolve) => setTimeout(resolve, 2000))
@@ -192,7 +238,7 @@ export function AdminStatsChart() {
       <EmptyState
         icon={LineChartIcon}
         title="No hay datos de evolución"
-        description="Registra ventas para ver la evolución del concurso por semanas."
+        description="Registra ventas o tiros libres para ver la evolución del concurso por semanas."
         actionLabel="Configurar productos"
         actionHref="/admin/productos"
         className="h-[300px]"
@@ -207,8 +253,19 @@ export function AdminStatsChart() {
         <CartesianGrid strokeDasharray="3 3" vertical={false} />
         <XAxis dataKey="name" />
         <YAxis />
-        <Tooltip />
-        <Legend />
+        <Tooltip
+          formatter={(value, name) => {
+            const team = teams.find((t) => t.id === name)
+            return [value, team?.name || name]
+          }}
+          labelFormatter={(label) => `${label}`}
+        />
+        <Legend
+          formatter={(value) => {
+            const team = teams.find((t) => t.id === value)
+            return team?.name || value
+          }}
+        />
         {teams.map((team) => (
           <Line
             key={team.id}
