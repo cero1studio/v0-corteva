@@ -1,92 +1,48 @@
 "use client"
 
 import type React from "react"
+
+import { usePathname, useRouter } from "next/navigation"
 import { useEffect, useState } from "react"
-import { useRouter, usePathname } from "next/navigation"
-import { useAuth } from "@/hooks/use-auth"
-import { Loader2 } from "lucide-react"
+import { useAuth } from "@/components/auth-provider"
 
-type Props = {
-  allowedRoles?: string[]
-  children: React.ReactNode
-}
+// Rutas públicas que no requieren autenticación
+const publicRoutes = ["/login", "/primer-acceso", "/ranking-publico"]
 
-export function AuthGuard({ allowedRoles, children }: Props) {
-  const { profile, isLoading, isInitialized } = useAuth()
-  const router = useRouter()
+export function AuthGuard({ children }: { children: React.ReactNode }) {
+  const { user, isInitialized } = useAuth()
   const pathname = usePathname()
-  const [shouldRender, setShouldRender] = useState(false)
-
-  const publicRoutes = [
-    "/login",
-    "/register",
-    "/forgot-password",
-    "/reset-password",
-    "/primer-acceso",
-    "/ranking-publico",
-  ]
+  const router = useRouter()
+  const [isAuthorized, setIsAuthorized] = useState(false)
 
   useEffect(() => {
-    // No hacer nada hasta que esté inicializado
+    // Si aún no se ha inicializado la autenticación, no hacemos nada
     if (!isInitialized) return
 
+    // Verificar si la ruta actual es pública
     const isPublicRoute = publicRoutes.some((route) => pathname?.startsWith(route))
 
-    // Si es ruta pública, permitir acceso
     if (isPublicRoute) {
-      setShouldRender(true)
-      return
-    }
-
-    // Si no hay perfil en ruta privada, redirigir a login
-    if (!profile) {
-      console.log("AUTH_GUARD: No profile, redirecting to login")
+      // Si es una ruta pública, permitir acceso sin importar el estado de autenticación
+      setIsAuthorized(true)
+    } else if (!user) {
+      // Si no es una ruta pública y no hay usuario autenticado, redirigir a login
       router.replace("/login")
-      setShouldRender(false)
-      return
+    } else {
+      // Si hay un usuario autenticado, permitir acceso
+      setIsAuthorized(true)
     }
+  }, [user, pathname, router, isInitialized])
 
-    // Si hay roles específicos requeridos, verificar
-    if (allowedRoles && !allowedRoles.includes(profile.role)) {
-      console.log("AUTH_GUARD: Role not allowed, redirecting to dashboard")
-      const dashboardRoute = getDashboardRoute(profile.role, profile.team_id)
-      router.replace(dashboardRoute)
-      setShouldRender(false)
-      return
-    }
-
-    // Todo OK, renderizar
-    setShouldRender(true)
-  }, [isInitialized, profile, pathname, allowedRoles, router])
-
-  // Mostrar loading mientras no esté inicializado o esté cargando
-  if (!isInitialized || isLoading) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-screen">
-        <Loader2 className="h-8 w-8 animate-spin text-blue-600 mb-4" />
-        <p className="text-gray-600 text-lg font-medium">Cargando...</p>
-      </div>
-    )
+  // Mientras se verifica la autorización, no mostrar nada
+  if (!isInitialized) {
+    return <div className="flex items-center justify-center min-h-screen">Cargando...</div>
   }
 
-  return shouldRender ? <>{children}</> : null
-}
-
-function getDashboardRoute(role: string, teamId?: string | null) {
-  switch (role) {
-    case "admin":
-      return "/admin/dashboard"
-    case "capitan":
-      return teamId ? "/capitan/dashboard" : "/capitan/crear-equipo"
-    case "director_tecnico":
-      return "/director-tecnico/dashboard"
-    case "supervisor":
-      return "/supervisor/dashboard"
-    case "representante":
-      return "/representante/dashboard"
-    case "arbitro":
-      return "/arbitro/dashboard"
-    default:
-      return "/login"
-  }
+  // Si está autorizado, mostrar los children
+  return isAuthorized ? (
+    <>{children}</>
+  ) : (
+    <div className="flex items-center justify-center min-h-screen">Verificando acceso...</div>
+  )
 }
