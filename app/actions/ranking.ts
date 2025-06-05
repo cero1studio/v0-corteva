@@ -115,23 +115,43 @@ export async function getTeamRankingByZone(zoneId?: string) {
 
       console.log(`Puntos de ventas para ${team.name}:`, totalSalesPoints)
 
-      // 2. OBTENER PUNTOS DE CLIENTES DE COMPETENCIA (por representative_id)
+      // 2. OBTENER PUNTOS DE CLIENTES DE COMPETENCIA
       let totalClientsPoints = 0
+
+      // IMPORTANTE: Evitar contar clientes duplicados
+      // Crear un conjunto para almacenar IDs de clientes ya contados
+      const countedClientIds = new Set()
+
+      // Obtener clientes por representative_id
       if (memberIds.length > 0) {
-        const { data: clients } = await supabase
+        const { data: clientsByRep } = await supabase
           .from("competitor_clients")
-          .select("points")
+          .select("id, points")
           .in("representative_id", memberIds)
 
-        if (clients) {
-          totalClientsPoints = clients.reduce((sum, client) => sum + (client.points || 200), 0)
+        if (clientsByRep) {
+          for (const client of clientsByRep) {
+            if (!countedClientIds.has(client.id)) {
+              totalClientsPoints += client.points || 200
+              countedClientIds.add(client.id)
+            }
+          }
         }
       }
 
-      // También obtener clientes directos por team_id (si existen)
-      const { data: teamClients } = await supabase.from("competitor_clients").select("points").eq("team_id", team.id)
-      if (teamClients) {
-        totalClientsPoints += teamClients.reduce((sum, client) => sum + (client.points || 200), 0)
+      // Obtener clientes por team_id
+      const { data: clientsByTeam } = await supabase
+        .from("competitor_clients")
+        .select("id, points")
+        .eq("team_id", team.id)
+
+      if (clientsByTeam) {
+        for (const client of clientsByTeam) {
+          if (!countedClientIds.has(client.id)) {
+            totalClientsPoints += client.points || 200
+            countedClientIds.add(client.id)
+          }
+        }
       }
 
       console.log(`Puntos de clientes para ${team.name}:`, totalClientsPoints)
@@ -282,19 +302,41 @@ export async function getClientsRankingByZone(zoneId?: string) {
         .eq("team_id", team.id)
 
       let totalClients = 0
+      const countedClientIds = new Set()
 
       if (!repsError && representatives && representatives.length > 0) {
-        const { count: clientsCount, error: clientsError } = await supabase
+        const { data: clients, error: clientsError } = await supabase
           .from("competitor_clients")
-          .select("*", { count: "exact", head: true })
+          .select("id")
           .in(
             "representative_id",
             representatives.map((rep) => rep.id),
           )
 
-        if (!clientsError) {
-          totalClients = clientsCount || 0
+        if (!clientsError && clients) {
+          // Contar clientes únicos
+          clients.forEach((client) => {
+            if (!countedClientIds.has(client.id)) {
+              countedClientIds.add(client.id)
+              totalClients++
+            }
+          })
         }
+      }
+
+      // También verificar clientes asignados directamente al equipo
+      const { data: teamClients, error: teamClientsError } = await supabase
+        .from("competitor_clients")
+        .select("id")
+        .eq("team_id", team.id)
+
+      if (!teamClientsError && teamClients) {
+        teamClients.forEach((client) => {
+          if (!countedClientIds.has(client.id)) {
+            countedClientIds.add(client.id)
+            totalClients++
+          }
+        })
       }
 
       const totalPointsFromClients = totalClients * 200 // 200 puntos por cliente
@@ -386,21 +428,34 @@ export async function getUserTeamInfo(
 
     // 2. CALCULAR PUNTOS DE CLIENTES
     let totalPointsFromClients = 0
+    const countedClientIds = new Set()
+
     if (memberIds.length > 0) {
       const { data: clients } = await supabase
         .from("competitor_clients")
-        .select("points")
+        .select("id, points")
         .in("representative_id", memberIds)
 
       if (clients) {
-        totalPointsFromClients = clients.reduce((sum, client) => sum + (client.points || 200), 0)
+        for (const client of clients) {
+          if (!countedClientIds.has(client.id)) {
+            totalPointsFromClients += client.points || 200
+            countedClientIds.add(client.id)
+          }
+        }
       }
     }
 
     // También clientes directos por team_id
-    const { data: teamClients } = await supabase.from("competitor_clients").select("points").eq("team_id", team.id)
+    const { data: teamClients } = await supabase.from("competitor_clients").select("id, points").eq("team_id", team.id)
+
     if (teamClients) {
-      totalPointsFromClients += teamClients.reduce((sum, client) => sum + (client.points || 200), 0)
+      for (const client of teamClients) {
+        if (!countedClientIds.has(client.id)) {
+          totalPointsFromClients += client.points || 200
+          countedClientIds.add(client.id)
+        }
+      }
     }
 
     // 3. CALCULAR PUNTOS DE TIROS LIBRES
@@ -413,6 +468,12 @@ export async function getUserTeamInfo(
 
     // 4. SUMAR TODOS LOS PUNTOS
     const totalPoints = totalPointsFromSales + totalPointsFromClients + totalPointsFromFreeKicks
+
+    console.log(`Desglose de puntos para ${team.name}:`)
+    console.log(`- Ventas: ${totalPointsFromSales}`)
+    console.log(`- Clientes: ${totalPointsFromClients}`)
+    console.log(`- Tiros libres: ${totalPointsFromFreeKicks}`)
+    console.log(`- Total: ${totalPoints}`)
 
     // Obtener configuración de puntos para gol
     const { data: puntosConfig } = await supabase
