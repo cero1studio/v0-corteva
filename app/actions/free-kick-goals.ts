@@ -1,6 +1,6 @@
 "use server"
 
-import { adminSupabase } from "@/lib/supabase/server"
+import { createServerSupabaseClient } from "@/lib/supabase/server"
 import { revalidatePath } from "next/cache"
 
 export interface FreeKickGoal {
@@ -23,112 +23,120 @@ export interface FreeKickGoal {
 }
 
 export async function createFreeKickGoal(formData: FormData) {
+  const supabase = createServerSupabaseClient()
+
+  const team_id = formData.get("team_id") as string
+  const points = formData.get("points") as string
+  const reason = formData.get("reason") as string
+
   try {
-    const teamId = formData.get("team_id") as string
-    const points = Number.parseInt(formData.get("points") as string)
-    const reason = formData.get("reason") as string
-
-    if (!teamId || !points || !reason) {
-      return { success: false, message: "Todos los campos son requeridos" }
+    // Validar datos requeridos
+    if (!team_id || !points || !reason) {
+      throw new Error("Faltan datos requeridos")
     }
 
-    // Usar adminSupabase directamente para todas las operaciones
-    // Esto evita problemas de autenticación en server actions
-    const { data: user, error: userError } = await adminSupabase.auth.getUser()
+    const finalPoints = Number.parseInt(points)
 
-    if (userError) {
-      console.error("Error getting user:", userError)
-      return { success: false, message: "Error de autenticación" }
+    if (!finalPoints || finalPoints <= 0) {
+      throw new Error("Los puntos no son válidos")
     }
 
-    // Insertar el tiro libre usando adminSupabase
-    const { error: insertError } = await adminSupabase.from("free_kick_goals").insert({
-      team_id: teamId,
-      points: points,
-      reason: reason,
-      created_by: user.user?.id || "system", // Fallback a "system" si no hay user.id
-    })
+    const { data, error } = await supabase
+      .from("free_kick_goals")
+      .insert([
+        {
+          team_id: team_id,
+          points: finalPoints,
+          reason: reason,
+          created_by: "admin", // Usar valor fijo por ahora
+        },
+      ])
+      .select()
 
-    if (insertError) {
-      console.error("Error inserting free kick goal:", insertError)
-      return { success: false, message: "Error al guardar el tiro libre" }
+    if (error) {
+      console.error("Error registering free kick goal:", error)
+      throw error
     }
 
     revalidatePath("/admin/tiros-libres")
-    return { success: true, message: "Tiro libre adjudicado exitosamente" }
-  } catch (error) {
-    console.error("Error creating free kick goal:", error)
-    return { success: false, message: "Error inesperado" }
+    return { success: true, data }
+  } catch (error: any) {
+    console.error("Error in createFreeKickGoal:", error)
+    return { success: false, error: error.message }
   }
 }
 
 export async function getFreeKickGoals() {
+  const supabase = createServerSupabaseClient()
   try {
-    // Usar adminSupabase para todas las operaciones
-    const { data, error } = await adminSupabase
-      .from("free_kick_goals")
-      .select(`
-        *,
+    const { data: goals, error } = await supabase.from("free_kick_goals").select(`
+        id,
+        team_id,
+        points,
+        reason,
+        created_by,
+        created_at,
         teams (
           name,
           zone_id,
-          zones (name)
+          zones (
+            name
+          )
         ),
-        profiles (full_name)
-      `)
-      .order("created_at", { ascending: false })
+        profiles (
+          full_name
+        )
+    `)
 
     if (error) {
       console.error("Error fetching free kick goals:", error)
       return []
     }
 
-    return data as FreeKickGoal[]
+    return goals || []
   } catch (error) {
-    console.error("Error fetching free kick goals:", error)
+    console.error("Unexpected error fetching free kick goals:", error)
     return []
   }
 }
 
 export async function deleteFreeKickGoal(id: string) {
-  try {
-    // Usar adminSupabase para todas las operaciones
-    const { error: deleteError } = await adminSupabase.from("free_kick_goals").delete().eq("id", id)
+  const supabase = createServerSupabaseClient()
 
-    if (deleteError) {
-      console.error("Error deleting free kick goal:", deleteError)
-      return { success: false, message: "Error al eliminar el tiro libre" }
-    }
+  try {
+    const { error } = await supabase.from("free_kick_goals").delete().eq("id", id)
+
+    if (error) throw error
 
     revalidatePath("/admin/tiros-libres")
-    return { success: true, message: "Tiro libre eliminado exitosamente" }
-  } catch (error) {
+    return { success: true }
+  } catch (error: any) {
     console.error("Error deleting free kick goal:", error)
-    return { success: false, message: "Error inesperado" }
+    return { success: false, error: error.message }
   }
 }
 
 export async function getZones() {
+  const supabase = createServerSupabaseClient()
   try {
-    // Usar adminSupabase para todas las operaciones
-    const { data, error } = await adminSupabase.from("zones").select("id, name").order("name", { ascending: true })
+    const { data: zones, error } = await supabase.from("zones").select("id, name").order("name", { ascending: true })
 
     if (error) {
       console.error("Error fetching zones:", error)
       return []
     }
 
-    return data || []
+    return zones || []
   } catch (error) {
-    console.error("Error fetching zones:", error)
+    console.error("Unexpected error fetching zones:", error)
     return []
   }
 }
 
 export async function getTeamsByZone(zoneId: string) {
+  const supabase = createServerSupabaseClient()
   try {
-    // Usar adminSupabase para todas las operaciones
-    const { data, error } = await adminSupabase
+    const { data: teams, error } = await supabase
       .from("teams")
       .select("id, name")
       .eq("zone_id", zoneId)
@@ -139,9 +147,9 @@ export async function getTeamsByZone(zoneId: string) {
       return []
     }
 
-    return data || []
+    return teams || []
   } catch (error) {
-    console.error("Error fetching teams:", error)
+    console.error("Unexpected error fetching teams:", error)
     return []
   }
 }
