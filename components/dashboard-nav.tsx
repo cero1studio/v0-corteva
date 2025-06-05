@@ -99,6 +99,7 @@ export function DashboardNav({ role, onMobileMenuClose }: NavProps) {
           { href: "/admin/clientes", label: "Clientes", icon: Users },
           { href: "/admin/ranking", label: "Ranking", icon: Trophy },
           { href: "/admin/retos", label: "Retos", icon: Target },
+          { href: "/admin/tiros-libres", label: "Tiros Libres", icon: Target },
           { href: "/admin/configuracion", label: "Configuración", icon: Settings },
         ]
       case "capitan":
