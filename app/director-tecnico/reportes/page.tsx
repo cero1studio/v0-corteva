@@ -1,99 +1,190 @@
+"use client"
+
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { createServerClient } from "@/lib/supabase/server"
-import { cookies } from "next/headers"
+import { useAuth } from "@/components/auth-provider"
+import { createClientSupabaseClient } from "@/lib/supabase/client"
 
-interface ReportesPageProps {
-  searchParams: { team?: string }
+interface Team {
+  id: string
+  name: string
+  zone_id: string
 }
 
-export default async function DirectorTecnicoReportesPage({ searchParams }: ReportesPageProps) {
-  const cookieStore = cookies()
-  const supabase = createServerClient(cookieStore)
+interface Sale {
+  id: string
+  quantity: number
+  points: number
+  created_at: string
+  team_id: string
+  representative_id: string
+  teams?: { name: string }
+  products?: { name: string }
+  profiles?: { full_name: string }
+}
 
-  // Obtener el perfil del usuario actual
-  const {
-    data: { session },
-  } = await supabase.auth.getSession()
+interface Client {
+  id: string
+  client_name: string
+  created_at: string
+  team_id: string
+  representative_id: string
+  teams?: { name: string }
+  profiles?: { full_name: string }
+}
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("id, full_name, zone_id")
-    .eq("id", session?.user.id)
-    .single()
+interface FreeKick {
+  id: string
+  points: number
+  created_at: string
+  team_id: string
+  teams?: { name: string }
+}
 
-  // Obtener información de la zona
-  const { data: zone } = await supabase.from("zones").select("id, name").eq("id", profile?.zone_id).single()
+export default function DirectorTecnicoReportesPage() {
+  const { profile } = useAuth()
+  const [teams, setTeams] = useState<Team[]>([])
+  const [sales, setSales] = useState<Sale[]>([])
+  const [clients, setClients] = useState<Client[]>([])
+  const [freeKicks, setFreeKicks] = useState<FreeKick[]>([])
+  const [selectedTeamId, setSelectedTeamId] = useState<string>("all")
+  const [loading, setLoading] = useState(true)
+  const [zone, setZone] = useState<{ id: string; name: string } | null>(null)
 
-  // Obtener equipos de la zona
-  const { data: teams } = await supabase.from("teams").select("id, name").eq("zone_id", profile?.zone_id).order("name")
+  const supabase = createClientSupabaseClient()
 
-  const selectedTeamId = searchParams.team
-  const teamIds = selectedTeamId ? [selectedTeamId] : teams?.map((team) => team.id) || []
+  useEffect(() => {
+    if (profile?.zone_id) {
+      loadData()
+    }
+  }, [profile?.zone_id])
 
-  // Obtener ventas de los equipos (filtradas por equipo si se selecciona)
-  let salesQuery = supabase
-    .from("sales")
-    .select(`
-      id,
-      quantity,
-      points,
-      created_at,
-      team_id,
-      representative_id,
-      teams(name),
-      products(name),
-      profiles(full_name)
-    `)
-    .order("created_at", { ascending: false })
-    .limit(100)
+  useEffect(() => {
+    if (teams.length > 0) {
+      loadReportsData()
+    }
+  }, [selectedTeamId, teams])
 
-  if (teamIds.length > 0) {
-    salesQuery = salesQuery.in("team_id", teamIds)
+  const loadData = async () => {
+    try {
+      setLoading(true)
+      console.log("Loading data for zone:", profile?.zone_id)
+
+      // Obtener información de la zona
+      const { data: zoneData, error: zoneError } = await supabase
+        .from("zones")
+        .select("id, name")
+        .eq("id", profile?.zone_id)
+        .single()
+
+      if (zoneError) {
+        console.error("Error loading zone:", zoneError)
+      } else {
+        setZone(zoneData)
+        console.log("Zone loaded:", zoneData)
+      }
+
+      // Obtener equipos de la zona
+      const { data: teamsData, error: teamsError } = await supabase
+        .from("teams")
+        .select("id, name, zone_id")
+        .eq("zone_id", profile?.zone_id)
+        .order("name")
+
+      if (teamsError) {
+        console.error("Error loading teams:", teamsError)
+      } else {
+        setTeams(teamsData || [])
+        console.log("Teams loaded:", teamsData?.length || 0)
+      }
+    } catch (error) {
+      console.error("Error in loadData:", error)
+    } finally {
+      setLoading(false)
+    }
   }
 
-  const { data: sales } = await salesQuery
+  const loadReportsData = async () => {
+    try {
+      const teamIds = selectedTeamId === "all" ? teams.map((team) => team.id) : [selectedTeamId]
+      console.log("Loading reports for teams:", teamIds)
 
-  // Obtener clientes de competencia (filtrados por equipo si se selecciona)
-  let clientsQuery = supabase
-    .from("competitor_clients")
-    .select(`
-      id,
-      client_name,
-      created_at,
-      team_id,
-      representative_id,
-      teams(name),
-      profiles(full_name)
-    `)
-    .order("created_at", { ascending: false })
-    .limit(100)
+      if (teamIds.length === 0) return
 
-  if (teamIds.length > 0) {
-    clientsQuery = clientsQuery.in("team_id", teamIds)
+      // Cargar ventas con información completa
+      const { data: salesData, error: salesError } = await supabase
+        .from("sales")
+        .select(`
+          id,
+          quantity,
+          points,
+          created_at,
+          team_id,
+          representative_id,
+          teams!inner(name),
+          products(name),
+          profiles(full_name)
+        `)
+        .in("team_id", teamIds)
+        .order("created_at", { ascending: false })
+        .limit(100)
+
+      if (salesError) {
+        console.error("Error loading sales:", salesError)
+      } else {
+        setSales(salesData || [])
+        console.log("Sales loaded:", salesData?.length || 0)
+      }
+
+      // Cargar clientes con información completa
+      const { data: clientsData, error: clientsError } = await supabase
+        .from("competitor_clients")
+        .select(`
+          id,
+          client_name,
+          created_at,
+          team_id,
+          representative_id,
+          teams!inner(name),
+          profiles(full_name)
+        `)
+        .in("team_id", teamIds)
+        .order("created_at", { ascending: false })
+        .limit(100)
+
+      if (clientsError) {
+        console.error("Error loading clients:", clientsError)
+      } else {
+        setClients(clientsData || [])
+        console.log("Clients loaded:", clientsData?.length || 0)
+      }
+
+      // Cargar tiros libres con información completa
+      const { data: freeKicksData, error: freeKicksError } = await supabase
+        .from("free_kick_goals")
+        .select(`
+          id,
+          points,
+          created_at,
+          team_id,
+          teams!inner(name)
+        `)
+        .in("team_id", teamIds)
+        .order("created_at", { ascending: false })
+        .limit(100)
+
+      if (freeKicksError) {
+        console.error("Error loading free kicks:", freeKicksError)
+      } else {
+        setFreeKicks(freeKicksData || [])
+        console.log("Free kicks loaded:", freeKicksData?.length || 0)
+      }
+    } catch (error) {
+      console.error("Error in loadReportsData:", error)
+    }
   }
-
-  const { data: clients } = await clientsQuery
-
-  // Obtener tiros libres (filtrados por equipo si se selecciona)
-  let freeKicksQuery = supabase
-    .from("free_kick_goals")
-    .select(`
-      id,
-      points,
-      created_at,
-      team_id,
-      teams(name)
-    `)
-    .order("created_at", { ascending: false })
-    .limit(100)
-
-  if (teamIds.length > 0) {
-    freeKicksQuery = freeKicksQuery.in("team_id", teamIds)
-  }
-
-  const { data: freeKicks } = await freeKicksQuery
 
   // Calcular estadísticas
   const totalSales = sales?.length || 0
@@ -104,6 +195,17 @@ export default async function DirectorTecnicoReportesPage({ searchParams }: Repo
   const totalFreeKickPoints = freeKicks?.reduce((sum, fk) => sum + (fk.points || 0), 0) || 0
 
   const selectedTeam = teams?.find((team) => team.id === selectedTeamId)
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-corteva-500 mx-auto"></div>
+          <p className="mt-2 text-muted-foreground">Cargando reportes...</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6">
@@ -121,23 +223,33 @@ export default async function DirectorTecnicoReportesPage({ searchParams }: Repo
 
         {/* Filtro por equipo */}
         <div className="w-full md:w-64">
-          <Select value={selectedTeamId || "all"}>
+          <Select value={selectedTeamId} onValueChange={setSelectedTeamId}>
             <SelectTrigger>
               <SelectValue placeholder="Filtrar por equipo" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">
-                <a href="/director-tecnico/reportes">Todos los equipos</a>
-              </SelectItem>
+              <SelectItem value="all">Todos los equipos</SelectItem>
               {teams?.map((team) => (
                 <SelectItem key={team.id} value={team.id}>
-                  <a href={`/director-tecnico/reportes?team=${team.id}`}>{team.name}</a>
+                  {team.name}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
         </div>
       </div>
+
+      {/* Debug info */}
+      {process.env.NODE_ENV === "development" && (
+        <Card className="bg-yellow-50 border-yellow-200">
+          <CardContent className="pt-6">
+            <p className="text-sm">
+              <strong>Debug:</strong> Zone: {zone?.name} | Teams: {teams.length} | Selected: {selectedTeamId} | Sales:{" "}
+              {sales.length} | Clients: {clients.length} | Free Kicks: {freeKicks.length}
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Estadísticas generales */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
@@ -425,12 +537,12 @@ export default async function DirectorTecnicoReportesPage({ searchParams }: Repo
                               {teamFreeKicks}
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                              <a
-                                href={`/director-tecnico/reportes?team=${team.id}`}
+                              <button
+                                onClick={() => setSelectedTeamId(team.id)}
                                 className="text-corteva-600 hover:text-corteva-700 font-medium"
                               >
                                 Ver detalles
-                              </a>
+                              </button>
                             </td>
                           </tr>
                         )
