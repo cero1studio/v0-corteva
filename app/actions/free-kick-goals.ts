@@ -1,8 +1,8 @@
 "use server"
 
 import { createServerClient } from "@/lib/supabase/server"
+import { adminSupabase } from "@/lib/supabase/server"
 import { revalidatePath } from "next/cache"
-import { redirect } from "next/navigation"
 
 export interface FreeKickGoal {
   id: string
@@ -24,8 +24,6 @@ export interface FreeKickGoal {
 }
 
 export async function createFreeKickGoal(formData: FormData) {
-  const supabase = createServerClient()
-
   try {
     const teamId = formData.get("team_id") as string
     const points = Number.parseInt(formData.get("points") as string)
@@ -35,7 +33,8 @@ export async function createFreeKickGoal(formData: FormData) {
       return { success: false, message: "Todos los campos son requeridos" }
     }
 
-    // Obtener el usuario actual
+    // Usar el cliente normal para obtener el usuario
+    const supabase = createServerClient()
     const {
       data: { user },
       error: userError,
@@ -43,10 +42,10 @@ export async function createFreeKickGoal(formData: FormData) {
 
     if (userError || !user) {
       console.error("Error getting user:", userError)
-      redirect("/login")
+      return { success: false, message: "Error de autenticación. Por favor, inicia sesión nuevamente." }
     }
 
-    // Verificar el rol del usuario
+    // Verificar el rol del usuario usando el cliente normal
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
       .select("role")
@@ -62,8 +61,8 @@ export async function createFreeKickGoal(formData: FormData) {
       return { success: false, message: "Solo los administradores pueden adjudicar tiros libres" }
     }
 
-    // Insertar el tiro libre
-    const { error: insertError } = await supabase.from("free_kick_goals").insert({
+    // Usar adminSupabase para insertar (evita problemas de RLS)
+    const { error: insertError } = await adminSupabase.from("free_kick_goals").insert({
       team_id: teamId,
       points: points,
       reason: reason,
@@ -84,10 +83,9 @@ export async function createFreeKickGoal(formData: FormData) {
 }
 
 export async function getFreeKickGoals() {
-  const supabase = createServerClient()
-
   try {
-    const { data, error } = await supabase
+    // Usar adminSupabase para evitar problemas de RLS
+    const { data, error } = await adminSupabase
       .from("free_kick_goals")
       .select(`
         *,
@@ -113,10 +111,9 @@ export async function getFreeKickGoals() {
 }
 
 export async function deleteFreeKickGoal(id: string) {
-  const supabase = createServerClient()
-
   try {
-    // Obtener el usuario actual
+    // Usar el cliente normal para obtener el usuario
+    const supabase = createServerClient()
     const {
       data: { user },
       error: userError,
@@ -124,7 +121,7 @@ export async function deleteFreeKickGoal(id: string) {
 
     if (userError || !user) {
       console.error("Error getting user:", userError)
-      redirect("/login")
+      return { success: false, message: "Error de autenticación. Por favor, inicia sesión nuevamente." }
     }
 
     // Verificar el rol del usuario
@@ -143,7 +140,8 @@ export async function deleteFreeKickGoal(id: string) {
       return { success: false, message: "Solo los administradores pueden eliminar tiros libres" }
     }
 
-    const { error: deleteError } = await supabase.from("free_kick_goals").delete().eq("id", id)
+    // Usar adminSupabase para eliminar
+    const { error: deleteError } = await adminSupabase.from("free_kick_goals").delete().eq("id", id)
 
     if (deleteError) {
       console.error("Error deleting free kick goal:", deleteError)
@@ -159,10 +157,9 @@ export async function deleteFreeKickGoal(id: string) {
 }
 
 export async function getZones() {
-  const supabase = createServerClient()
-
   try {
-    const { data, error } = await supabase.from("zones").select("id, name").order("name", { ascending: true })
+    // Usar adminSupabase para evitar problemas de RLS
+    const { data, error } = await adminSupabase.from("zones").select("id, name").order("name", { ascending: true })
 
     if (error) {
       console.error("Error fetching zones:", error)
@@ -177,10 +174,9 @@ export async function getZones() {
 }
 
 export async function getTeamsByZone(zoneId: string) {
-  const supabase = createServerClient()
-
   try {
-    const { data, error } = await supabase
+    // Usar adminSupabase para evitar problemas de RLS
+    const { data, error } = await adminSupabase
       .from("teams")
       .select("id, name")
       .eq("zone_id", zoneId)
