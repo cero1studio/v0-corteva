@@ -83,7 +83,7 @@ export default function TirosLibresPage() {
       const result = await createFreeKickGoal(formData)
 
       if (result.success) {
-        setMessage({ type: "success", text: result.message })
+        setMessage({ type: "success", text: "Tiro libre adjudicado exitosamente" })
         // Recargar los datos
         const goalsData = await getFreeKickGoals()
         setFreeKickGoals(goalsData)
@@ -93,7 +93,7 @@ export default function TirosLibresPage() {
         const form = document.querySelector("form") as HTMLFormElement
         form?.reset()
       } else {
-        setMessage({ type: "error", text: result.message })
+        setMessage({ type: "error", text: result.error || "Error al adjudicar tiro libre" })
       }
     } catch (error) {
       console.error("Error submitting form:", error)
@@ -133,7 +133,7 @@ export default function TirosLibresPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">Tiros Libres</h1>
-          <p className="text-muted-foreground">Adjudica puntos adicionales a los equipos por tiros libres</p>
+          <p className="text-muted-foreground">Adjudica goles adicionales a los equipos por tiros libres</p>
         </div>
       </div>
 
@@ -152,7 +152,7 @@ export default function TirosLibresPage() {
               <Zap className="h-5 w-5" />
               Adjudicar Tiro Libre
             </CardTitle>
-            <CardDescription>Otorga puntos adicionales a un equipo específico</CardDescription>
+            <CardDescription>Otorga goles adicionales a un equipo específico</CardDescription>
           </CardHeader>
           <CardContent>
             <form action={handleSubmit} className="space-y-4">
@@ -189,9 +189,9 @@ export default function TirosLibresPage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="points">Puntos</Label>
-                <Input id="points" name="points" type="number" min="1" max="1000" placeholder="100" required />
-                <p className="text-xs text-muted-foreground">100 puntos = 1 gol</p>
+                <Label htmlFor="goals">Goles</Label>
+                <Input id="goals" name="goals" type="number" min="1" max="10" placeholder="1" required />
+                <p className="text-xs text-muted-foreground">Cantidad de goles a adjudicar</p>
               </div>
 
               <div className="space-y-2">
@@ -214,7 +214,7 @@ export default function TirosLibresPage() {
               <Trophy className="h-5 w-5" />
               Resumen por Equipo
             </CardTitle>
-            <CardDescription>Puntos totales adjudicados por tiros libres</CardDescription>
+            <CardDescription>Goles totales adjudicados por tiros libres</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
@@ -228,8 +228,8 @@ export default function TirosLibresPage() {
                       <p className="text-sm text-muted-foreground">{summary.zoneName}</p>
                     </div>
                     <div className="text-right">
-                      <Badge variant="secondary">{summary.totalPoints} pts</Badge>
-                      <p className="text-sm text-muted-foreground">{summary.totalGoals} goles</p>
+                      <Badge variant="secondary">{summary.totalGoals} goles</Badge>
+                      <p className="text-sm text-muted-foreground">{summary.count} tiros libres</p>
                     </div>
                   </div>
                 ))
@@ -255,12 +255,12 @@ export default function TirosLibresPage() {
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
                       <Badge variant="outline">{goal.teams.name}</Badge>
-                      <Badge variant="secondary">{goal.points} puntos</Badge>
+                      <Badge variant="secondary">{Math.floor(goal.points / 100)} goles</Badge>
                       <Badge variant="outline">{goal.teams.zones?.name || "Sin zona"}</Badge>
                     </div>
                     <p className="text-sm text-muted-foreground mb-1">{goal.reason}</p>
                     <p className="text-xs text-muted-foreground">
-                      Por {goal.profiles.full_name} • {new Date(goal.created_at).toLocaleDateString()}
+                      Por {goal.profiles?.full_name || "Admin"} • {new Date(goal.created_at).toLocaleDateString()}
                     </p>
                   </div>
                   <form action={deleteFreeKickGoal.bind(null, goal.id)}>

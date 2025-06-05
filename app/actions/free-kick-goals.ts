@@ -26,19 +26,33 @@ export async function createFreeKickGoal(formData: FormData) {
   const supabase = createServerSupabaseClient()
 
   const team_id = formData.get("team_id") as string
-  const points = formData.get("points") as string
+  const goals = formData.get("goals") as string
   const reason = formData.get("reason") as string
 
   try {
     // Validar datos requeridos
-    if (!team_id || !points || !reason) {
+    if (!team_id || !goals || !reason) {
       throw new Error("Faltan datos requeridos")
     }
 
-    const finalPoints = Number.parseInt(points)
+    const finalGoals = Number.parseInt(goals)
 
-    if (!finalPoints || finalPoints <= 0) {
-      throw new Error("Los puntos no son válidos")
+    if (!finalGoals || finalGoals <= 0) {
+      throw new Error("Los goles no son válidos")
+    }
+
+    // Convertir goles a puntos (1 gol = 100 puntos)
+    const points = finalGoals * 100
+
+    // Obtener el usuario actual
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser()
+
+    let userId = null
+    if (user && !userError) {
+      userId = user.id
     }
 
     const { data, error } = await supabase
@@ -46,9 +60,9 @@ export async function createFreeKickGoal(formData: FormData) {
       .insert([
         {
           team_id: team_id,
-          points: finalPoints,
+          points: points,
           reason: reason,
-          created_by: "admin", // Usar valor fijo por ahora
+          created_by: userId,
         },
       ])
       .select()
