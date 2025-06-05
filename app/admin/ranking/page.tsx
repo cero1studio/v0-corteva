@@ -15,8 +15,8 @@ import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 
 // Tipos para los datos
 type Team = {
-  id: string
-  name: string
+  team_id: string
+  team_name: string
   zone_id: string
   zone_name?: string
   goals: number
@@ -38,6 +38,7 @@ export default function RankingAdminPage() {
   const [selectedZone, setSelectedZone] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [teams, setTeams] = useState<Team[]>([])
+  const [teamsInZone, setTeamsInZone] = useState<Team[]>([])
   const [zones, setZones] = useState<Zone[]>([])
   const [distributors, setDistributors] = useState<any[]>([])
   const [distributorFilter, setDistributorFilter] = useState("all")
@@ -46,7 +47,7 @@ export default function RankingAdminPage() {
 
   const supabase = createClientComponentClient()
 
-  // Cargar datos
+  // Cargar datos iniciales
   useEffect(() => {
     async function loadData() {
       setIsLoading(true)
@@ -63,7 +64,7 @@ export default function RankingAdminPage() {
 
         if (distributorsError) throw new Error(`Error al cargar distribuidores: ${distributorsError.message}`)
 
-        // Usar la función corregida para obtener el ranking
+        // Usar la función corregida para obtener el ranking nacional
         const rankingResult = await getTeamRankingByZone() // Sin zona específica para obtener todos
 
         if (!rankingResult.success) {
@@ -121,8 +122,7 @@ export default function RankingAdminPage() {
       try {
         const rankingResult = await getTeamRankingByZone(selectedZone)
         if (rankingResult.success && rankingResult.data) {
-          // Actualizar solo los equipos de la zona seleccionada para la vista por zona
-          // Los equipos generales ya están cargados en el primer useEffect
+          setTeamsInZone(rankingResult.data)
         }
       } catch (error) {
         console.error("Error cargando equipos de zona:", error)
@@ -140,14 +140,6 @@ export default function RankingAdminPage() {
 
     return matchesSearch && matchesZone && matchesDistributor
   })
-
-  // Obtener equipos de la zona seleccionada
-  const teamsInSelectedZone = selectedZone
-    ? teams
-        .filter((team) => team.zone_id === selectedZone)
-        .sort((a, b) => (b.goals || 0) - (a.goals || 0))
-        .map((team, index) => ({ ...team, position: index + 1 }))
-    : []
 
   // Renderizar estado vacío
   const renderEmptyState = () => (
@@ -389,7 +381,7 @@ export default function RankingAdminPage() {
                 </div>
               ) : error ? (
                 renderErrorState()
-              ) : teamsInSelectedZone.length === 0 ? (
+              ) : teamsInZone.length === 0 ? (
                 <EmptyState
                   icon={Trophy}
                   title="No hay equipos en esta zona"
@@ -408,7 +400,7 @@ export default function RankingAdminPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {teamsInSelectedZone.map((team) => (
+                    {teamsInZone.map((team) => (
                       <TableRow key={team.team_id}>
                         <TableCell className="font-medium">
                           <div className="flex items-center gap-2">

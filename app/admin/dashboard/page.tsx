@@ -255,7 +255,7 @@ export default function AdminDashboardPage() {
 
       const pointsPerGoal = puntosConfig?.value ? Number(puntosConfig.value) : 100
 
-      // Obtener todos los equipos
+      // Obtener todos los equipos con sus miembros
       const { data: teamsData, error: teamsError } = await supabase.from("teams").select("id, name, zone_id")
 
       if (teamsError) throw teamsError
@@ -272,13 +272,49 @@ export default function AdminDashboardPage() {
       const teamPoints: Record<string, { id: string; name: string; zone: string; points: number; goals: number }> = {}
 
       for (const team of teamsData) {
-        // 1. PUNTOS DE VENTAS
-        const { data: salesData } = await supabase.from("sales").select("points").eq("team_id", team.id)
-        const salesPoints = salesData?.reduce((sum, sale) => sum + (sale.points || 0), 0) || 0
+        // Obtener miembros del equipo
+        const { data: teamMembers } = await supabase.from("profiles").select("id").eq("team_id", team.id)
+        const memberIds = teamMembers?.map((member) => member.id) || []
+
+        // 1. PUNTOS DE VENTAS - BUSCAR POR AMBOS CAMPOS
+        let salesPoints = 0
+
+        // Buscar ventas por representative_id (miembros del equipo)
+        if (memberIds.length > 0) {
+          const { data: salesByRep } = await supabase.from("sales").select("points").in("representative_id", memberIds)
+          if (salesByRep) {
+            salesPoints += salesByRep.reduce((sum, sale) => sum + (sale.points || 0), 0)
+          }
+        }
+
+        // Buscar ventas directas por team_id
+        const { data: salesByTeam } = await supabase.from("sales").select("points").eq("team_id", team.id)
+        if (salesByTeam) {
+          salesPoints += salesByTeam.reduce((sum, sale) => sum + (sale.points || 0), 0)
+        }
 
         // 2. PUNTOS DE CLIENTES DE COMPETENCIA
-        const { data: clientsData } = await supabase.from("competitor_clients").select("points").eq("team_id", team.id)
-        const clientsPoints = clientsData?.reduce((sum, client) => sum + (client.points || 200), 0) || 0
+        let clientsPoints = 0
+
+        // Buscar clientes por representative_id
+        if (memberIds.length > 0) {
+          const { data: clientsByRep } = await supabase
+            .from("competitor_clients")
+            .select("points")
+            .in("representative_id", memberIds)
+          if (clientsByRep) {
+            clientsPoints += clientsByRep.reduce((sum, client) => sum + (client.points || 200), 0)
+          }
+        }
+
+        // Buscar clientes directos por team_id
+        const { data: clientsByTeam } = await supabase
+          .from("competitor_clients")
+          .select("points")
+          .eq("team_id", team.id)
+        if (clientsByTeam) {
+          clientsPoints += clientsByTeam.reduce((sum, client) => sum + (client.points || 200), 0)
+        }
 
         // 3. PUNTOS DE TIROS LIBRES
         const { data: freeKicksData } = await supabase.from("free_kick_goals").select("points").eq("team_id", team.id)
@@ -356,16 +392,52 @@ export default function AdminDashboardPage() {
 
           if (teamIds && teamIds.length > 0) {
             for (const team of teamIds) {
+              // Obtener miembros del equipo
+              const { data: teamMembers } = await supabase.from("profiles").select("id").eq("team_id", team.id)
+              const memberIds = teamMembers?.map((member) => member.id) || []
+
               // 1. PUNTOS DE VENTAS
-              const { data: salesData } = await supabase.from("sales").select("points").eq("team_id", team.id)
-              const salesPoints = salesData?.reduce((sum, sale) => sum + (sale.points || 0), 0) || 0
+              let salesPoints = 0
+
+              // Buscar ventas por representative_id
+              if (memberIds.length > 0) {
+                const { data: salesByRep } = await supabase
+                  .from("sales")
+                  .select("points")
+                  .in("representative_id", memberIds)
+                if (salesByRep) {
+                  salesPoints += salesByRep.reduce((sum, sale) => sum + (sale.points || 0), 0)
+                }
+              }
+
+              // Buscar ventas directas por team_id
+              const { data: salesByTeam } = await supabase.from("sales").select("points").eq("team_id", team.id)
+              if (salesByTeam) {
+                salesPoints += salesByTeam.reduce((sum, sale) => sum + (sale.points || 0), 0)
+              }
 
               // 2. PUNTOS DE CLIENTES DE COMPETENCIA
-              const { data: clientsData } = await supabase
+              let clientsPoints = 0
+
+              // Buscar clientes por representative_id
+              if (memberIds.length > 0) {
+                const { data: clientsByRep } = await supabase
+                  .from("competitor_clients")
+                  .select("points")
+                  .in("representative_id", memberIds)
+                if (clientsByRep) {
+                  clientsPoints += clientsByRep.reduce((sum, client) => sum + (client.points || 200), 0)
+                }
+              }
+
+              // Buscar clientes directos por team_id
+              const { data: clientsByTeam } = await supabase
                 .from("competitor_clients")
                 .select("points")
                 .eq("team_id", team.id)
-              const clientsPoints = clientsData?.reduce((sum, client) => sum + (client.points || 200), 0) || 0
+              if (clientsByTeam) {
+                clientsPoints += clientsByTeam.reduce((sum, client) => sum + (client.points || 200), 0)
+              }
 
               // 3. PUNTOS DE TIROS LIBRES
               const { data: freeKicksData } = await supabase
