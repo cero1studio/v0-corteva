@@ -1,52 +1,59 @@
 "use server"
 
-import { createServerSupabaseClient } from "@/lib/supabase/server"
+import { createClient } from "@/lib/supabase/server"
 import { revalidatePath } from "next/cache"
 
 export async function createFreeKickGoal(formData: FormData) {
-  const supabase = createServerSupabaseClient()
+  const supabase = createClient()
 
   try {
-    const teamId = formData.get("teamId") as string
-    const points = Number(formData.get("points")) || 0
-    const reason = formData.get("reason") as string
-
-    // Verificar que el usuario sea admin
+    // Verificar que el usuario es admin
     const {
       data: { user },
     } = await supabase.auth.getUser()
     if (!user) {
-      return { error: "No autorizado" }
+      return { success: false, error: "No autorizado" }
     }
 
-    const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single()
+    const { data: userData } = await supabase.from("users").select("role").eq("id", user.id).single()
 
-    if (!profile || profile.role !== "admin") {
-      return { error: "Solo los administradores pueden adjudicar tiros libres" }
+    if (userData?.role !== "admin") {
+      return { success: false, error: "Solo administradores pueden adjudicar tiros libres" }
     }
 
-    // Crear el gol por tiro libre
+    const teamId = formData.get("team_id") as string
+    const points = Number.parseInt(formData.get("points") as string)
+    const reason = formData.get("reason") as string
+
+    if (!teamId || !points || points <= 0) {
+      return { success: false, error: "Datos inválidos" }
+    }
+
     const { error } = await supabase.from("free_kick_goals").insert({
       team_id: teamId,
-      points: points,
-      reason: reason,
+      points,
+      reason,
       created_by: user.id,
     })
 
     if (error) {
-      return { error: error.message }
+      console.error("Error creating free kick goal:", error)
+      return { success: false, error: "Error al crear el tiro libre" }
     }
 
     revalidatePath("/admin/tiros-libres")
+    revalidatePath("/capitan/dashboard")
     revalidatePath("/admin/dashboard")
+
     return { success: true }
-  } catch (error: any) {
-    return { error: error.message || "Error al crear el tiro libre" }
+  } catch (error) {
+    console.error("Error in createFreeKickGoal:", error)
+    return { success: false, error: "Error interno del servidor" }
   }
 }
 
 export async function getFreeKickGoals() {
-  const supabase = createServerSupabaseClient()
+  const supabase = createClient()
 
   try {
     const { data, error } = await supabase
@@ -54,84 +61,77 @@ export async function getFreeKickGoals() {
       .select(`
         *,
         teams (
-          id,
           name,
-          zones (
-            id,
-            name
-          ),
-          distributors (
-            id,
-            name
-          )
+          zones (name)
         ),
-        profiles:created_by (
-          id,
+        users!free_kick_goals_created_by_fkey (
           full_name
         )
       `)
       .order("created_at", { ascending: false })
 
     if (error) {
-      return { error: error.message, data: null }
+      console.error("Error fetching free kick goals:", error)
+      return { success: false, error: "Error al obtener tiros libres" }
     }
 
-    return { data: data || [], error: null }
-  } catch (error: any) {
-    return { error: error.message || "Error al obtener tiros libres", data: null }
+    return { success: true, data }
+  } catch (error) {
+    console.error("Error in getFreeKickGoals:", error)
+    return { success: false, error: "Error interno del servidor" }
   }
 }
 
-export async function deleteFreeKickGoal(goalId: string) {
-  const supabase = createServerSupabaseClient()
+export async function deleteFreeKickGoal(id: string) {
+  const supabase = createClient()
 
   try {
-    // Verificar que el usuario sea admin
+    // Verificar que el usuario es admin
     const {
       data: { user },
     } = await supabase.auth.getUser()
     if (!user) {
-      return { error: "No autorizado" }
+      return { success: false, error: "No autorizado" }
     }
 
-    const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single()
+    const { data: userData } = await supabase.from("users").select("role").eq("id", user.id).single()
 
-    if (!profile || profile.role !== "admin") {
-      return { error: "Solo los administradores pueden eliminar tiros libres" }
+    if (userData?.role !== "admin") {
+      return { success: false, error: "Solo administradores pueden eliminar tiros libres" }
     }
 
-    const { error } = await supabase.from("free_kick_goals").delete().eq("id", goalId)
+    const { error } = await supabase.from("free_kick_goals").delete().eq("id", id)
 
     if (error) {
-      return { error: error.message }
+      console.error("Error deleting free kick goal:", error)
+      return { success: false, error: "Error al eliminar el tiro libre" }
     }
 
     revalidatePath("/admin/tiros-libres")
+    revalidatePath("/capitan/dashboard")
     revalidatePath("/admin/dashboard")
+
     return { success: true }
-  } catch (error: any) {
-    return { error: error.message || "Error al eliminar el tiro libre" }
+  } catch (error) {
+    console.error("Error in deleteFreeKickGoal:", error)
+    return { success: false, error: "Error interno del servidor" }
   }
 }
 
-export async function getFreeKickGoalsByTeam(teamId: string) {
-  const supabase = createServerSupabaseClient()
+export async function getTeamFreeKickPoints(teamId: string) {
+  const supabase = createClient()
 
   try {
-    const { data, error } = await supabase.from("free_kick_goals").select("*").eq("team_id", teamId)
+    const { data, error } = await supabase.from("free_kick_goals").select("points").eq("team_id", teamId)
 
     if (error) {
-      return { error: error.message, data: null }
+      console.error("Error fetching team free kick points:", error)
+      return 0
     }
 
-    const totalPoints = data?.reduce((sum, goal) => sum + (goal.points || 0), 0) || 0
-
-    return {
-      data: data || [],
-      totalPoints,
-      error: null,
-    }
-  } catch (error: any) {
-    return { error: error.message || "Error al obtener tiros libres del equipo", data: null }
+    return data?.reduce((total, goal) => total + goal.points, 0) || 0
+  } catch (error) {
+    console.error("Error in getTeamFreeKickPoints:", error)
+    return 0
   }
 }

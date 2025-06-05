@@ -1,58 +1,46 @@
-import type React from "react"
-import { BarChart3, LayoutDashboard, ListChecks, Settings, Target, Users } from "lucide-react"
+"use client"
 
-import { MainNav } from "@/components/main-nav"
-import { Sidebar, type SidebarNavItem } from "@/components/sidebar"
+import type { ReactNode } from "react"
+import { DashboardNav } from "@/components/dashboard-nav"
+import { Button } from "@/components/ui/button"
+import { Menu, X } from "lucide-react"
+import { useState } from "react"
 
-interface DashboardLayoutProps {
-  children: React.ReactNode
-}
+export default function AdminLayout({ children }: { children: ReactNode }) {
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
-const sidebarNavItems: SidebarNavItem[] = [
-  {
-    title: "General",
-    href: "/admin",
-    icon: LayoutDashboard,
-  },
-  {
-    title: "Usuarios",
-    href: "/admin/usuarios",
-    icon: Users,
-  },
-  {
-    title: "Retos",
-    href: "/admin/retos",
-    icon: ListChecks,
-  },
-  {
-    title: "Tiros Libres",
-    href: "/admin/tiros-libres",
-    icon: Target,
-  },
-  {
-    title: "Estadísticas",
-    href: "/admin/estadisticas",
-    icon: BarChart3,
-  },
-  {
-    title: "Ajustes",
-    href: "/admin/ajustes",
-    icon: Settings,
-  },
-]
-
-export default function DashboardLayout({ children }: DashboardLayoutProps) {
   return (
-    <div className="flex h-screen antialiased">
-      <Sidebar className="hidden border-r bg-gray-100 md:block">
-        <MainNav className="flex flex-col gap-6" />
-        <div className="mb-8 px-6">
-          <p className="text-sm font-semibold">Panel de Administración</p>
+    <div className="flex h-screen overflow-hidden">
+      {/* Botón de menú móvil */}
+      <Button
+        variant="outline"
+        size="icon"
+        className="fixed top-4 right-4 z-50 lg:hidden"
+        onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+      >
+        {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+      </Button>
+
+      {/* Sidebar para desktop */}
+      <div className="fixed left-0 top-0 z-30 h-screen w-64 border-r bg-white lg:block hidden">
+        <DashboardNav role="admin" />
+      </div>
+
+      {/* Sidebar móvil */}
+      {mobileMenuOpen && (
+        <div className="fixed inset-0 z-40 lg:hidden">
+          <div className="fixed inset-0 bg-black/50" onClick={() => setMobileMenuOpen(false)} />
+          <div className="fixed inset-y-0 left-0 w-64 bg-white shadow-lg">
+            <DashboardNav role="admin" onMobileMenuClose={() => setMobileMenuOpen(false)} />
+          </div>
         </div>
-        <Sidebar items={sidebarNavItems} />
-      </Sidebar>
-      <main className="flex-1 overflow-auto">
-        <div className="mx-auto max-w-5xl p-6">{children}</div>
+      )}
+
+      <main className="flex-1 overflow-auto lg:ml-64">
+        <header className="flex h-16 shrink-0 items-center border-b px-6">
+          <h2 className="text-lg font-semibold">Panel de Administrador</h2>
+        </header>
+        <div className="p-6">{children}</div>
       </main>
     </div>
   )
