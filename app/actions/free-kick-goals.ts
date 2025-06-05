@@ -100,6 +100,34 @@ export async function getFreeKickGoals() {
   }
 }
 
+export async function getFreeKickGoalsByTeam(teamId: string) {
+  const supabase = createServerSupabaseClient()
+  try {
+    const { data, error } = await supabase
+      .from("free_kick_goals")
+      .select(`
+        id,
+        team_id,
+        points,
+        reason,
+        created_by,
+        created_at
+      `)
+      .eq("team_id", teamId)
+      .order("created_at", { ascending: false })
+
+    if (error) {
+      console.error("Error fetching free kick goals by team:", error)
+      return { success: false, error: error.message, data: [] }
+    }
+
+    return { success: true, data: data || [] }
+  } catch (error: any) {
+    console.error("Unexpected error fetching free kick goals by team:", error)
+    return { success: false, error: error.message, data: [] }
+  }
+}
+
 export async function deleteFreeKickGoal(id: string) {
   const supabase = createServerSupabaseClient()
 
