@@ -136,7 +136,7 @@ export default function AdminDashboard() {
               <CardTitle className="text-lg uppercase">{zone.name}</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold text-green-600">{zone.goals_count}</div>
+              <div className="text-3xl font-bold text-green-600">{zone.goals_count || 0}</div>
               <p className="text-sm text-muted-foreground">
                 {zone.goals_count === 1 ? "1 gol" : `${zone.goals_count} goles`}
               </p>
