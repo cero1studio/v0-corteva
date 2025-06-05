@@ -28,7 +28,7 @@ interface NavProps {
 
 export function DashboardNav({ role, onMobileMenuClose }: NavProps) {
   const pathname = usePathname()
-  const { user, signOut } = useAuth()
+  const { profile, signOut } = useAuth()
 
   // Función para obtener las iniciales del nombre
   const getInitials = (name: string) => {
@@ -59,8 +59,8 @@ export function DashboardNav({ role, onMobileMenuClose }: NavProps) {
 
   // Función para obtener el rol real del usuario autenticado
   const getUserRole = () => {
-    if (user?.role) {
-      return user.role
+    if (profile?.role) {
+      return profile.role
     }
     return role
   }
@@ -183,11 +183,11 @@ export function DashboardNav({ role, onMobileMenuClose }: NavProps) {
       <div className="border-t p-4">
         <div className="flex items-center gap-3 rounded-md border p-3">
           <Avatar>
-            <AvatarImage src="/placeholder.svg" alt={user?.full_name || "Usuario"} />
-            <AvatarFallback>{user?.full_name ? getInitials(user.full_name) : "U"}</AvatarFallback>
+            <AvatarImage src="/placeholder.svg" alt={profile?.full_name || "Usuario"} />
+            <AvatarFallback>{profile?.full_name ? getInitials(profile.full_name) : "U"}</AvatarFallback>
           </Avatar>
           <div className="flex flex-col">
-            <span className="text-sm font-medium">{user?.full_name || "Usuario"}</span>
+            <span className="text-sm font-medium">{profile?.full_name || "Usuario"}</span>
             <span className="text-xs text-muted-foreground">{getRoleLabel(actualUserRole)}</span>
           </div>
         </div>
