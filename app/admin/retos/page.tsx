@@ -1,34 +1,26 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 
 export default function RetosPage() {
   return (
-    <div className="container mx-auto py-10">
-      <h1 className="text-3xl font-bold mb-6">Administración de Retos</h1>
-
-      <Card className="mb-6">
+    <div>
+      {/* Toggle para activar/desactivar reto */}
+      <Card>
         <CardHeader>
           <CardTitle>Estado del Reto</CardTitle>
-          <CardDescription>Activa o desactiva el reto actual</CardDescription>
+          <CardDescription>Activa o desactiva el reto principal del sistema</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="font-medium">Reto Activo</p>
-              <p className="text-sm text-muted-foreground">Los equipos pueden ver y participar en el reto</p>
-            </div>
-            <Switch
-              defaultChecked={true}
-              onCheckedChange={(checked) => {
-                // Aquí puedes agregar la lógica para activar/desactivar
-                console.log("Reto activo:", checked)
-              }}
-            />
+          <div className="flex items-center space-x-2">
+            <Switch id="reto-activo" defaultChecked />
+            <Label htmlFor="reto-activo">Reto Activo</Label>
           </div>
+          <p className="text-sm text-muted-foreground mt-2">
+            Cuando está desactivado, el reto no aparece en los dashboards de los usuarios
+          </p>
         </CardContent>
       </Card>
-
-      {/* Rest of the page content */}
     </div>
   )
 }

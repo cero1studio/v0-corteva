@@ -7,14 +7,18 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Trash2, Target, Plus } from "lucide-react"
-import { createFreeKickGoal, getFreeKickGoals, deleteFreeKickGoal } from "@/app/actions/free-kick-goals"
-import { getTeams } from "@/app/actions/teams"
+import {
+  createFreeKickGoal,
+  getFreeKickGoals,
+  deleteFreeKickGoal,
+  getTeamsForFreeKick,
+} from "@/app/actions/free-kick-goals"
 
 async function FreeKickGoalsContent() {
-  const [freeKickGoalsResult, teamsResult] = await Promise.all([getFreeKickGoals(), getTeams()])
+  const [freeKickGoalsResult, teamsResult] = await Promise.all([getFreeKickGoals(), getTeamsForFreeKick()])
 
-  const freeKickGoals = freeKickGoalsResult.success ? freeKickGoalsResult.data : []
-  const teams = teamsResult.success ? teamsResult.data : []
+  const freeKickGoals = freeKickGoalsResult.data || []
+  const teams = teamsResult.data || []
 
   return (
     <div className="space-y-6">
@@ -37,7 +41,7 @@ async function FreeKickGoalsContent() {
                     <SelectValue placeholder="Seleccionar equipo" />
                   </SelectTrigger>
                   <SelectContent>
-                    {teams?.map((team) => (
+                    {teams.map((team) => (
                       <SelectItem key={team.id} value={team.id}>
                         {team.name} - {team.zones?.name}
                       </SelectItem>
@@ -54,7 +58,12 @@ async function FreeKickGoalsContent() {
 
             <div className="space-y-2">
               <Label htmlFor="reason">Razón del Tiro Libre</Label>
-              <Textarea id="reason" name="reason" placeholder="Describe la razón del tiro libre..." rows={3} />
+              <Textarea
+                id="reason"
+                name="reason"
+                placeholder="Describe la razón por la cual se otorga este tiro libre..."
+                required
+              />
             </div>
 
             <Button type="submit" className="w-full">
@@ -69,12 +78,17 @@ async function FreeKickGoalsContent() {
       <Card>
         <CardHeader>
           <CardTitle>Historial de Tiros Libres</CardTitle>
-          <CardDescription>Tiros libres adjudicados recientemente</CardDescription>
+          <CardDescription>Todos los tiros libres adjudicados en el sistema</CardDescription>
         </CardHeader>
         <CardContent>
-          {freeKickGoals && freeKickGoals.length > 0 ? (
+          {freeKickGoals.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <Target className="h-12 w-12 mx-auto mb-4 opacity-50" />
+              <p>No hay tiros libres adjudicados</p>
+            </div>
+          ) : (
             <div className="space-y-4">
-              {freeKickGoals.map((goal: any) => (
+              {freeKickGoals.map((goal) => (
                 <div key={goal.id} className="flex items-center justify-between p-4 border rounded-lg">
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-2">
@@ -82,10 +96,17 @@ async function FreeKickGoalsContent() {
                       <Badge variant="secondary">{goal.teams?.zones?.name}</Badge>
                       <Badge variant="outline">+{goal.points} puntos</Badge>
                     </div>
-                    {goal.reason && <p className="text-sm text-muted-foreground mb-2">{goal.reason}</p>}
-                    <div className="text-xs text-muted-foreground">
-                      Por: {goal.users?.full_name} • {new Date(goal.created_at).toLocaleString("es-ES")}
-                    </div>
+                    <p className="text-sm text-muted-foreground mb-1">{goal.reason}</p>
+                    <p className="text-xs text-muted-foreground">
+                      Por: {goal.users?.full_name} •{" "}
+                      {new Date(goal.created_at).toLocaleDateString("es-ES", {
+                        year: "numeric",
+                        month: "long",
+                        day: "numeric",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </p>
                   </div>
                   <form action={deleteFreeKickGoal.bind(null, goal.id)}>
                     <Button variant="outline" size="sm" type="submit">
@@ -94,11 +115,6 @@ async function FreeKickGoalsContent() {
                   </form>
                 </div>
               ))}
-            </div>
-          ) : (
-            <div className="text-center py-8 text-muted-foreground">
-              <Target className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p>No hay tiros libres adjudicados</p>
             </div>
           )}
         </CardContent>
@@ -112,7 +128,7 @@ export default function TirosLibresPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold">Tiros Libres</h1>
-        <p className="text-muted-foreground">Adjudica puntos adicionales a los equipos por tiros libres</p>
+        <p className="text-muted-foreground">Gestiona los goles por tiro libre adjudicados a los equipos</p>
       </div>
 
       <Suspense
