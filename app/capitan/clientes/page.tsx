@@ -16,6 +16,8 @@ interface Client {
   id: string
   client_name: string
   created_at: string
+  representative_id?: string
+  team_id?: string
 }
 
 export default function ClientesPage() {
@@ -26,50 +28,53 @@ export default function ClientesPage() {
 
   useEffect(() => {
     if (user?.team_id) {
-      loadClients(user.team_id)
+      loadClients()
+    } else {
+      setLoading(false)
     }
   }, [user?.team_id])
 
-  const loadClients = async (teamId: string) => {
+  const loadClients = async () => {
     try {
       setLoading(true)
-      console.log("Cargando clientes para equipo:", teamId)
+      console.log("Cargando clientes para equipo:", user?.team_id)
+      console.log("Usuario completo:", user)
 
-      // Usar supabase client directamente en lugar de server action
+      if (!user?.team_id) {
+        console.log("No hay team_id disponible")
+        setClients([])
+        return
+      }
+
+      // Consulta simplificada para obtener clientes
       const { data: clients, error } = await supabase
         .from("competitor_clients")
-        .select(`
-          id,
-          client_name,
-          created_at,
-          team_id,
-          representative_id,
-          profiles:representative_id (
-            id, 
-            full_name
-          )
-        `)
-        .eq("team_id", teamId)
+        .select("id, client_name, created_at, representative_id, team_id")
+        .eq("team_id", user.team_id)
         .order("created_at", { ascending: false })
 
+      console.log("Respuesta de Supabase:", { clients, error })
+
       if (error) {
-        console.error("Error al cargar clientes:", error)
+        console.error("Error de Supabase:", error)
         toast({
           title: "Error",
-          description: "No se pudieron cargar los clientes: " + error.message,
+          description: `Error al cargar clientes: ${error.message}`,
           variant: "destructive",
         })
+        setClients([])
       } else {
-        console.log("Clientes cargados:", clients?.length || 0)
+        console.log(`Clientes encontrados: ${clients?.length || 0}`)
         setClients(clients || [])
       }
     } catch (error) {
-      console.error("Error loading clients:", error)
+      console.error("Error general:", error)
       toast({
         title: "Error",
-        description: "Error al cargar los clientes",
+        description: "Error inesperado al cargar los clientes",
         variant: "destructive",
       })
+      setClients([])
     } finally {
       setLoading(false)
     }
@@ -81,10 +86,15 @@ export default function ClientesPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-96">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-corteva-500 mx-auto"></div>
-          <p className="mt-2 text-muted-foreground">Cargando clientes...</p>
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-6">
+        <div className="max-w-7xl mx-auto">
+          <div className="flex items-center justify-center h-96">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-corteva-500 mx-auto"></div>
+              <p className="mt-2 text-muted-foreground">Cargando clientes...</p>
+              <p className="mt-1 text-sm text-gray-400">Team ID: {user?.team_id || "No disponible"}</p>
+            </div>
+          </div>
         </div>
       </div>
     )
@@ -154,6 +164,18 @@ export default function ClientesPage() {
             </div>
           </div>
         </div>
+
+        {/* Debug Info */}
+        {process.env.NODE_ENV === "development" && (
+          <Card className="bg-yellow-50 border-yellow-200">
+            <CardContent className="p-4">
+              <p className="text-sm text-yellow-800">
+                <strong>Debug:</strong> Team ID: {user?.team_id || "No disponible"} | Clientes encontrados:{" "}
+                {clients.length} | Usuario: {user?.full_name || "No disponible"}
+              </p>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Search Section */}
         <Card className="shadow-sm border-gray-200">
@@ -238,7 +260,6 @@ export default function ClientesPage() {
                     </div>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    {/* Fecha - Mantenemos solo esta sección */}
                     <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
                       <div className="p-1.5 bg-orange-100 rounded-md">
                         <Calendar className="h-4 w-4 text-orange-600" />
