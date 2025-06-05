@@ -7,10 +7,10 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Search, Users, Plus, Calendar, User, Building2 } from "lucide-react"
-import { getCompetitorClientsByTeam } from "@/app/actions/clients"
 import { toast } from "@/hooks/use-toast"
 import { EmptyState } from "@/components/empty-state"
 import Link from "next/link"
+import { supabase } from "@/lib/supabase/client"
 
 interface Client {
   id: string
@@ -33,15 +33,35 @@ export default function ClientesPage() {
   const loadClients = async (teamId: string) => {
     try {
       setLoading(true)
-      const result = await getCompetitorClientsByTeam(teamId)
-      if (result.success) {
-        setClients(result.data || [])
-      } else {
+      console.log("Cargando clientes para equipo:", teamId)
+
+      // Usar supabase client directamente en lugar de server action
+      const { data: clients, error } = await supabase
+        .from("competitor_clients")
+        .select(`
+          id,
+          client_name,
+          created_at,
+          team_id,
+          representative_id,
+          profiles:representative_id (
+            id, 
+            full_name
+          )
+        `)
+        .eq("team_id", teamId)
+        .order("created_at", { ascending: false })
+
+      if (error) {
+        console.error("Error al cargar clientes:", error)
         toast({
           title: "Error",
-          description: "No se pudieron cargar los clientes",
+          description: "No se pudieron cargar los clientes: " + error.message,
           variant: "destructive",
         })
+      } else {
+        console.log("Clientes cargados:", clients?.length || 0)
+        setClients(clients || [])
       }
     } catch (error) {
       console.error("Error loading clients:", error)

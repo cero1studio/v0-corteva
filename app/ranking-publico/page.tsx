@@ -1,83 +1,81 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { getTeamRankingByZone } from "@/services/rankingService"
-import type { Zone } from "@/types"
+import { useEffect, useState } from "react"
 
-interface RankingItem {
-  teamName: string
-  zone: Zone
-  points: number
-  matchesPlayed: number
-  wins: number
-  losses: number
-  draws: number
-  goalsFor: number
-  goalsAgainst: number
-  goalDifference: number
+interface Team {
+  id: number
+  name: string
+  total_points: number
+  goals: number
 }
 
-const RankingPublicoPage = () => {
-  const [ranking, setRanking] = useState<RankingItem[]>([])
+const puntosParaGol = 3
+
+export default function RankingPublico() {
+  const [ranking, setRanking] = useState<Team[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    const fetchRanking = async () => {
-      try {
-        setLoading(true)
-        setError(null)
-        const data = await getTeamRankingByZone()
-        setRanking(data)
-      } catch (err: any) {
-        setError(err.message || "Error fetching ranking.")
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    fetchRanking()
+    loadRanking()
   }, [])
 
+  const loadRanking = async () => {
+    setLoading(true)
+    setError(null)
+
+    try {
+      const response = await fetch("/api/ranking")
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+      const data = await response.json()
+      const ranking: Team[] = data.ranking
+
+      // Recalcular goles basados en puntos totales reales
+      const correctedRanking = ranking.map((team) => ({
+        ...team,
+        goals: Math.floor(team.total_points / puntosParaGol),
+      }))
+
+      setRanking(correctedRanking)
+    } catch (e: any) {
+      setError(e.message)
+      console.error("Failed to load ranking:", e)
+    } finally {
+      setLoading(false)
+    }
+  }
+
   if (loading) {
-    return <div>Loading ranking...</div>
+    return <div>Cargando ranking...</div>
   }
 
   if (error) {
-    return <div>Error: {error}</div>
+    return <div>Error al cargar el ranking: {error}</div>
   }
 
   return (
-    <div>
-      <h1>Public Ranking</h1>
-      <table>
+    <div className="container mx-auto p-4">
+      <h1 className="text-2xl font-bold mb-4">Ranking Público</h1>
+      <table className="table-auto w-full">
         <thead>
           <tr>
-            <th>Team Name</th>
-            <th>Zone</th>
-            <th>Points</th>
-            <th>Matches Played</th>
-            <th>Wins</th>
-            <th>Losses</th>
-            <th>Draws</th>
-            <th>Goals For</th>
-            <th>Goals Against</th>
-            <th>Goal Difference</th>
+            <th className="px-4 py-2">Posición</th>
+            <th className="px-4 py-2">Equipo</th>
+            <th className="px-4 py-2">Puntos</th>
+            <th className="px-4 py-2">Goles</th>
           </tr>
         </thead>
         <tbody>
-          {ranking.map((item, index) => (
-            <tr key={index}>
-              <td>{item.teamName}</td>
-              <td>{item.zone}</td>
-              <td>{item.points}</td>
-              <td>{item.matchesPlayed}</td>
-              <td>{item.wins}</td>
-              <td>{item.losses}</td>
-              <td>{item.draws}</td>
-              <td>{item.goalsFor}</td>
-              <td>{item.goalsAgainst}</td>
-              <td>{item.goalDifference}</td>
+          {ranking.map((team, index) => (
+            <tr key={team.id} className={index % 2 === 0 ? "bg-gray-100" : ""}>
+              <td className="border px-4 py-2">{index + 1}</td>
+              <td className="border px-4 py-2">{team.name}</td>
+              <td className="border px-4 py-2">{team.total_points}</td>
+              <td className="border px-4 py-2">
+                <div className="text-xl font-bold">{Math.floor(team.total_points / puntosParaGol)}</div>
+              </td>
             </tr>
           ))}
         </tbody>
@@ -85,5 +83,3 @@ const RankingPublicoPage = () => {
     </div>
   )
 }
-
-export default RankingPublicoPage
