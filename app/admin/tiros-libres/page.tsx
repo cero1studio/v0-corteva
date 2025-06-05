@@ -1,153 +1,349 @@
-import { Suspense } from "react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+"use client"
+
+import { useState, useEffect } from "react"
+import { useForm } from "react-hook-form"
+import { zodResolver } from "@hookform/resolvers/zod"
+import * as z from "zod"
+import { format } from "date-fns"
+import { es } from "date-fns/locale"
+import { Trash2, Target, Award } from "lucide-react"
+
 import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Textarea } from "@/components/ui/textarea"
+import { useToast } from "@/components/ui/use-toast"
 import { Badge } from "@/components/ui/badge"
-import { Trash2, Target, Plus } from "lucide-react"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+
 import {
   createFreeKickGoal,
-  getFreeKickGoals,
   deleteFreeKickGoal,
-  getTeamsForFreeKick,
+  getFreeKickGoals,
+  type FreeKickGoal,
 } from "@/app/actions/free-kick-goals"
+import { getTeams } from "@/app/actions/teams"
 
-async function FreeKickGoalsContent() {
-  const [freeKickGoalsResult, teamsResult] = await Promise.all([getFreeKickGoals(), getTeamsForFreeKick()])
-
-  const freeKickGoals = freeKickGoalsResult.data || []
-  const teams = teamsResult.data || []
-
-  return (
-    <div className="space-y-6">
-      {/* Formulario para adjudicar tiro libre */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Plus className="h-5 w-5" />
-            Adjudicar Tiro Libre
-          </CardTitle>
-          <CardDescription>Otorga puntos adicionales a un equipo por tiro libre</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form action={createFreeKickGoal} className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="team_id">Equipo</Label>
-                <Select name="team_id" required>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Seleccionar equipo" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {teams.map((team) => (
-                      <SelectItem key={team.id} value={team.id}>
-                        {team.name} - {team.zones?.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="points">Puntos</Label>
-                <Input id="points" name="points" type="number" min="1" max="1000" placeholder="100" required />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="reason">Razón del Tiro Libre</Label>
-              <Textarea
-                id="reason"
-                name="reason"
-                placeholder="Describe la razón por la cual se otorga este tiro libre..."
-                required
-              />
-            </div>
-
-            <Button type="submit" className="w-full">
-              <Target className="h-4 w-4 mr-2" />
-              Adjudicar Tiro Libre
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
-
-      {/* Lista de tiros libres */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Historial de Tiros Libres</CardTitle>
-          <CardDescription>Todos los tiros libres adjudicados en el sistema</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {freeKickGoals.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              <Target className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p>No hay tiros libres adjudicados</p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {freeKickGoals.map((goal) => (
-                <div key={goal.id} className="flex items-center justify-between p-4 border rounded-lg">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-2">
-                      <h3 className="font-semibold">{goal.teams?.name}</h3>
-                      <Badge variant="secondary">{goal.teams?.zones?.name}</Badge>
-                      <Badge variant="outline">+{goal.points} puntos</Badge>
-                    </div>
-                    <p className="text-sm text-muted-foreground mb-1">{goal.reason}</p>
-                    <p className="text-xs text-muted-foreground">
-                      Por: {goal.users?.full_name} •{" "}
-                      {new Date(goal.created_at).toLocaleDateString("es-ES", {
-                        year: "numeric",
-                        month: "long",
-                        day: "numeric",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                    </p>
-                  </div>
-                  <form action={deleteFreeKickGoal.bind(null, goal.id)}>
-                    <Button variant="outline" size="sm" type="submit">
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </form>
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-    </div>
-  )
-}
+const formSchema = z.object({
+  teamId: z.string().min(1, { message: "Selecciona un equipo" }),
+  points: z.coerce
+    .number()
+    .min(1, { message: "Debe ser al menos 1 punto" })
+    .max(1000, { message: "Máximo 1000 puntos" }),
+  reason: z
+    .string()
+    .min(3, { message: "Proporciona una razón (mínimo 3 caracteres)" })
+    .max(500, { message: "Máximo 500 caracteres" }),
+})
 
 export default function TirosLibresPage() {
+  const [teams, setTeams] = useState<any[]>([])
+  const [freeKickGoals, setFreeKickGoals] = useState<FreeKickGoal[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isDeleting, setIsDeleting] = useState<string | null>(null)
+  const { toast } = useToast()
+
+  const form = useForm<z.infer<typeof formSchema>>({
+    resolver: zodResolver(formSchema),
+    defaultValues: {
+      teamId: "",
+      points: 100,
+      reason: "",
+    },
+  })
+
+  useEffect(() => {
+    async function loadData() {
+      setIsLoading(true)
+      try {
+        const [teamsResponse, goalsResponse] = await Promise.all([getTeams(), getFreeKickGoals()])
+
+        if (teamsResponse.data) {
+          setTeams(teamsResponse.data)
+        }
+
+        if (goalsResponse.data) {
+          setFreeKickGoals(goalsResponse.data)
+        }
+      } catch (error) {
+        console.error("Error al cargar datos:", error)
+        toast({
+          title: "Error",
+          description: "No se pudieron cargar los datos. Intenta de nuevo.",
+          variant: "destructive",
+        })
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    loadData()
+  }, [toast])
+
+  async function onSubmit(values: z.infer<typeof formSchema>) {
+    setIsSubmitting(true)
+    try {
+      const result = await createFreeKickGoal(values.teamId, values.points, values.reason)
+
+      if (result.error) {
+        toast({
+          title: "Error",
+          description: result.error,
+          variant: "destructive",
+        })
+        return
+      }
+
+      // Actualizar la lista de tiros libres
+      const { data } = await getFreeKickGoals()
+      if (data) {
+        setFreeKickGoals(data)
+      }
+
+      // Resetear el formulario
+      form.reset({
+        teamId: "",
+        points: 100,
+        reason: "",
+      })
+
+      toast({
+        title: "Éxito",
+        description: "Tiro libre registrado correctamente",
+      })
+    } catch (error) {
+      console.error("Error al crear tiro libre:", error)
+      toast({
+        title: "Error",
+        description: "No se pudo registrar el tiro libre. Intenta de nuevo.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  async function handleDelete(id: string) {
+    setIsDeleting(id)
+    try {
+      const result = await deleteFreeKickGoal(id)
+
+      if (result.error) {
+        toast({
+          title: "Error",
+          description: result.error,
+          variant: "destructive",
+        })
+        return
+      }
+
+      // Actualizar la lista de tiros libres
+      setFreeKickGoals(freeKickGoals.filter((goal) => goal.id !== id))
+
+      toast({
+        title: "Éxito",
+        description: "Tiro libre eliminado correctamente",
+      })
+    } catch (error) {
+      console.error("Error al eliminar tiro libre:", error)
+      toast({
+        title: "Error",
+        description: "No se pudo eliminar el tiro libre. Intenta de nuevo.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsDeleting(null)
+    }
+  }
+
+  // Agrupar por equipo para mostrar totales
+  const teamTotals = freeKickGoals.reduce(
+    (acc, goal) => {
+      if (!acc[goal.team_id]) {
+        acc[goal.team_id] = {
+          team_name: goal.team_name,
+          zone_name: goal.zone_name,
+          total_points: 0,
+        }
+      }
+      acc[goal.team_id].total_points += goal.points
+      return acc
+    },
+    {} as Record<string, { team_name: string; zone_name: string; total_points: number }>,
+  )
+
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold">Tiros Libres</h1>
-        <p className="text-muted-foreground">Gestiona los goles por tiro libre adjudicados a los equipos</p>
+        <h1 className="text-2xl font-bold tracking-tight">Tiros Libres</h1>
+        <p className="text-muted-foreground">
+          Adjudica puntos adicionales a equipos por tiros libres o bonificaciones especiales.
+        </p>
       </div>
 
-      <Suspense
-        fallback={
-          <div className="space-y-6">
-            <Card>
-              <CardContent className="p-6">
-                <div className="animate-pulse space-y-4">
-                  <div className="h-4 bg-gray-200 rounded w-1/4"></div>
-                  <div className="h-10 bg-gray-200 rounded"></div>
-                  <div className="h-10 bg-gray-200 rounded"></div>
-                </div>
-              </CardContent>
-            </Card>
+      <div className="grid gap-6 md:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>Registrar Tiro Libre</CardTitle>
+            <CardDescription>Los puntos se sumarán automáticamente al total del equipo.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Form {...form}>
+              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+                <FormField
+                  control={form.control}
+                  name="teamId"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Equipo</FormLabel>
+                      <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isSubmitting}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Selecciona un equipo" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {teams.map((team) => (
+                            <SelectItem key={team.id} value={team.id}>
+                              {team.name} - {team.zone?.name || "Sin zona"}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="points"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Puntos</FormLabel>
+                      <FormControl>
+                        <Input type="number" placeholder="100" {...field} disabled={isSubmitting} />
+                      </FormControl>
+                      <FormDescription>Cada 100 puntos equivalen a 1 gol.</FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="reason"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Razón</FormLabel>
+                      <FormControl>
+                        <Textarea
+                          placeholder="Explica por qué se otorgan estos puntos"
+                          {...field}
+                          disabled={isSubmitting}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <Button type="submit" className="w-full" disabled={isSubmitting}>
+                  {isSubmitting ? "Registrando..." : "Registrar Tiro Libre"}
+                </Button>
+              </form>
+            </Form>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Resumen por Equipo</CardTitle>
+            <CardDescription>Total de puntos por tiros libres adjudicados a cada equipo.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {Object.entries(teamTotals).length > 0 ? (
+              <div className="space-y-4">
+                {Object.entries(teamTotals).map(([teamId, data]) => (
+                  <div key={teamId} className="flex items-center justify-between border-b pb-2">
+                    <div>
+                      <p className="font-medium">{data.team_name}</p>
+                      <p className="text-sm text-muted-foreground">{data.zone_name}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="secondary" className="text-sm">
+                        {data.total_points} puntos
+                      </Badge>
+                      <Badge variant="outline" className="text-sm">
+                        {Math.floor(data.total_points / 100)} goles
+                      </Badge>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-8 text-center">
+                <Award className="h-12 w-12 text-muted-foreground/50" />
+                <p className="mt-2 text-muted-foreground">No hay tiros libres registrados aún.</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      <div>
+        <h2 className="text-xl font-semibold mb-4">Historial de Tiros Libres</h2>
+
+        {isLoading ? (
+          <div className="flex justify-center py-8">
+            <p>Cargando tiros libres...</p>
           </div>
-        }
-      >
-        <FreeKickGoalsContent />
-      </Suspense>
+        ) : freeKickGoals.length > 0 ? (
+          <div className="space-y-4">
+            {freeKickGoals.map((goal) => (
+              <Card key={goal.id}>
+                <CardHeader className="pb-2">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <CardTitle className="text-base">{goal.team_name}</CardTitle>
+                      <CardDescription>{goal.zone_name}</CardDescription>
+                    </div>
+                    <Badge className="ml-auto">{goal.points} puntos</Badge>
+                  </div>
+                </CardHeader>
+                <CardContent className="pb-2">
+                  <p className="text-sm">{goal.reason}</p>
+                </CardContent>
+                <CardFooter className="flex justify-between pt-0">
+                  <p className="text-xs text-muted-foreground">
+                    {format(new Date(goal.created_at), "d 'de' MMMM, yyyy - HH:mm", { locale: es })}
+                  </p>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleDelete(goal.id)}
+                    disabled={isDeleting === goal.id}
+                  >
+                    <Trash2 className="h-4 w-4 mr-1" />
+                    {isDeleting === goal.id ? "Eliminando..." : "Eliminar"}
+                  </Button>
+                </CardFooter>
+              </Card>
+            ))}
+          </div>
+        ) : (
+          <Alert>
+            <Target className="h-4 w-4" />
+            <AlertTitle>No hay tiros libres</AlertTitle>
+            <AlertDescription>
+              No se han registrado tiros libres aún. Utiliza el formulario para adjudicar puntos a los equipos.
+            </AlertDescription>
+          </Alert>
+        )}
+      </div>
     </div>
   )
 }
