@@ -1,4 +1,4 @@
-import { LayoutDashboard, Settings, ListChecks, ShieldAlert, Target } from "lucide-react"
+import { Settings, Target, LayoutDashboard, ListChecks, ShieldAlert } from "lucide-react"
 
 import type { MainNavItem, SidebarNavItem } from "@/types"
 
