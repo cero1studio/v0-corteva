@@ -74,7 +74,7 @@ export function DashboardNav({ role, onMobileMenuClose }: NavProps) {
         return "Capitán"
       case "supervisor":
         return "Supervisor"
-      case "director-tecnico":
+      case "director_tecnico":
         return "Director Técnico"
       case "representante":
         return "Representante"
