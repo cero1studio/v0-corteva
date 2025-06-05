@@ -95,23 +95,6 @@ export default function CapitanRankingPage() {
     }
   }
 
-  const getDistributorLogo = (logoUrl: string | null | undefined) => {
-    if (!logoUrl) return "/placeholder.svg"
-
-    try {
-      // Si la URL ya incluye el prefijo "distributors/", usar el bucket "images"
-      if (logoUrl.includes("distributors/")) {
-        return `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/images/${logoUrl}`
-      } else {
-        // Si no incluye el prefijo, usar el bucket "distributors"
-        return `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/distributors/${logoUrl}`
-      }
-    } catch (error) {
-      console.error("Error generando URL del logo:", error)
-      return "/placeholder.svg"
-    }
-  }
-
   if (loading) {
     return (
       <div className="p-6 space-y-6">

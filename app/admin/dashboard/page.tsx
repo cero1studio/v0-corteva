@@ -246,17 +246,16 @@ export default function AdminDashboardPage() {
 
   async function fetchTopTeams() {
     try {
-      // Obtener todas las ventas con una consulta más simple
-      const { data: salesData, error: salesError } = await supabase.from("sales").select("team_id, points")
+      // Obtener configuración de puntos para gol
+      const { data: puntosConfig } = await supabase
+        .from("system_config")
+        .select("value")
+        .eq("key", "puntos_para_gol")
+        .maybeSingle()
 
-      if (salesError) throw salesError
+      const pointsPerGoal = puntosConfig?.value ? Number(puntosConfig.value) : 100
 
-      if (!salesData || salesData.length === 0) {
-        setTopTeams([])
-        return
-      }
-
-      // Obtener todos los equipos
+      // Obtener todos los equipos con sus miembros
       const { data: teamsData, error: teamsError } = await supabase.from("teams").select("id, name, zone_id")
 
       if (teamsError) throw teamsError
@@ -266,32 +265,77 @@ export default function AdminDashboardPage() {
 
       if (zonesError) throw zonesError
 
-      // Crear mapa de equipos y zonas para búsqueda rápida
-      const teamsMap = Object.fromEntries(teamsData.map((team) => [team.id, team]))
+      // Crear mapa de zonas para búsqueda rápida
       const zonesMap = Object.fromEntries(zonesData.map((zone) => [zone.id, zone]))
 
-      // Agrupar ventas por equipo
-      const teamPoints: Record<string, { id: string; name: string; zone: string; points: number }> = {}
+      // Calcular puntos totales para cada equipo
+      const teamPoints: Record<string, { id: string; name: string; zone: string; points: number; goals: number }> = {}
 
-      salesData.forEach((sale) => {
-        const teamId = sale.team_id
-        if (teamId && teamsMap[teamId]) {
-          if (!teamPoints[teamId]) {
-            const team = teamsMap[teamId]
-            const zoneName = team.zone_id && zonesMap[team.zone_id] ? zonesMap[team.zone_id].name : "Sin zona"
+      for (const team of teamsData) {
+        // Obtener miembros del equipo
+        const { data: teamMembers } = await supabase.from("profiles").select("id").eq("team_id", team.id)
+        const memberIds = teamMembers?.map((member) => member.id) || []
 
-            teamPoints[teamId] = {
-              id: teamId,
-              name: team.name,
-              zone: zoneName,
-              points: 0,
-            }
+        // 1. PUNTOS DE VENTAS - BUSCAR POR AMBOS CAMPOS
+        let salesPoints = 0
+
+        // Buscar ventas por representative_id (miembros del equipo)
+        if (memberIds.length > 0) {
+          const { data: salesByRep } = await supabase.from("sales").select("points").in("representative_id", memberIds)
+          if (salesByRep) {
+            salesPoints += salesByRep.reduce((sum, sale) => sum + (sale.points || 0), 0)
           }
-          teamPoints[teamId].points += sale.points || 0
         }
-      })
 
-      // Convertir a array y ordenar
+        // Buscar ventas directas por team_id
+        const { data: salesByTeam } = await supabase.from("sales").select("points").eq("team_id", team.id)
+        if (salesByTeam) {
+          salesPoints += salesByTeam.reduce((sum, sale) => sum + (sale.points || 0), 0)
+        }
+
+        // 2. PUNTOS DE CLIENTES DE COMPETENCIA
+        let clientsPoints = 0
+
+        // Buscar clientes por representative_id
+        if (memberIds.length > 0) {
+          const { data: clientsByRep } = await supabase
+            .from("competitor_clients")
+            .select("points")
+            .in("representative_id", memberIds)
+          if (clientsByRep) {
+            clientsPoints += clientsByRep.reduce((sum, client) => sum + (client.points || 200), 0)
+          }
+        }
+
+        // Buscar clientes directos por team_id
+        const { data: clientsByTeam } = await supabase
+          .from("competitor_clients")
+          .select("points")
+          .eq("team_id", team.id)
+        if (clientsByTeam) {
+          clientsPoints += clientsByTeam.reduce((sum, client) => sum + (client.points || 200), 0)
+        }
+
+        // 3. PUNTOS DE TIROS LIBRES
+        const { data: freeKicksData } = await supabase.from("free_kick_goals").select("points").eq("team_id", team.id)
+        const freeKicksPoints = freeKicksData?.reduce((sum, freeKick) => sum + (freeKick.points || 0), 0) || 0
+
+        // SUMAR TODOS LOS PUNTOS
+        const totalPoints = salesPoints + clientsPoints + freeKicksPoints
+        const goals = Math.floor(totalPoints / pointsPerGoal)
+
+        const zoneName = team.zone_id && zonesMap[team.zone_id] ? zonesMap[team.zone_id].name : "Sin zona"
+
+        teamPoints[team.id] = {
+          id: team.id,
+          name: team.name,
+          zone: zoneName,
+          points: totalPoints,
+          goals: goals,
+        }
+      }
+
+      // Convertir a array y ordenar por puntos totales
       const sortedTeams = Object.values(teamPoints)
         .sort((a, b) => b.points - a.points)
         .slice(0, 5)
@@ -305,6 +349,15 @@ export default function AdminDashboardPage() {
 
   async function fetchZoneStats() {
     try {
+      // Obtener configuración de puntos para gol
+      const { data: puntosConfig } = await supabase
+        .from("system_config")
+        .select("value")
+        .eq("key", "puntos_para_gol")
+        .maybeSingle()
+
+      const pointsPerGoal = puntosConfig?.value ? Number(puntosConfig.value) : 100
+
       // Obtener zonas
       const { data: zones, error: zonesError } = await supabase.from("zones").select("id, name")
 
@@ -315,7 +368,7 @@ export default function AdminDashboardPage() {
         return
       }
 
-      // Para cada zona, obtener equipos y ventas
+      // Para cada zona, obtener equipos y calcular puntos totales
       const zoneStatsData = await Promise.all(
         zones.map(async (zone) => {
           // Contar equipos en la zona
@@ -326,7 +379,7 @@ export default function AdminDashboardPage() {
 
           if (teamError) throw teamError
 
-          // Obtener ventas de equipos en la zona
+          // Obtener equipos de la zona
           const { data: teamIds, error: teamIdsError } = await supabase
             .from("teams")
             .select("id")
@@ -335,27 +388,77 @@ export default function AdminDashboardPage() {
           if (teamIdsError) throw teamIdsError
 
           let totalPoints = 0
+          let totalGoals = 0
 
           if (teamIds && teamIds.length > 0) {
-            const teamIdList = teamIds.map((t) => t.id)
+            for (const team of teamIds) {
+              // Obtener miembros del equipo
+              const { data: teamMembers } = await supabase.from("profiles").select("id").eq("team_id", team.id)
+              const memberIds = teamMembers?.map((member) => member.id) || []
 
-            const { data: sales, error: salesError } = await supabase
-              .from("sales")
-              .select("points")
-              .in("team_id", teamIdList)
+              // 1. PUNTOS DE VENTAS
+              let salesPoints = 0
 
-            if (salesError) throw salesError
+              // Buscar ventas por representative_id
+              if (memberIds.length > 0) {
+                const { data: salesByRep } = await supabase
+                  .from("sales")
+                  .select("points")
+                  .in("representative_id", memberIds)
+                if (salesByRep) {
+                  salesPoints += salesByRep.reduce((sum, sale) => sum + (sale.points || 0), 0)
+                }
+              }
 
-            if (sales && sales.length > 0) {
-              totalPoints = sales.reduce((sum, sale) => sum + (sale.points || 0), 0)
+              // Buscar ventas directas por team_id
+              const { data: salesByTeam } = await supabase.from("sales").select("points").eq("team_id", team.id)
+              if (salesByTeam) {
+                salesPoints += salesByTeam.reduce((sum, sale) => sum + (sale.points || 0), 0)
+              }
+
+              // 2. PUNTOS DE CLIENTES DE COMPETENCIA
+              let clientsPoints = 0
+
+              // Buscar clientes por representative_id
+              if (memberIds.length > 0) {
+                const { data: clientsByRep } = await supabase
+                  .from("competitor_clients")
+                  .select("points")
+                  .in("representative_id", memberIds)
+                if (clientsByRep) {
+                  clientsPoints += clientsByRep.reduce((sum, client) => sum + (client.points || 200), 0)
+                }
+              }
+
+              // Buscar clientes directos por team_id
+              const { data: clientsByTeam } = await supabase
+                .from("competitor_clients")
+                .select("points")
+                .eq("team_id", team.id)
+              if (clientsByTeam) {
+                clientsPoints += clientsByTeam.reduce((sum, client) => sum + (client.points || 200), 0)
+              }
+
+              // 3. PUNTOS DE TIROS LIBRES
+              const { data: freeKicksData } = await supabase
+                .from("free_kick_goals")
+                .select("points")
+                .eq("team_id", team.id)
+              const freeKicksPoints = freeKicksData?.reduce((sum, freeKick) => sum + (freeKick.points || 0), 0) || 0
+
+              // SUMAR TODOS LOS PUNTOS
+              const teamTotalPoints = salesPoints + clientsPoints + freeKicksPoints
+              totalPoints += teamTotalPoints
             }
+
+            totalGoals = Math.floor(totalPoints / pointsPerGoal)
           }
 
           return {
             id: zone.id,
             name: zone.name,
             teams: teamCount || 0,
-            points: totalPoints,
+            points: totalGoals, // Mostrar goles en lugar de puntos
           }
         }),
       )
@@ -571,7 +674,7 @@ export default function AdminDashboardPage() {
                               <span className="font-medium">{team.name}</span>
                               <span className="text-xs text-muted-foreground">({team.zone})</span>
                             </div>
-                            <span className="font-bold text-green-600">{team.points}</span>
+                            <span className="font-bold text-green-600">{team.goals}</span>
                           </div>
                         </div>
                       ))}

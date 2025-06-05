@@ -9,15 +9,16 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Search, Filter, Download, Trophy, Medal, Database } from "lucide-react"
 import { AdminRankingChart } from "@/components/admin-ranking-chart"
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
+import { getTeamRankingByZone } from "@/app/actions/ranking"
 import { EmptyState } from "@/components/empty-state"
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 
 // Tipos para los datos
 type Team = {
-  id: string
-  name: string
+  team_id: string
+  team_name: string
   zone_id: string
-  zone_name?: string
+  zone_name: string
   goals: number
   position?: number
   total_points: number
@@ -26,9 +27,9 @@ type Team = {
 type Zone = {
   id: string
   name: string
-  total_goals?: number
-  total_points?: number
-  teams_count?: number
+  total_goals: number
+  total_points: number
+  teams_count: number
 }
 
 export default function RankingAdminPage() {
@@ -37,15 +38,17 @@ export default function RankingAdminPage() {
   const [selectedZone, setSelectedZone] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [teams, setTeams] = useState<Team[]>([])
+  const [teamsInZone, setTeamsInZone] = useState<Team[]>([])
   const [zones, setZones] = useState<Zone[]>([])
   const [distributors, setDistributors] = useState<any[]>([])
   const [distributorFilter, setDistributorFilter] = useState("all")
   const [winningZone, setWinningZone] = useState<Zone | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [debugInfo, setDebugInfo] = useState<string>("")
 
   const supabase = createClientComponentClient()
 
-  // Cargar datos
+  // Cargar datos iniciales
   useEffect(() => {
     async function loadData() {
       setIsLoading(true)
@@ -57,138 +60,76 @@ export default function RankingAdminPage() {
 
         if (zonesError) throw new Error(`Error al cargar zonas: ${zonesError.message}`)
 
-        // Cargar equipos con sus zonas
-        const { data: teamsData, error: teamsError } = await supabase.from("teams").select(`
-          id,
-          name,
-          zone_id,
-          zones (
-            id,
-            name
-          )
-        `)
-
-        if (teamsError) throw new Error(`Error al cargar equipos: ${teamsError.message}`)
-
-        // Cargar productos para obtener los puntos
-        const { data: productsData, error: productsError } = await supabase.from("products").select("id, points")
-
-        if (productsError) throw new Error(`Error al cargar productos: ${productsError.message}`)
-
         // Cargar distribuidores
         const { data: distributorsData, error: distributorsError } = await supabase.from("distributors").select("*")
 
         if (distributorsError) throw new Error(`Error al cargar distribuidores: ${distributorsError.message}`)
 
-        // Cargar configuración del sistema para obtener puntos por gol
-        const { data: configData, error: configError } = await supabase.from("system_config").select("*").single()
+        // Usar la función para obtener el ranking nacional
+        const rankingResult = await getTeamRankingByZone()
 
-        if (configError) {
-          console.warn("No se pudo cargar la configuración del sistema:", configError.message)
+        if (!rankingResult.success) {
+          throw new Error(rankingResult.error || "Error al cargar ranking")
         }
 
-        const pointsPerGoal = configData?.points_per_goal || 100
+        const teamsData = rankingResult.data || []
 
-        // Inicializar equipos con puntos en 0
-        const processedTeams = teamsData.map((team) => {
-          return {
-            id: team.id,
-            name: team.name,
-            zone_id: team.zone_id,
-            zone_name: team.zones?.name || "Sin zona",
-            goals: 0,
+        console.log("Teams data:", teamsData)
+
+        // Inicializar zonas con contadores en cero
+        const zoneMap = new Map<string, Zone>()
+
+        zonesData.forEach((zone) => {
+          zoneMap.set(zone.id, {
+            id: zone.id,
+            name: zone.name,
+            total_goals: 0,
             total_points: 0,
-          }
-        })
-
-        // Crear un mapa de equipos para acceso rápido
-        const teamsMap = new Map()
-        processedTeams.forEach((team) => {
-          teamsMap.set(team.id, team)
-        })
-
-        // Crear un mapa de productos para acceso rápido
-        const productsMap = new Map()
-        productsData.forEach((product) => {
-          productsMap.set(product.id, product)
-        })
-
-        // Cargar ventas en lotes para evitar problemas con columnas específicas
-        const { data: salesData, error: salesError } = await supabase.from("sales").select("*")
-
-        if (salesError) throw new Error(`Error al cargar ventas: ${salesError.message}`)
-
-        // Procesar ventas y acumular puntos para cada equipo
-        salesData.forEach((sale) => {
-          // Buscar el ID del equipo en el objeto de venta
-          let teamId = null
-          for (const key in sale) {
-            if (key.includes("team") || key.includes("equipo")) {
-              if (sale[key] && teamsMap.has(sale[key])) {
-                teamId = sale[key]
-                break
-              }
-            }
-          }
-
-          if (!teamId) return // Si no encontramos un ID de equipo válido, saltamos esta venta
-
-          // Buscar el producto y sus puntos
-          const productId = sale.product_id
-          const quantity = sale.quantity || 1
-
-          if (productId && productsMap.has(productId)) {
-            const product = productsMap.get(productId)
-            const points = (product.points || 0) * quantity
-
-            // Actualizar puntos del equipo
-            const team = teamsMap.get(teamId)
-            if (team) {
-              team.total_points += points
-              team.goals = Math.floor(team.total_points / pointsPerGoal)
-            }
-          }
-        })
-
-        // Convertir el mapa de equipos de vuelta a un array
-        const updatedTeams = Array.from(teamsMap.values())
-
-        // Ordenar equipos por goles y luego por puntos totales
-        const sortedTeams = [...updatedTeams].sort((a, b) => {
-          if (b.goals !== a.goals) return b.goals - a.goals
-          return b.total_points - a.total_points
-        })
-
-        // Asignar posiciones
-        sortedTeams.forEach((team, index) => {
-          team.position = index + 1
+            teams_count: 0,
+          })
         })
 
         // Calcular goles totales por zona
-        const processedZones = zonesData.map((zone) => {
-          const zoneTeams = sortedTeams.filter((team) => team.zone_id === zone.id)
-          const totalGoals = zoneTeams.reduce((total, team) => total + team.goals, 0)
-          const totalPoints = zoneTeams.reduce((total, team) => total + team.total_points, 0)
-
-          return {
-            id: zone.id,
-            name: zone.name,
-            total_goals: totalGoals,
-            total_points: totalPoints,
-            teams_count: zoneTeams.length,
+        teamsData.forEach((team) => {
+          const zoneId = team.zone_id
+          if (zoneMap.has(zoneId)) {
+            const zone = zoneMap.get(zoneId)!
+            zone.total_goals += team.goals
+            zone.total_points += team.total_points
+            zone.teams_count += 1
+            zoneMap.set(zoneId, zone)
           }
         })
 
-        // Encontrar zona ganadora
+        const processedZones = Array.from(zoneMap.values())
+
+        // Debug info
+        let debug = "Zonas procesadas:\n"
+        processedZones.forEach((zone) => {
+          debug += `${zone.name}: ${zone.total_goals} goles, ${zone.teams_count} equipos\n`
+        })
+        setDebugInfo(debug)
+
+        console.log("Processed zones:", processedZones)
+
+        // Encontrar zona ganadora - ordenar por goles totales
         const sortedZones = [...processedZones].sort((a, b) => {
+          // Primero por goles
           if (b.total_goals !== a.total_goals) return b.total_goals - a.total_goals
+          // Si hay empate en goles, por puntos
           return b.total_points - a.total_points
         })
 
-        setTeams(sortedTeams)
+        console.log("Sorted zones:", sortedZones)
+
+        // Seleccionar la zona con más goles (si hay empate, la que tenga más puntos)
+        const winner = sortedZones.length > 0 ? sortedZones[0] : null
+        console.log("Winning zone:", winner)
+
+        setTeams(teamsData)
         setZones(processedZones)
         setDistributors(distributorsData)
-        setWinningZone(sortedZones.length > 0 ? sortedZones[0] : null)
+        setWinningZone(winner)
 
         // Establecer zona seleccionada por defecto si hay zonas
         if (processedZones.length > 0 && !selectedZone) {
@@ -203,24 +144,34 @@ export default function RankingAdminPage() {
     }
 
     loadData()
-  }, [supabase, selectedZone])
+  }, [supabase])
+
+  // Cargar equipos de zona específica cuando cambia selectedZone
+  useEffect(() => {
+    async function loadZoneTeams() {
+      if (!selectedZone) return
+
+      try {
+        const rankingResult = await getTeamRankingByZone(selectedZone)
+        if (rankingResult.success && rankingResult.data) {
+          setTeamsInZone(rankingResult.data)
+        }
+      } catch (error) {
+        console.error("Error cargando equipos de zona:", error)
+      }
+    }
+
+    loadZoneTeams()
+  }, [selectedZone])
 
   // Filtrar equipos
   const filteredTeams = teams.filter((team) => {
-    const matchesSearch = team.name.toLowerCase().includes(searchTerm.toLowerCase())
+    const matchesSearch = team.team_name.toLowerCase().includes(searchTerm.toLowerCase())
     const matchesZone = zoneFilter === "all" || team.zone_id === zoneFilter
     const matchesDistributor = true // Implementar cuando tengamos la relación equipo-distribuidor
 
     return matchesSearch && matchesZone && matchesDistributor
   })
-
-  // Obtener equipos de la zona seleccionada
-  const teamsInSelectedZone = selectedZone
-    ? teams
-        .filter((team) => team.zone_id === selectedZone)
-        .sort((a, b) => (b.goals || 0) - (a.goals || 0))
-        .map((team, index) => ({ ...team, position: index + 1 }))
-    : []
 
   // Renderizar estado vacío
   const renderEmptyState = () => (
@@ -312,17 +263,6 @@ export default function RankingAdminPage() {
                 {distributors.map((distributor) => (
                   <SelectItem key={distributor.id} value={distributor.id}>
                     <div className="flex items-center gap-2">
-                      <div className="h-5 w-5 overflow-hidden rounded-full bg-gray-200 flex items-center justify-center">
-                        {distributor.logo_url ? (
-                          <img
-                            src={distributor.logo_url || "/placeholder.svg"}
-                            alt={`Logo ${distributor.name}`}
-                            className="h-full w-full object-cover"
-                          />
-                        ) : (
-                          <Database className="h-3 w-3 text-gray-500" />
-                        )}
-                      </div>
                       <span>{distributor.name}</span>
                     </div>
                   </SelectItem>
@@ -374,7 +314,7 @@ export default function RankingAdminPage() {
                   </TableHeader>
                   <TableBody>
                     {filteredTeams.map((team) => (
-                      <TableRow key={team.id}>
+                      <TableRow key={team.team_id}>
                         <TableCell className="font-medium">
                           <div className="flex items-center gap-2">
                             {team.position}
@@ -383,7 +323,7 @@ export default function RankingAdminPage() {
                             {team.position === 3 && <span className="text-lg">🥉</span>}
                           </div>
                         </TableCell>
-                        <TableCell>{team.name}</TableCell>
+                        <TableCell>{team.team_name}</TableCell>
                         <TableCell>{team.zone_name}</TableCell>
                         <TableCell className="text-right font-bold text-corteva-600">{team.goals}</TableCell>
                       </TableRow>
@@ -413,11 +353,11 @@ export default function RankingAdminPage() {
                       <h3 className="mt-2 text-xl font-bold">{winningZone.name}</h3>
                     </div>
                     <div className="text-center">
-                      <div className="text-4xl font-bold text-corteva-600">{winningZone.total_goals || 0}</div>
+                      <div className="text-4xl font-bold text-corteva-600">{winningZone.total_goals}</div>
                       <p className="text-sm text-muted-foreground">Goles totales</p>
                     </div>
                     <div className="text-center">
-                      <div className="text-4xl font-bold">{winningZone.teams_count || 0}</div>
+                      <div className="text-4xl font-bold">{winningZone.teams_count}</div>
                       <p className="text-sm text-muted-foreground">Equipos</p>
                     </div>
                   </div>
@@ -462,7 +402,7 @@ export default function RankingAdminPage() {
                 </div>
               ) : error ? (
                 renderErrorState()
-              ) : teamsInSelectedZone.length === 0 ? (
+              ) : teamsInZone.length === 0 ? (
                 <EmptyState
                   icon={Trophy}
                   title="No hay equipos en esta zona"
@@ -481,8 +421,8 @@ export default function RankingAdminPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {teamsInSelectedZone.map((team) => (
-                      <TableRow key={team.id}>
+                    {teamsInZone.map((team) => (
+                      <TableRow key={team.team_id}>
                         <TableCell className="font-medium">
                           <div className="flex items-center gap-2">
                             {team.position}
@@ -491,7 +431,7 @@ export default function RankingAdminPage() {
                             {team.position === 3 && <span className="text-lg">🥉</span>}
                           </div>
                         </TableCell>
-                        <TableCell>{team.name}</TableCell>
+                        <TableCell>{team.team_name}</TableCell>
                         <TableCell className="text-right font-bold text-corteva-600">{team.goals}</TableCell>
                       </TableRow>
                     ))}
@@ -536,6 +476,17 @@ export default function RankingAdminPage() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Debug info - solo visible en desarrollo */}
+      {process.env.NODE_ENV === "development" && (
+        <div className="mt-8 p-4 bg-gray-100 rounded-lg">
+          <h3 className="font-bold mb-2">Debug Info:</h3>
+          <pre className="text-xs whitespace-pre-wrap">{debugInfo}</pre>
+          <Button variant="outline" size="sm" className="mt-2" onClick={() => window.location.reload()}>
+            Recargar datos
+          </Button>
+        </div>
+      )}
     </div>
   )
 }

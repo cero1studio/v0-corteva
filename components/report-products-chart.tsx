@@ -5,10 +5,10 @@ import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip, Legend } from "recha
 
 // Sample data
 const data = [
-  { name: "Producto A", value: 187, color: "#4ade80" },
-  { name: "Producto B", value: 142, color: "#f59e0b" },
-  { name: "Producto C", value: 98, color: "#3b82f6" },
-  { name: "Producto D", value: 116, color: "#a855f7" },
+  { name: "NAVIUS 500GR", value: 450, color: "#4ade80" }, // 45 goles * 10kg = 450kg
+  { name: "NAVIUS 100GR", value: 90, color: "#f59e0b" }, // 9 goles * 10kg = 90kg
+  { name: "Producto C", value: 980, color: "#3b82f6" },
+  { name: "Producto D", value: 1160, color: "#a855f7" },
 ]
 
 export function ReportProductsChart() {
@@ -33,13 +33,13 @@ export function ReportProductsChart() {
           outerRadius={100}
           fill="#8884d8"
           dataKey="value"
-          label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+          label={({ name, value, percent }) => `${name}: ${value}kg (${(percent * 100).toFixed(0)}%)`}
         >
           {data.map((entry, index) => (
             <Cell key={`cell-${index}`} fill={entry.color} />
           ))}
         </Pie>
-        <Tooltip formatter={(value) => [`${value} ventas`, "Cantidad"]} />
+        <Tooltip formatter={(value) => [`${value} kg`, "Volumen"]} />
         <Legend />
       </PieChart>
     </ResponsiveContainer>

@@ -5,17 +5,30 @@ import Image from "next/image"
 import { cn } from "@/lib/utils"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Home, Package, Users, LogOut, Trophy, User, Settings, Flag, ShoppingCart, FileText } from "lucide-react"
+import {
+  Home,
+  Package,
+  Users,
+  LogOut,
+  Trophy,
+  User,
+  Settings,
+  Flag,
+  ShoppingCart,
+  FileText,
+  Target,
+  Zap,
+} from "lucide-react"
 import { useAuth } from "@/components/auth-provider"
 
 interface NavProps {
-  role: "admin" | "capitan" | "supervisor" | "director-tecnico" | "representante"
+  role: "admin" | "capitan" | "supervisor" | "director-tecnico" | "representante" | "arbitro"
   onMobileMenuClose?: () => void
 }
 
 export function DashboardNav({ role, onMobileMenuClose }: NavProps) {
   const pathname = usePathname()
-  const { user, signOut } = useAuth()
+  const { profile, signOut } = useAuth()
 
   // Función para obtener las iniciales del nombre
   const getInitials = (name: string) => {
@@ -44,6 +57,34 @@ export function DashboardNav({ role, onMobileMenuClose }: NavProps) {
     }
   }
 
+  // Función para obtener el rol real del usuario autenticado
+  const getUserRole = () => {
+    if (profile?.role) {
+      return profile.role
+    }
+    return role
+  }
+
+  // Función para obtener el label del rol
+  const getRoleLabel = (userRole: string) => {
+    switch (userRole) {
+      case "admin":
+        return "Administrador"
+      case "capitan":
+        return "Capitán"
+      case "supervisor":
+        return "Supervisor"
+      case "director_tecnico":
+        return "Director Técnico"
+      case "representante":
+        return "Representante"
+      case "arbitro":
+        return "Árbitro"
+      default:
+        return "Usuario"
+    }
+  }
+
   // Definir los enlaces de navegación según el rol
   const getNavLinks = () => {
     switch (role) {
@@ -58,6 +99,8 @@ export function DashboardNav({ role, onMobileMenuClose }: NavProps) {
           { href: "/admin/ventas", label: "Ventas", icon: ShoppingCart },
           { href: "/admin/clientes", label: "Clientes", icon: Users },
           { href: "/admin/ranking", label: "Ranking", icon: Trophy },
+          { href: "/admin/retos", label: "Retos", icon: Target },
+          { href: "/admin/tiros-libres", label: "Tiros Libres", icon: Zap },
           { href: "/admin/configuracion", label: "Configuración", icon: Settings },
         ]
       case "capitan":
@@ -86,12 +129,21 @@ export function DashboardNav({ role, onMobileMenuClose }: NavProps) {
           { href: "/representante/dashboard", label: "Dashboard", icon: Home },
           { href: "/representante/registrar-venta", label: "Registrar Venta", icon: ShoppingCart },
         ]
+      case "arbitro":
+        return [
+          { href: "/director-tecnico/dashboard", label: "Dashboard", icon: Home },
+          { href: "/director-tecnico/equipos", label: "Equipos", icon: Users },
+          { href: "/director-tecnico/ranking", label: "Ranking", icon: Trophy },
+          { href: "/director-tecnico/reportes", label: "Reportes", icon: FileText },
+          { href: "/director-tecnico/perfil", label: "Perfil", icon: User },
+        ]
       default:
         return []
     }
   }
 
   const navLinks = getNavLinks()
+  const actualUserRole = getUserRole()
 
   return (
     <div className="flex flex-col h-full">
@@ -131,22 +183,12 @@ export function DashboardNav({ role, onMobileMenuClose }: NavProps) {
       <div className="border-t p-4">
         <div className="flex items-center gap-3 rounded-md border p-3">
           <Avatar>
-            <AvatarImage src="/placeholder.svg" alt={user?.full_name || "Usuario"} />
-            <AvatarFallback>{user?.full_name ? getInitials(user.full_name) : "U"}</AvatarFallback>
+            <AvatarImage src="/placeholder.svg" alt={profile?.full_name || "Usuario"} />
+            <AvatarFallback>{profile?.full_name ? getInitials(profile.full_name) : "U"}</AvatarFallback>
           </Avatar>
           <div className="flex flex-col">
-            <span className="text-sm font-medium">{user?.full_name || "Usuario"}</span>
-            <span className="text-xs text-muted-foreground">
-              {role === "admin"
-                ? "Administrador"
-                : role === "capitan"
-                  ? "Capitán"
-                  : role === "supervisor"
-                    ? "Supervisor"
-                    : role === "director-tecnico"
-                      ? "Director Técnico"
-                      : "Representante"}
-            </span>
+            <span className="text-sm font-medium">{profile?.full_name || "Usuario"}</span>
+            <span className="text-xs text-muted-foreground">{getRoleLabel(actualUserRole)}</span>
           </div>
         </div>
 

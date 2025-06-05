@@ -2,12 +2,11 @@
 
 import { useEffect, useState } from "react"
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
-import { supabase } from "@/lib/supabase/client"
 import { AlertCircle } from "lucide-react"
 
 type Team = {
-  id: string
-  name: string
+  team_id: string
+  team_name: string
   goals: number
   position?: number
 }
@@ -20,41 +19,11 @@ export function AdminRankingChart({ teams: propTeams }: AdminRankingChartProps) 
   const [isMounted, setIsMounted] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [teams, setTeams] = useState<Team[]>([])
 
   useEffect(() => {
     setIsMounted(true)
-
-    // Si recibimos equipos como prop, usamos esos (asegurándonos de que sea un array)
-    if (propTeams && Array.isArray(propTeams)) {
-      setTeams(propTeams)
-      setLoading(false)
-      return
-    }
-
-    // Si no, cargamos los equipos desde la base de datos
-    async function fetchTeams() {
-      try {
-        setLoading(true)
-        const { data, error } = await supabase.from("teams").select("id, name, goals")
-
-        if (error) throw error
-
-        // Asegurar que data sea un array
-        const teamsData = Array.isArray(data) ? data : []
-        setTeams(teamsData)
-        setError(null)
-      } catch (err: any) {
-        console.error("Error al cargar datos del ranking:", err)
-        setError("No se pudieron cargar los datos del ranking")
-        setTeams([]) // Asegurar que teams sea un array vacío en caso de error
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    fetchTeams()
-  }, [propTeams])
+    setLoading(false)
+  }, [])
 
   if (!isMounted) {
     return <div className="h-full flex items-center justify-center">Cargando gráfico...</div>
@@ -74,7 +43,7 @@ export function AdminRankingChart({ teams: propTeams }: AdminRankingChartProps) 
   }
 
   // Verificar si hay equipos para mostrar - asegurar que teams sea un array
-  const teamsArray = Array.isArray(teams) ? teams : []
+  const teamsArray = Array.isArray(propTeams) ? propTeams : []
 
   if (teamsArray.length === 0) {
     return (
@@ -93,7 +62,7 @@ export function AdminRankingChart({ teams: propTeams }: AdminRankingChartProps) 
     .sort((a, b) => b.goals - a.goals)
     .slice(0, 10)
     .map((team, index) => ({
-      name: team.name || "Sin nombre",
+      name: team.team_name || "Sin nombre",
       goals: team.goals || 0,
       color: index === 0 ? "#f59e0b" : index === 1 ? "#94a3b8" : index === 2 ? "#d97706" : "#16a34a",
     }))

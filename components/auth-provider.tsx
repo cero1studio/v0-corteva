@@ -1,11 +1,12 @@
 "use client"
 
 import type React from "react"
-import { createContext, useContext, useEffect, useState } from "react"
+import { createContext, useContext, useEffect, useState, useCallback } from "react"
 import { supabase } from "@/lib/supabase/client"
 import { useRouter, usePathname } from "next/navigation"
-import type { Session } from "@supabase/supabase-js"
+import type { Session, User } from "@supabase/supabase-js"
 
+// Tipado del perfil
 type UserProfile = {
   id: string
   email?: string
@@ -19,7 +20,8 @@ type UserProfile = {
 
 type AuthContextType = {
   session: Session | null
-  user: UserProfile | null
+  user: User | null
+  profile: UserProfile | null
   isLoading: boolean
   isInitialized: boolean
   error: string | null
@@ -32,7 +34,8 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
-  const [user, setUser] = useState<UserProfile | null>(null)
+  const [user, setUser] = useState<User | null>(null)
+  const [profile, setProfile] = useState<UserProfile | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isInitialized, setIsInitialized] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -48,7 +51,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     "/ranking-publico",
   ]
 
-  const getDashboardRoute = (role: string, teamId?: string | null) => {
+  const getDashboardRoute = useCallback((role: string, teamId?: string | null) => {
     switch (role) {
       case "admin":
         return "/admin/dashboard"
@@ -60,67 +63,103 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return "/supervisor/dashboard"
       case "representante":
         return "/representante/dashboard"
+      case "arbitro":
+        return "/arbitro/dashboard"
       default:
         return "/login"
     }
-  }
+  }, [])
 
-  const fetchUserProfile = async (userId: string, userEmail?: string): Promise<UserProfile | null> => {
-    try {
-      console.log(`AUTH_PROVIDER: Fetching profile for user: ${userId}`)
-
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("id, full_name, role, team_id, zone_id, distributor_id")
-        .eq("id", userId)
-        .single()
-
-      if (error) {
-        console.error("AUTH_PROVIDER: Error fetching profile:", error)
-        return null
-      }
-
-      if (!data) {
-        console.error("AUTH_PROVIDER: No profile data found")
-        return null
-      }
-
-      // Obtener nombre del equipo si es capitán
-      let teamName = null
-      if (data.role === "capitan" && data.team_id) {
+  const fetchUserProfile = useCallback(
+    async (userId: string, userEmail?: string, retries = 3): Promise<UserProfile | null> => {
+      for (let attempt = 0; attempt < retries; attempt++) {
         try {
-          const { data: teamData } = await supabase.from("teams").select("name").eq("id", data.team_id).single()
+          const { data, error: profileError } = await supabase
+            .from("profiles")
+            .select("id, full_name, role, team_id, zone_id, distributor_id")
+            .eq("id", userId)
+            .single()
 
-          if (teamData) {
-            teamName = teamData.name
+          if (profileError || !data) {
+            if (attempt === retries - 1) {
+              setError(profileError?.message || "Perfil no encontrado")
+              return null
+            }
+            await new Promise((resolve) => setTimeout(resolve, 1000 * (attempt + 1)))
+            continue
           }
-        } catch (teamError) {
-          console.warn("AUTH_PROVIDER: Could not fetch team name:", teamError)
+
+          let teamName = null
+          if (data.role === "capitan" && data.team_id) {
+            try {
+              const { data: teamData } = await supabase.from("teams").select("name").eq("id", data.team_id).single()
+              if (teamData) teamName = teamData.name
+            } catch {}
+          }
+
+          return {
+            id: data.id,
+            email: userEmail,
+            role: data.role,
+            full_name: data.full_name,
+            team_id: data.team_id,
+            team_name: teamName,
+            zone_id: data.zone_id,
+            distributor_id: data.distributor_id,
+          }
+        } catch (err: any) {
+          if (attempt === retries - 1) {
+            setError(err.message)
+            return null
+          }
+          await new Promise((resolve) => setTimeout(resolve, 1000 * (attempt + 1)))
         }
       }
-
-      return {
-        id: data.id,
-        email: userEmail,
-        role: data.role,
-        full_name: data.full_name,
-        team_id: data.team_id,
-        team_name: teamName,
-        zone_id: data.zone_id,
-        distributor_id: data.distributor_id,
-      }
-    } catch (err) {
-      console.error("AUTH_PROVIDER: Exception fetching profile:", err)
       return null
-    }
-  }
+    },
+    [],
+  )
+
+  const handleRedirection = useCallback(
+    (userProfile: UserProfile) => {
+      const currentPath = pathname || "/"
+      const dashboardRoute = getDashboardRoute(userProfile.role, userProfile.team_id)
+
+      console.log("AUTH: Current path:", currentPath, "Dashboard route:", dashboardRoute)
+
+      // Usar router.push consistentemente para todas las redirecciones
+      if (currentPath === "/login") {
+        console.log("AUTH: Redirecting from login to dashboard")
+        router.push(dashboardRoute)
+      } else if (userProfile.role === "capitan" && !userProfile.team_id && currentPath !== "/capitan/crear-equipo") {
+        console.log("AUTH: Captain without team, redirecting to create team")
+        router.push("/capitan/crear-equipo")
+      }
+    },
+    [pathname, getDashboardRoute, router],
+  )
 
   useEffect(() => {
     let mounted = true
+    let initTimeout: NodeJS.Timeout
 
-    const initAuth = async () => {
+    const initializeAuth = async () => {
       try {
-        console.log("AUTH_PROVIDER: Initializing...")
+        // Timeout para evitar loading infinito
+        initTimeout = setTimeout(() => {
+          if (mounted) {
+            console.log("AUTH: Timeout reached, setting initialized")
+            setIsLoading(false)
+            setIsInitialized(true)
+
+            // Si no hay sesión después del timeout, redirigir a login
+            const isPublicRoute = publicRoutes.some((route) => pathname?.startsWith(route))
+            if (!isPublicRoute && pathname !== "/login") {
+              console.log("AUTH: No session after timeout, redirecting to login")
+              router.push("/login")
+            }
+          }
+        }, 10000)
 
         const {
           data: { session },
@@ -129,32 +168,42 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         if (!mounted) return
 
+        clearTimeout(initTimeout)
+
         if (error) {
-          console.error("AUTH_PROVIDER: Session error:", error)
+          console.error("AUTH: Session error:", error)
           setSession(null)
           setUser(null)
+          setProfile(null)
         } else if (session) {
-          console.log("AUTH_PROVIDER: Session found")
+          console.log("AUTH: Session found, fetching profile")
           setSession(session)
+          setUser(session.user)
 
-          const profile = await fetchUserProfile(session.user.id, session.user.email)
-          if (mounted && profile) {
-            setUser(profile)
-
-            // Redirección solo desde login
+          const userProfile = await fetchUserProfile(session.user.id, session.user.email)
+          if (mounted && userProfile) {
+            setProfile(userProfile)
+            // Solo redirigir si estamos en login
             if (pathname === "/login") {
-              const dashboardRoute = getDashboardRoute(profile.role, profile.team_id)
-              console.log(`AUTH_PROVIDER: Redirecting to ${dashboardRoute}`)
-              router.replace(dashboardRoute)
+              handleRedirection(userProfile)
             }
           }
         } else {
-          console.log("AUTH_PROVIDER: No session")
+          console.log("AUTH: No session found")
           setSession(null)
           setUser(null)
+          setProfile(null)
+
+          // Solo redirigir a login si no estamos en rutas públicas
+          const isPublicRoute = publicRoutes.some((route) => pathname?.startsWith(route))
+          if (!isPublicRoute && pathname !== "/login") {
+            console.log("AUTH: Redirecting to login from private route")
+            router.push("/login")
+          }
         }
       } catch (err) {
-        console.error("AUTH_PROVIDER: Init error:", err)
+        console.error("AUTH Init Error:", err)
+        if (initTimeout) clearTimeout(initTimeout)
       } finally {
         if (mounted) {
           setIsLoading(false)
@@ -163,52 +212,64 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     }
 
-    initAuth()
+    initializeAuth()
 
+    return () => {
+      mounted = false
+      if (initTimeout) clearTimeout(initTimeout)
+    }
+  }, [fetchUserProfile, handleRedirection, pathname, router])
+
+  useEffect(() => {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (!mounted) return
-
-      console.log(`AUTH_PROVIDER: Auth event: ${event}`)
+      console.log("AUTH: State change event:", event)
 
       if (event === "SIGNED_IN" && session) {
         setSession(session)
-        const profile = await fetchUserProfile(session.user.id, session.user.email)
-        if (profile) {
-          setUser(profile)
-          const dashboardRoute = getDashboardRoute(profile.role, profile.team_id)
-          router.replace(dashboardRoute)
+        setUser(session.user)
+        setError(null)
+
+        const userProfile = await fetchUserProfile(session.user.id, session.user.email)
+        if (userProfile) {
+          setProfile(userProfile)
+          // Solo redirigir en login exitoso
+          if (pathname === "/login") {
+            handleRedirection(userProfile)
+          }
         }
       } else if (event === "SIGNED_OUT") {
         setSession(null)
         setUser(null)
+        setProfile(null)
         setError(null)
-        router.replace("/login")
+
+        // Solo redirigir a login si no estamos ya ahí
+        if (pathname !== "/login") {
+          console.log("AUTH: Signed out, redirecting to login")
+          router.push("/login")
+        }
+      } else if (event === "TOKEN_REFRESHED" && session) {
+        console.log("AUTH: Token refreshed")
+        setSession(session)
+        setUser(session.user)
+        // No redirigir en refresh de token
       }
     })
 
-    return () => {
-      mounted = false
-      subscription.unsubscribe()
-    }
-  }, [pathname, router])
+    return () => subscription.unsubscribe()
+  }, [fetchUserProfile, handleRedirection, pathname, router])
 
   const signIn = async (email: string, password: string) => {
     try {
       setIsLoading(true)
       setError(null)
-
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      })
-
-      if (error) {
-        setError(error.message)
-        return { error: error.message }
+      const { error: signInError } = await supabase.auth.signInWithPassword({ email, password })
+      if (signInError) {
+        setError(signInError.message)
+        return { error: signInError.message }
       }
-
       return { error: null }
     } catch (err: any) {
       setError(err.message)
@@ -222,34 +283,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       setIsLoading(true)
       await supabase.auth.signOut()
-    } catch (err) {
-      console.error("AUTH_PROVIDER: Sign out error:", err)
+    } catch (err: any) {
+      console.error("AUTH: Error signing out:", err)
     } finally {
       setIsLoading(false)
     }
   }
 
-  const refreshProfile = async () => {
-    if (!session?.user) return
-
-    const profile = await fetchUserProfile(session.user.id, session.user.email)
-    if (profile) {
-      setUser(profile)
-    }
-  }
+  const refreshProfile = useCallback(async () => {
+    if (!user) return
+    setIsLoading(true)
+    const userProfile = await fetchUserProfile(user.id, user.email)
+    if (userProfile) setProfile(userProfile)
+    setIsLoading(false)
+  }, [user, fetchUserProfile])
 
   return (
     <AuthContext.Provider
-      value={{
-        session,
-        user,
-        isLoading,
-        isInitialized,
-        error,
-        signIn,
-        signOut,
-        refreshProfile,
-      }}
+      value={{ session, user, profile, isLoading, isInitialized, error, signIn, signOut, refreshProfile }}
     >
       {children}
     </AuthContext.Provider>
@@ -258,7 +309,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
 export function useAuth() {
   const context = useContext(AuthContext)
-  if (!context) {
+  if (context === undefined) {
     throw new Error("useAuth must be used within an AuthProvider")
   }
   return context

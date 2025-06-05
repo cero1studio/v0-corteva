@@ -1,13 +1,34 @@
 import { cn } from "@/lib/utils"
+import { Trophy, Medal, Award } from "lucide-react"
 
 interface TeamLevelBadgeProps {
-  level: "bronce" | "plata" | "oro" | "platino" | "diamante" | "leyenda"
+  position: number
   size?: "sm" | "md" | "lg"
   showLabel?: boolean
   className?: string
 }
 
-export function TeamLevelBadge({ level, size = "md", showLabel = true, className }: TeamLevelBadgeProps) {
+export function TeamLevelBadge({ position, size = "md", showLabel = true, className }: TeamLevelBadgeProps) {
+  const getLevel = () => {
+    switch (position) {
+      case 1:
+        return "oro"
+      case 2:
+        return "plata"
+      case 3:
+        return "bronce"
+      default:
+        return null
+    }
+  }
+
+  const level = getLevel()
+
+  // Si no está en los primeros 3 lugares, no mostrar badge
+  if (!level) {
+    return null
+  }
+
   const getLevelColor = () => {
     switch (level) {
       case "bronce":
@@ -16,12 +37,6 @@ export function TeamLevelBadge({ level, size = "md", showLabel = true, className
         return "from-gray-300 to-gray-500 text-gray-950"
       case "oro":
         return "from-yellow-300 to-yellow-600 text-yellow-950"
-      case "platino":
-        return "from-corteva-300 to-corteva-600 text-white"
-      case "diamante":
-        return "from-purple-300 to-purple-600 text-purple-950"
-      case "leyenda":
-        return "from-corteva-400 to-corteva-700 text-white"
       default:
         return "from-gray-300 to-gray-500 text-gray-950"
     }
@@ -40,6 +55,19 @@ export function TeamLevelBadge({ level, size = "md", showLabel = true, className
     }
   }
 
+  const getIconSize = () => {
+    switch (size) {
+      case "sm":
+        return 12
+      case "md":
+        return 16
+      case "lg":
+        return 20
+      default:
+        return 16
+    }
+  }
+
   const getLevelLabel = () => {
     switch (level) {
       case "bronce":
@@ -48,14 +76,22 @@ export function TeamLevelBadge({ level, size = "md", showLabel = true, className
         return "Plata"
       case "oro":
         return "Oro"
-      case "platino":
-        return "Platino"
-      case "diamante":
-        return "Diamante"
-      case "leyenda":
-        return "Leyenda"
       default:
-        return "Bronce"
+        return ""
+    }
+  }
+
+  const getIcon = () => {
+    const iconSize = getIconSize()
+    switch (position) {
+      case 1:
+        return <Trophy size={iconSize} />
+      case 2:
+        return <Medal size={iconSize} />
+      case 3:
+        return <Award size={iconSize} />
+      default:
+        return null
     }
   }
 
@@ -68,7 +104,7 @@ export function TeamLevelBadge({ level, size = "md", showLabel = true, className
           getSizeClasses(),
         )}
       >
-        {level.charAt(0).toUpperCase()}
+        {getIcon()}
       </div>
       {showLabel && <span className="text-sm font-medium">{getLevelLabel()}</span>}
     </div>
