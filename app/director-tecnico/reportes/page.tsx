@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useAuth } from "@/components/auth-provider"
-import { createClientSupabaseClient } from "@/lib/supabase/client"
+import { getSupabaseClient } from "@/lib/supabase/client"
 
 interface Team {
   id: string
@@ -53,7 +53,7 @@ export default function DirectorTecnicoReportesPage() {
   const [loading, setLoading] = useState(true)
   const [zone, setZone] = useState<{ id: string; name: string } | null>(null)
 
-  const supabase = createClientSupabaseClient()
+  const supabase = getSupabaseClient()
 
   useEffect(() => {
     if (profile?.zone_id) {
