@@ -49,7 +49,7 @@ export async function createFreeKickGoal(formData: FormData) {
           team_id: team_id,
           points: points,
           reason: reason,
-          created_by: "00000000-0000-0000-0000-000000000000", // UUID fijo para admin
+          // No incluir created_by, será null por defecto
         },
       ])
       .select()
