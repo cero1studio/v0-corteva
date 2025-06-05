@@ -170,7 +170,7 @@ export default function RetosPage() {
                   <Target className="h-5 w-5" />
                 </div>
                 <div className="flex-1">
-                  <h3 className="font-semibold text-corteva-900 mb-2">🎯 Reto del Mes</h3>
+                  <h3 className="font-bold text-corteva-900 mb-2 text-lg">⚽ Tiro libre sin arquero</h3>
                   <p className="text-corteva-700">{retoText || "Escribe un reto arriba para ver la vista previa..."}</p>
                   {!retoActivo && (
                     <p className="text-red-600 text-sm mt-2 italic">

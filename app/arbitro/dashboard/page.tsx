@@ -2,12 +2,49 @@
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Trophy, Users, TrendingUp, Award } from "lucide-react"
+import { Trophy, Users, TrendingUp, Award, Target } from "lucide-react"
 import { useAuth } from "@/components/auth-provider"
 import { ProtectedLayout } from "@/components/ProtectedLayout"
+import { useState, useEffect } from "react"
+import { supabase } from "@/lib/supabase/client"
 
 export default function ArbitroDashboard() {
   const { user } = useAuth()
+
+  const [retoActual, setRetoActual] = useState<string>("")
+  const [retoActivo, setRetoActivo] = useState(false)
+
+  useEffect(() => {
+    loadSystemConfig()
+  }, [])
+
+  async function loadSystemConfig() {
+    try {
+      // Cargar reto actual
+      const { data: retoData, error: retoError } = await supabase
+        .from("system_config")
+        .select("*")
+        .eq("key", "reto_actual")
+        .single()
+
+      if (!retoError && retoData && retoData.value) {
+        setRetoActual(retoData.value)
+      }
+
+      // Cargar estado del reto
+      const { data: activoData, error: activoError } = await supabase
+        .from("system_config")
+        .select("*")
+        .eq("key", "reto_activo")
+        .single()
+
+      if (!activoError && activoData) {
+        setRetoActivo(activoData.value === "true" || activoData.value === true)
+      }
+    } catch (error) {
+      console.error("Error al cargar configuración:", error)
+    }
+  }
 
   return (
     <ProtectedLayout allowedRoles={["arbitro"]}>
@@ -18,6 +55,23 @@ export default function ArbitroDashboard() {
             Bienvenido, {user?.full_name}. Supervisa el rendimiento de los equipos y la competencia.
           </p>
         </div>
+
+        {/* Tiro libre sin arquero - Solo mostrar si está activo */}
+        {retoActivo && retoActual && (
+          <Card className="border-2 border-corteva-200 bg-gradient-to-r from-corteva-50 to-orange-50">
+            <CardContent className="p-6">
+              <div className="flex items-start gap-4">
+                <div className="rounded-full p-3 bg-corteva-500 text-white">
+                  <Target className="h-6 w-6" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="font-bold text-corteva-900 mb-2 text-lg">⚽ Tiro libre sin arquero</h3>
+                  <p className="text-corteva-700 leading-relaxed">{retoActual}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           <Card>
