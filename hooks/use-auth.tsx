@@ -69,96 +69,134 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [])
 
-  const fetchUserProfile = useCallback(async (userId: string, userEmail?: string, retries = 3): Promise<UserProfile | null> => {
-    for (let attempt = 0; attempt < retries; attempt++) {
-      try {
-        const { data, error: profileError } = await supabase
-          .from("profiles")
-          .select("id, full_name, role, team_id, zone_id, distributor_id")
-          .eq("id", userId)
-          .single()
+  const fetchUserProfile = useCallback(
+    async (userId: string, userEmail?: string, retries = 3): Promise<UserProfile | null> => {
+      for (let attempt = 0; attempt < retries; attempt++) {
+        try {
+          const { data, error: profileError } = await supabase
+            .from("profiles")
+            .select("id, full_name, role, team_id, zone_id, distributor_id")
+            .eq("id", userId)
+            .single()
 
-        if (profileError || !data) {
+          if (profileError || !data) {
+            if (attempt === retries - 1) {
+              setError(profileError?.message || "Perfil no encontrado")
+              return null
+            }
+            await new Promise((resolve) => setTimeout(resolve, 1000 * (attempt + 1)))
+            continue
+          }
+
+          let teamName = null
+          if (data.role === "capitan" && data.team_id) {
+            try {
+              const { data: teamData } = await supabase.from("teams").select("name").eq("id", data.team_id).single()
+              if (teamData) teamName = teamData.name
+            } catch {}
+          }
+
+          return {
+            id: data.id,
+            email: userEmail,
+            role: data.role,
+            full_name: data.full_name,
+            team_id: data.team_id,
+            team_name: teamName,
+            zone_id: data.zone_id,
+            distributor_id: data.distributor_id,
+          }
+        } catch (err: any) {
           if (attempt === retries - 1) {
-            setError(profileError?.message || "Perfil no encontrado")
+            setError(err.message)
             return null
           }
           await new Promise((resolve) => setTimeout(resolve, 1000 * (attempt + 1)))
-          continue
         }
-
-        let teamName = null
-        if (data.role === "capitan" && data.team_id) {
-          try {
-            const { data: teamData } = await supabase
-              .from("teams")
-              .select("name")
-              .eq("id", data.team_id)
-              .single()
-            if (teamData) teamName = teamData.name
-          } catch {}
-        }
-
-        return {
-          id: data.id,
-          email: userEmail,
-          role: data.role,
-          full_name: data.full_name,
-          team_id: data.team_id,
-          team_name: teamName,
-          zone_id: data.zone_id,
-          distributor_id: data.distributor_id,
-        }
-      } catch (err: any) {
-        if (attempt === retries - 1) {
-          setError(err.message)
-          return null
-        }
-        await new Promise((resolve) => setTimeout(resolve, 1000 * (attempt + 1)))
       }
-    }
-    return null
-  }, [])
+      return null
+    },
+    [],
+  )
 
-  const handleRedirection = useCallback((userProfile: UserProfile) => {
-    const currentPath = pathname || "/"
-    const dashboardRoute = getDashboardRoute(userProfile.role, userProfile.team_id)
-    console.log("→ Redirigiendo a:", dashboardRoute)
+  const handleRedirection = useCallback(
+    (userProfile: UserProfile) => {
+      const currentPath = pathname || "/"
+      const dashboardRoute = getDashboardRoute(userProfile.role, userProfile.team_id)
 
-    if (currentPath === "/login") {
-      window.location.replace(dashboardRoute)
-    } else if (userProfile.role === "capitan" && !userProfile.team_id && currentPath !== "/capitan/crear-equipo") {
-      window.location.replace("/capitan/crear-equipo")
-    }
-  }, [pathname, getDashboardRoute])
+      console.log("AUTH: Current path:", currentPath, "Dashboard route:", dashboardRoute)
+
+      // Solo redirigir desde login o si está en ruta incorrecta para su rol
+      if (currentPath === "/login") {
+        console.log("AUTH: Redirecting from login to dashboard")
+        window.location.replace(dashboardRoute)
+      } else if (userProfile.role === "capitan" && !userProfile.team_id && currentPath !== "/capitan/crear-equipo") {
+        console.log("AUTH: Captain without team, redirecting to create team")
+        window.location.replace("/capitan/crear-equipo")
+      }
+      // No redirigir en otros casos para mantener la navegación
+    },
+    [pathname, getDashboardRoute],
+  )
 
   useEffect(() => {
     let mounted = true
+    let initTimeout: NodeJS.Timeout
 
     const initializeAuth = async () => {
       try {
-        const { data: { session }, error } = await supabase.auth.getSession()
+        // Timeout para evitar loading infinito
+        initTimeout = setTimeout(() => {
+          if (mounted) {
+            console.log("AUTH: Timeout reached, setting initialized")
+            setIsLoading(false)
+            setIsInitialized(true)
+          }
+        }, 5000)
+
+        const {
+          data: { session },
+          error,
+        } = await supabase.auth.getSession()
+
         if (!mounted) return
 
+        clearTimeout(initTimeout)
+
         if (error) {
+          console.error("AUTH: Session error:", error)
           setSession(null)
           setUser(null)
           setProfile(null)
         } else if (session) {
+          console.log("AUTH: Session found, fetching profile")
           setSession(session)
           setUser(session.user)
+
           const userProfile = await fetchUserProfile(session.user.id, session.user.email)
-          if (userProfile) {
+          if (mounted && userProfile) {
             setProfile(userProfile)
-            handleRedirection(userProfile)
+            // Solo redirigir si estamos en login
+            if (pathname === "/login") {
+              handleRedirection(userProfile)
+            }
           }
         } else {
+          console.log("AUTH: No session found")
           setSession(null)
           setUser(null)
           setProfile(null)
+
+          // Solo redirigir a login si no estamos en rutas públicas
+          const isPublicRoute = publicRoutes.some((route) => pathname?.startsWith(route))
+          if (!isPublicRoute && pathname !== "/login") {
+            console.log("AUTH: Redirecting to login from private route")
+            window.location.replace("/login")
+          }
         }
       } catch (err) {
         console.error("AUTH Init Error:", err)
+        clearTimeout(initTimeout)
       } finally {
         if (mounted) {
           setIsLoading(false)
@@ -168,39 +206,53 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     initializeAuth()
+
     return () => {
       mounted = false
+      if (initTimeout) clearTimeout(initTimeout)
     }
-  }, [fetchUserProfile, handleRedirection])
-
+  }, [fetchUserProfile, handleRedirection, pathname])
 
   useEffect(() => {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log("AUTH: State change event:", event)
+
       if (event === "SIGNED_IN" && session) {
         setSession(session)
         setUser(session.user)
         setError(null)
+
         const userProfile = await fetchUserProfile(session.user.id, session.user.email)
         if (userProfile) {
           setProfile(userProfile)
-          handleRedirection(userProfile)
+          // Solo redirigir en login exitoso
+          if (pathname === "/login") {
+            handleRedirection(userProfile)
+          }
         }
       } else if (event === "SIGNED_OUT") {
         setSession(null)
         setUser(null)
         setProfile(null)
         setError(null)
-        router.replace("/login")
+
+        // Solo redirigir a login si no estamos ya ahí
+        if (pathname !== "/login") {
+          console.log("AUTH: Signed out, redirecting to login")
+          window.location.replace("/login")
+        }
       } else if (event === "TOKEN_REFRESHED" && session) {
+        console.log("AUTH: Token refreshed")
         setSession(session)
         setUser(session.user)
+        // No redirigir en refresh de token
       }
     })
 
     return () => subscription.unsubscribe()
-  }, [fetchUserProfile, handleRedirection, router])
+  }, [fetchUserProfile, handleRedirection, pathname])
 
   const signIn = async (email: string, password: string) => {
     try {
