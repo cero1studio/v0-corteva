@@ -136,9 +136,9 @@ export default function AdminDashboard() {
               <CardTitle className="text-lg uppercase">{zone.name}</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold text-green-600">{zone.goals_count || 0}</div>
-              <p className="text-sm text-muted-foreground">
-                {zone.goals_count === 1 ? "1 gol" : `${zone.goals_count} goles`}
+              <div className="text-2xl font-bold text-green-600">{Math.floor(zone.points / 100)}</div>
+              <p className="text-xs text-muted-foreground">
+                {Math.floor(zone.points / 100) === 1 ? "1 gol" : `${Math.floor(zone.points / 100)} goles`}
               </p>
             </CardContent>
           </Card>
