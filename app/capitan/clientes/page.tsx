@@ -16,8 +16,6 @@ interface Client {
   id: string
   client_name: string
   created_at: string
-  representative_id?: string
-  team_id?: string
 }
 
 export default function ClientesPage() {
@@ -25,70 +23,46 @@ export default function ClientesPage() {
   const [clients, setClients] = useState<Client[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
-  const [userTeamId, setUserTeamId] = useState<string | null>(null)
 
   useEffect(() => {
-    if (user?.id) {
-      loadUserTeamAndClients()
-    }
-  }, [user?.id])
+    // Log para diagnosticar el problema
+    console.log("Usuario en ClientesPage:", user)
 
-  const loadUserTeamAndClients = async () => {
+    if (user?.team_id) {
+      console.log("Team ID encontrado:", user.team_id)
+      loadClients(user.team_id)
+    } else {
+      console.log("Team ID no disponible en el usuario:", user)
+      setLoading(false)
+    }
+  }, [user])
+
+  const loadClients = async (teamId: string) => {
     try {
       setLoading(true)
-      console.log("Cargando datos para usuario:", user?.id)
+      console.log("Cargando clientes para equipo:", teamId)
 
-      // Primero obtener el team_id del usuario desde la base de datos
-      const { createServerSupabaseClient } = await import("@/lib/supabase/server")
-      const supabase = createServerSupabaseClient()
-
-      const { data: profile, error: profileError } = await supabase
-        .from("profiles")
-        .select("team_id, full_name")
-        .eq("id", user?.id)
-        .single()
-
-      console.log("Perfil del usuario:", profile)
-      console.log("Error del perfil:", profileError)
-
-      if (profileError || !profile?.team_id) {
-        console.log("No se pudo obtener el team_id del usuario")
-        toast({
-          title: "Error",
-          description: "No se pudo obtener la información del equipo",
-          variant: "destructive",
-        })
-        setClients([])
-        return
-      }
-
-      setUserTeamId(profile.team_id)
-
-      // Ahora cargar los clientes usando la función existente
-      const result = await getCompetitorClientsByTeam(profile.team_id)
-
-      console.log("Resultado de clientes:", result)
+      const result = await getCompetitorClientsByTeam(teamId)
+      console.log("Resultado de getCompetitorClientsByTeam:", result)
 
       if (result.success) {
         setClients(result.data || [])
-        console.log(`Clientes cargados: ${result.data?.length || 0}`)
+        console.log("Clientes cargados:", result.data?.length || 0)
       } else {
         console.error("Error al cargar clientes:", result.error)
         toast({
           title: "Error",
-          description: "No se pudieron cargar los clientes: " + result.error,
+          description: "No se pudieron cargar los clientes",
           variant: "destructive",
         })
-        setClients([])
       }
     } catch (error) {
-      console.error("Error general:", error)
+      console.error("Error loading clients:", error)
       toast({
         title: "Error",
-        description: "Error inesperado al cargar los clientes",
+        description: "Error al cargar los clientes",
         variant: "destructive",
       })
-      setClients([])
     } finally {
       setLoading(false)
     }
@@ -100,15 +74,13 @@ export default function ClientesPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-6">
-        <div className="max-w-7xl mx-auto">
-          <div className="flex items-center justify-center h-96">
-            <div className="text-center">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-corteva-500 mx-auto"></div>
-              <p className="mt-2 text-muted-foreground">Cargando clientes...</p>
-              <p className="mt-1 text-sm text-gray-400">User ID: {user?.id || "No disponible"}</p>
-            </div>
-          </div>
+      <div className="flex items-center justify-center h-96">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-corteva-500 mx-auto"></div>
+          <p className="mt-2 text-muted-foreground">Cargando clientes...</p>
+          <p className="mt-1 text-sm text-gray-400">
+            {user ? `Usuario: ${user.id || "N/A"}` : "Usuario no disponible"}
+          </p>
         </div>
       </div>
     )
@@ -183,10 +155,14 @@ export default function ClientesPage() {
         <Card className="bg-yellow-50 border-yellow-200">
           <CardContent className="p-4">
             <p className="text-sm text-yellow-800">
-              <strong>Debug:</strong> User ID: {user?.id || "No disponible"} | Team ID: {userTeamId || "No disponible"}{" "}
-              | Clientes encontrados: {clients.length} | Usuario: {user?.full_name || "No disponible"}
+              <strong>Debug:</strong> User ID: {user?.id || "No disponible"} | Team ID:{" "}
+              {user?.team_id || "No disponible"} | Clientes encontrados: {clients.length}
             </p>
-            <Button onClick={loadUserTeamAndClients} size="sm" className="mt-2 bg-yellow-600 hover:bg-yellow-700">
+            <Button
+              onClick={() => (user?.team_id ? loadClients(user.team_id) : alert("No hay team_id disponible"))}
+              size="sm"
+              className="mt-2 bg-yellow-600 hover:bg-yellow-700"
+            >
               Recargar Clientes
             </Button>
           </CardContent>
@@ -275,6 +251,7 @@ export default function ClientesPage() {
                     </div>
                   </CardHeader>
                   <CardContent className="space-y-4">
+                    {/* Fecha - Mantenemos solo esta sección */}
                     <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
                       <div className="p-1.5 bg-orange-100 rounded-md">
                         <Calendar className="h-4 w-4 text-orange-600" />
