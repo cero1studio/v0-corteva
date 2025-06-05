@@ -2,6 +2,7 @@
 
 import { createServerClient } from "@/lib/supabase/server"
 import { revalidatePath } from "next/cache"
+import { redirect } from "next/navigation"
 
 export interface FreeKickGoal {
   id: string
@@ -30,34 +31,55 @@ export async function createFreeKickGoal(formData: FormData) {
     const points = Number.parseInt(formData.get("points") as string)
     const reason = formData.get("reason") as string
 
-    // Verificar que el usuario es admin
+    if (!teamId || !points || !reason) {
+      return { success: false, message: "Todos los campos son requeridos" }
+    }
+
+    // Obtener el usuario actual
     const {
       data: { user },
+      error: userError,
     } = await supabase.auth.getUser()
-    if (!user) {
-      throw new Error("No autorizado")
+
+    if (userError || !user) {
+      console.error("Error getting user:", userError)
+      redirect("/login")
     }
 
-    const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single()
+    // Verificar el rol del usuario
+    const { data: profile, error: profileError } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", user.id)
+      .single()
 
-    if (profile?.role !== "admin") {
-      throw new Error("Solo los administradores pueden adjudicar tiros libres")
+    if (profileError || !profile) {
+      console.error("Error getting profile:", profileError)
+      return { success: false, message: "Error al verificar permisos" }
     }
 
-    const { error } = await supabase.from("free_kick_goals").insert({
+    if (profile.role !== "admin") {
+      return { success: false, message: "Solo los administradores pueden adjudicar tiros libres" }
+    }
+
+    // Insertar el tiro libre
+    const { error: insertError } = await supabase.from("free_kick_goals").insert({
       team_id: teamId,
       points: points,
       reason: reason,
       created_by: user.id,
     })
 
-    if (error) throw error
+    if (insertError) {
+      console.error("Error inserting free kick goal:", insertError)
+      return { success: false, message: "Error al guardar el tiro libre" }
+    }
 
     revalidatePath("/admin/tiros-libres")
     return { success: true, message: "Tiro libre adjudicado exitosamente" }
   } catch (error) {
     console.error("Error creating free kick goal:", error)
-    return { success: false, message: error instanceof Error ? error.message : "Error desconocido" }
+    return { success: false, message: "Error inesperado" }
   }
 }
 
@@ -78,7 +100,11 @@ export async function getFreeKickGoals() {
       `)
       .order("created_at", { ascending: false })
 
-    if (error) throw error
+    if (error) {
+      console.error("Error fetching free kick goals:", error)
+      return []
+    }
+
     return data as FreeKickGoal[]
   } catch (error) {
     console.error("Error fetching free kick goals:", error)
@@ -90,29 +116,45 @@ export async function deleteFreeKickGoal(id: string) {
   const supabase = createServerClient()
 
   try {
-    // Verificar que el usuario es admin
+    // Obtener el usuario actual
     const {
       data: { user },
+      error: userError,
     } = await supabase.auth.getUser()
-    if (!user) {
-      throw new Error("No autorizado")
+
+    if (userError || !user) {
+      console.error("Error getting user:", userError)
+      redirect("/login")
     }
 
-    const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single()
+    // Verificar el rol del usuario
+    const { data: profile, error: profileError } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", user.id)
+      .single()
 
-    if (profile?.role !== "admin") {
-      throw new Error("Solo los administradores pueden eliminar tiros libres")
+    if (profileError || !profile) {
+      console.error("Error getting profile:", profileError)
+      return { success: false, message: "Error al verificar permisos" }
     }
 
-    const { error } = await supabase.from("free_kick_goals").delete().eq("id", id)
+    if (profile.role !== "admin") {
+      return { success: false, message: "Solo los administradores pueden eliminar tiros libres" }
+    }
 
-    if (error) throw error
+    const { error: deleteError } = await supabase.from("free_kick_goals").delete().eq("id", id)
+
+    if (deleteError) {
+      console.error("Error deleting free kick goal:", deleteError)
+      return { success: false, message: "Error al eliminar el tiro libre" }
+    }
 
     revalidatePath("/admin/tiros-libres")
     return { success: true, message: "Tiro libre eliminado exitosamente" }
   } catch (error) {
     console.error("Error deleting free kick goal:", error)
-    return { success: false, message: error instanceof Error ? error.message : "Error desconocido" }
+    return { success: false, message: "Error inesperado" }
   }
 }
 
@@ -122,8 +164,12 @@ export async function getZones() {
   try {
     const { data, error } = await supabase.from("zones").select("id, name").order("name", { ascending: true })
 
-    if (error) throw error
-    return data
+    if (error) {
+      console.error("Error fetching zones:", error)
+      return []
+    }
+
+    return data || []
   } catch (error) {
     console.error("Error fetching zones:", error)
     return []
@@ -140,8 +186,12 @@ export async function getTeamsByZone(zoneId: string) {
       .eq("zone_id", zoneId)
       .order("name", { ascending: true })
 
-    if (error) throw error
-    return data
+    if (error) {
+      console.error("Error fetching teams:", error)
+      return []
+    }
+
+    return data || []
   } catch (error) {
     console.error("Error fetching teams:", error)
     return []

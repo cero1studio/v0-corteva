@@ -8,7 +8,8 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
-import { Trash2, Zap, Trophy } from "lucide-react"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Trash2, Zap, Trophy, CheckCircle, XCircle } from "lucide-react"
 import {
   createFreeKickGoal,
   getFreeKickGoals,
@@ -34,27 +35,38 @@ export default function TirosLibresPage() {
   const [selectedTeam, setSelectedTeam] = useState<string>("")
   const [freeKickGoals, setFreeKickGoals] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [submitting, setSubmitting] = useState(false)
+  const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
 
   // Cargar zonas al montar el componente
   useEffect(() => {
-    async function loadZones() {
-      const zonesData = await getZones()
-      setZones(zonesData)
-
-      const goalsData = await getFreeKickGoals()
-      setFreeKickGoals(goalsData)
-      setLoading(false)
+    async function loadData() {
+      try {
+        const [zonesData, goalsData] = await Promise.all([getZones(), getFreeKickGoals()])
+        setZones(zonesData)
+        setFreeKickGoals(goalsData)
+      } catch (error) {
+        console.error("Error loading data:", error)
+        setMessage({ type: "error", text: "Error al cargar los datos" })
+      } finally {
+        setLoading(false)
+      }
     }
-    loadZones()
+    loadData()
   }, [])
 
   // Cargar equipos cuando se selecciona una zona
   useEffect(() => {
     async function loadTeams() {
       if (selectedZone) {
-        const teamsData = await getTeamsByZone(selectedZone)
-        setTeams(teamsData)
-        setSelectedTeam("") // Reset team selection
+        try {
+          const teamsData = await getTeamsByZone(selectedZone)
+          setTeams(teamsData)
+          setSelectedTeam("") // Reset team selection
+        } catch (error) {
+          console.error("Error loading teams:", error)
+          setMessage({ type: "error", text: "Error al cargar los equipos" })
+        }
       } else {
         setTeams([])
         setSelectedTeam("")
@@ -62,6 +74,34 @@ export default function TirosLibresPage() {
     }
     loadTeams()
   }, [selectedZone])
+
+  const handleSubmit = async (formData: FormData) => {
+    setSubmitting(true)
+    setMessage(null)
+
+    try {
+      const result = await createFreeKickGoal(formData)
+
+      if (result.success) {
+        setMessage({ type: "success", text: result.message })
+        // Recargar los datos
+        const goalsData = await getFreeKickGoals()
+        setFreeKickGoals(goalsData)
+        // Reset form
+        setSelectedZone("")
+        setSelectedTeam("")
+        const form = document.querySelector("form") as HTMLFormElement
+        form?.reset()
+      } else {
+        setMessage({ type: "error", text: result.message })
+      }
+    } catch (error) {
+      console.error("Error submitting form:", error)
+      setMessage({ type: "error", text: "Error inesperado" })
+    } finally {
+      setSubmitting(false)
+    }
+  }
 
   // Agrupar por equipo para mostrar resumen
   const teamSummary = freeKickGoals.reduce(
@@ -97,6 +137,13 @@ export default function TirosLibresPage() {
         </div>
       </div>
 
+      {message && (
+        <Alert variant={message.type === "error" ? "destructive" : "default"}>
+          {message.type === "success" ? <CheckCircle className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
+          <AlertDescription>{message.text}</AlertDescription>
+        </Alert>
+      )}
+
       <div className="grid gap-6 md:grid-cols-2">
         {/* Formulario para adjudicar tiro libre */}
         <Card>
@@ -108,7 +155,7 @@ export default function TirosLibresPage() {
             <CardDescription>Otorga puntos adicionales a un equipo específico</CardDescription>
           </CardHeader>
           <CardContent>
-            <form action={createFreeKickGoal} className="space-y-4">
+            <form action={handleSubmit} className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="zone">Zona</Label>
                 <Select value={selectedZone} onValueChange={setSelectedZone}>
@@ -152,9 +199,9 @@ export default function TirosLibresPage() {
                 <Textarea id="reason" name="reason" placeholder="Describe la razón del tiro libre..." required />
               </div>
 
-              <Button type="submit" className="w-full" disabled={!selectedTeam}>
+              <Button type="submit" className="w-full" disabled={!selectedTeam || submitting}>
                 <Zap className="mr-2 h-4 w-4" />
-                Adjudicar Tiro Libre
+                {submitting ? "Adjudicando..." : "Adjudicar Tiro Libre"}
               </Button>
             </form>
           </CardContent>
