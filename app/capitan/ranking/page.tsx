@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { getTeamRankingByZone, getSalesRankingByZone, getClientsRankingByZone } from "@/app/actions/ranking"
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
-import { useAuth } from "@/hooks/use-auth"
+import { useAuth } from "@/components/auth-provider"
 
 export default function RankingPage() {
   const [activeTab, setActiveTab] = useState("general")
