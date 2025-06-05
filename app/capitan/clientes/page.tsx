@@ -27,46 +27,64 @@ export default function ClientesPage() {
   const [searchTerm, setSearchTerm] = useState("")
 
   useEffect(() => {
-    if (user?.team_id) {
+    if (user?.id && user?.team_id) {
       loadClients()
     } else {
       setLoading(false)
     }
-  }, [user?.team_id])
+  }, [user?.id, user?.team_id])
 
   const loadClients = async () => {
     try {
       setLoading(true)
-      console.log("Cargando clientes para equipo:", user?.team_id)
-      console.log("Usuario completo:", user)
+      console.log("Cargando clientes para:")
+      console.log("- User ID:", user?.id)
+      console.log("- Team ID:", user?.team_id)
+      console.log("- User completo:", user)
 
-      if (!user?.team_id) {
-        console.log("No hay team_id disponible")
+      if (!user?.id || !user?.team_id) {
+        console.log("Faltan datos del usuario")
         setClients([])
         return
       }
 
-      // Consulta simplificada para obtener clientes
-      const { data: clients, error } = await supabase
+      // Buscar clientes por representative_id O por team_id
+      const { data: clientsByRep, error: errorRep } = await supabase
+        .from("competitor_clients")
+        .select("id, client_name, created_at, representative_id, team_id")
+        .eq("representative_id", user.id)
+
+      const { data: clientsByTeam, error: errorTeam } = await supabase
         .from("competitor_clients")
         .select("id, client_name, created_at, representative_id, team_id")
         .eq("team_id", user.team_id)
-        .order("created_at", { ascending: false })
 
-      console.log("Respuesta de Supabase:", { clients, error })
+      console.log("Clientes por representative_id:", clientsByRep)
+      console.log("Error rep:", errorRep)
+      console.log("Clientes por team_id:", clientsByTeam)
+      console.log("Error team:", errorTeam)
 
-      if (error) {
-        console.error("Error de Supabase:", error)
+      // Combinar resultados y eliminar duplicados
+      const allClients = [...(clientsByRep || []), ...(clientsByTeam || [])]
+
+      // Eliminar duplicados basándose en el ID
+      const uniqueClients = allClients.filter(
+        (client, index, self) => index === self.findIndex((c) => c.id === client.id),
+      )
+
+      console.log("Clientes únicos encontrados:", uniqueClients.length)
+      console.log("Clientes:", uniqueClients)
+
+      if (errorRep || errorTeam) {
+        console.error("Errores:", { errorRep, errorTeam })
         toast({
-          title: "Error",
-          description: `Error al cargar clientes: ${error.message}`,
+          title: "Advertencia",
+          description: "Hubo algunos errores al cargar los clientes",
           variant: "destructive",
         })
-        setClients([])
-      } else {
-        console.log(`Clientes encontrados: ${clients?.length || 0}`)
-        setClients(clients || [])
       }
+
+      setClients(uniqueClients)
     } catch (error) {
       console.error("Error general:", error)
       toast({
@@ -92,6 +110,7 @@ export default function ClientesPage() {
             <div className="text-center">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-corteva-500 mx-auto"></div>
               <p className="mt-2 text-muted-foreground">Cargando clientes...</p>
+              <p className="mt-1 text-sm text-gray-400">User ID: {user?.id || "No disponible"}</p>
               <p className="mt-1 text-sm text-gray-400">Team ID: {user?.team_id || "No disponible"}</p>
             </div>
           </div>
@@ -166,16 +185,18 @@ export default function ClientesPage() {
         </div>
 
         {/* Debug Info */}
-        {process.env.NODE_ENV === "development" && (
-          <Card className="bg-yellow-50 border-yellow-200">
-            <CardContent className="p-4">
-              <p className="text-sm text-yellow-800">
-                <strong>Debug:</strong> Team ID: {user?.team_id || "No disponible"} | Clientes encontrados:{" "}
-                {clients.length} | Usuario: {user?.full_name || "No disponible"}
-              </p>
-            </CardContent>
-          </Card>
-        )}
+        <Card className="bg-yellow-50 border-yellow-200">
+          <CardContent className="p-4">
+            <p className="text-sm text-yellow-800">
+              <strong>Debug:</strong> User ID: {user?.id || "No disponible"} | Team ID:{" "}
+              {user?.team_id || "No disponible"} | Clientes encontrados: {clients.length} | Usuario:{" "}
+              {user?.full_name || "No disponible"}
+            </p>
+            <Button onClick={loadClients} size="sm" className="mt-2 bg-yellow-600 hover:bg-yellow-700">
+              Recargar Clientes
+            </Button>
+          </CardContent>
+        </Card>
 
         {/* Search Section */}
         <Card className="shadow-sm border-gray-200">
