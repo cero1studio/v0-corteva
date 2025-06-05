@@ -1,5 +1,7 @@
 "use client"
 
+import type React from "react"
+
 import { useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/hooks/use-auth"
@@ -42,6 +44,8 @@ function getDashboardRoute(role: string, hasTeam: boolean) {
       return "/supervisor/dashboard"
     case "representante":
       return "/representante/dashboard"
+    case "arbitro":
+      return "/director-tecnico/dashboard"
     default:
       return "/login"
   }

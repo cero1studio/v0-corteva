@@ -5,9 +5,14 @@ import { DashboardNav } from "@/components/dashboard-nav"
 import { Button } from "@/components/ui/button"
 import { Menu, X } from "lucide-react"
 import { useState } from "react"
+import { useAuth } from "@/components/auth-provider"
 
 export default function DirectorTecnicoLayout({ children }: { children: React.ReactNode }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const { user } = useAuth()
+
+  // Determinar el rol correcto basado en el usuario autenticado
+  const userRole = user?.role === "arbitro" ? "arbitro" : "director-tecnico"
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -28,7 +33,7 @@ export default function DirectorTecnicoLayout({ children }: { children: React.Re
       <div className="flex flex-1">
         {/* Sidebar para desktop */}
         <aside className="w-64 border-r bg-muted/40 hidden md:block">
-          <DashboardNav role="director-tecnico" />
+          <DashboardNav role={userRole} />
         </aside>
 
         {/* Sidebar móvil */}
@@ -36,7 +41,7 @@ export default function DirectorTecnicoLayout({ children }: { children: React.Re
           <div className="fixed inset-0 z-40 md:hidden">
             <div className="fixed inset-0 bg-black/50" onClick={() => setMobileMenuOpen(false)} />
             <div className="fixed inset-y-0 left-0 w-64 bg-white shadow-lg">
-              <DashboardNav role="director-tecnico" onMobileMenuClose={() => setMobileMenuOpen(false)} />
+              <DashboardNav role={userRole} onMobileMenuClose={() => setMobileMenuOpen(false)} />
             </div>
           </div>
         )}

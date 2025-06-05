@@ -50,12 +50,14 @@ export function ClientForm({ open, setOpen, zones, teams, users, onSuccess }: Cl
     ganadero_name: "",
     razon_social: "",
     tipo_venta: "",
+    nombre_almacen: "",
     ubicacion_finca: "",
     area_finca_hectareas: "",
     producto_anterior: "",
     producto_super_ganaderia: "",
     volumen_venta_estimado: "",
     points: "5", // Valor por defecto
+    contact_info: "",
   })
 
   const filteredTeams = selectedZone ? teams.filter((team) => team.zone_id === selectedZone) : teams
@@ -83,11 +85,25 @@ export function ClientForm({ open, setOpen, zones, teams, users, onSuccess }: Cl
       return
     }
 
+    // Validar que se ingrese nombre de almacén si el tipo de venta es por almacén
+    if (formData.tipo_venta === "distribuidor" && !formData.nombre_almacen) {
+      toast({
+        title: "Error",
+        description: "Por favor ingresa el nombre del almacén",
+        variant: "destructive",
+      })
+      return
+    }
+
     setLoading(true)
 
     try {
       const form = new FormData()
       Object.entries(formData).forEach(([key, value]) => {
+        // Solo incluir nombre_almacen si el tipo de venta es por almacén
+        if (key === "nombre_almacen" && formData.tipo_venta !== "distribuidor") {
+          return
+        }
         form.append(key, value)
       })
       form.append("team_id", selectedTeam)
@@ -106,12 +122,14 @@ export function ClientForm({ open, setOpen, zones, teams, users, onSuccess }: Cl
           ganadero_name: "",
           razon_social: "",
           tipo_venta: "",
+          nombre_almacen: "",
           ubicacion_finca: "",
           area_finca_hectareas: "",
           producto_anterior: "",
           producto_super_ganaderia: "",
           volumen_venta_estimado: "",
           points: "5",
+          contact_info: "",
         })
         setSelectedZone("")
         setSelectedTeam("")
@@ -234,6 +252,16 @@ export function ClientForm({ open, setOpen, zones, teams, users, onSuccess }: Cl
                   placeholder="Nombre en empresa competidora"
                 />
               </div>
+
+              <div>
+                <Label htmlFor="contact_info">Celular del Ganadero</Label>
+                <Input
+                  id="contact_info"
+                  value={formData.contact_info}
+                  onChange={(e) => setFormData({ ...formData, contact_info: e.target.value })}
+                  placeholder="Número de celular del ganadero"
+                />
+              </div>
             </div>
 
             <div>
@@ -270,6 +298,19 @@ export function ClientForm({ open, setOpen, zones, teams, users, onSuccess }: Cl
                   </SelectContent>
                 </Select>
               </div>
+
+              {formData.tipo_venta === "distribuidor" && (
+                <div>
+                  <Label htmlFor="nombre_almacen">Nombre del Almacén *</Label>
+                  <Input
+                    id="nombre_almacen"
+                    value={formData.nombre_almacen}
+                    onChange={(e) => setFormData({ ...formData, nombre_almacen: e.target.value })}
+                    placeholder="Nombre del almacén"
+                    required
+                  />
+                </div>
+              )}
 
               <div>
                 <Label htmlFor="volumen_venta_estimado">Volumen de Venta Estimado</Label>

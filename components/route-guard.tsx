@@ -3,7 +3,7 @@
 import type React from "react"
 
 import { useEffect, useState } from "react"
-import { useAuth } from "@/hooks/use-auth"
+import { useAuth } from "@/components/auth-provider"
 import { usePathname, useRouter } from "next/navigation"
 import { Loader2 } from "lucide-react"
 
@@ -22,12 +22,13 @@ const roleRoutes: Record<string, string[]> = {
   admin: ["/admin"],
   capitan: ["/capitan"],
   director_tecnico: ["/director-tecnico"],
+  arbitro: ["/director-tecnico"],
   supervisor: ["/supervisor"],
   representante: ["/representante"],
 }
 
 export function RouteGuard({ children }: { children: React.ReactNode }) {
-  const { profile, isLoading } = useAuth()
+  const { user, isLoading } = useAuth()
   const router = useRouter()
   const pathname = usePathname()
   const [authorized, setAuthorized] = useState(false)
@@ -42,15 +43,15 @@ export function RouteGuard({ children }: { children: React.ReactNode }) {
       }
 
       // Si no hay perfil y no estamos cargando, redirigir a login
-      if (!profile && !isLoading) {
+      if (!user && !isLoading) {
         setAuthorized(false)
         router.push("/login")
         return
       }
 
       // Si hay perfil, verificar si tiene acceso a la ruta
-      if (profile) {
-        const allowedRoutes = roleRoutes[profile.role] || []
+      if (user) {
+        const allowedRoutes = roleRoutes[user.role] || []
         const hasAccess = allowedRoutes.some((route) => pathname?.startsWith(route))
 
         if (hasAccess) {
@@ -58,11 +59,10 @@ export function RouteGuard({ children }: { children: React.ReactNode }) {
         } else {
           // Si no tiene acceso, redirigir al dashboard correspondiente
           setAuthorized(false)
-          if (profile.role === "capitan" && !profile.has_created_team) {
+          if (user.role === "capitan" && !user.team_id) {
             router.push("/capitan/crear-equipo")
           } else {
-            const dashboardRoute = `/
-${profile.role}/dashboard`
+            const dashboardRoute = `/${user.role}/dashboard`
             router.push(dashboardRoute)
           }
         }
@@ -70,7 +70,7 @@ ${profile.role}/dashboard`
     }
 
     checkAuth()
-  }, [pathname, profile, isLoading, router])
+  }, [pathname, user, isLoading, router])
 
   // Mostrar loading mientras se verifica la autorización
   if (isLoading) {

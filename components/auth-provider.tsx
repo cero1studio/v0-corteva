@@ -56,6 +56,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return teamId ? "/capitan/dashboard" : "/capitan/crear-equipo"
       case "director_tecnico":
         return "/director-tecnico/dashboard"
+      case "arbitro":
+        return "/director-tecnico/dashboard"
       case "supervisor":
         return "/supervisor/dashboard"
       case "representante":
@@ -178,6 +180,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (profile) {
           setUser(profile)
           const dashboardRoute = getDashboardRoute(profile.role, profile.team_id)
+          console.log(`AUTH_PROVIDER: Login successful, redirecting to ${dashboardRoute}`)
           router.replace(dashboardRoute)
         }
       } else if (event === "SIGNED_OUT") {
