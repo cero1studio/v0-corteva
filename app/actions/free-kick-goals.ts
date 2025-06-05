@@ -12,7 +12,10 @@ export interface FreeKickGoal {
   created_at: string
   teams: {
     name: string
-    zone: string
+    zone_id: string
+    zones: {
+      name: string
+    }
   }
   profiles: {
     full_name: string
@@ -66,7 +69,11 @@ export async function getFreeKickGoals() {
       .from("free_kick_goals")
       .select(`
         *,
-        teams (name, zone),
+        teams (
+          name,
+          zone_id,
+          zones (name)
+        ),
         profiles (full_name)
       `)
       .order("created_at", { ascending: false })
@@ -109,14 +116,28 @@ export async function deleteFreeKickGoal(id: string) {
   }
 }
 
-export async function getTeamsForFreeKick() {
+export async function getZones() {
+  const supabase = createServerClient()
+
+  try {
+    const { data, error } = await supabase.from("zones").select("id, name").order("name", { ascending: true })
+
+    if (error) throw error
+    return data
+  } catch (error) {
+    console.error("Error fetching zones:", error)
+    return []
+  }
+}
+
+export async function getTeamsByZone(zoneId: string) {
   const supabase = createServerClient()
 
   try {
     const { data, error } = await supabase
       .from("teams")
-      .select("id, name, zone")
-      .order("zone", { ascending: true })
+      .select("id, name")
+      .eq("zone_id", zoneId)
       .order("name", { ascending: true })
 
     if (error) throw error

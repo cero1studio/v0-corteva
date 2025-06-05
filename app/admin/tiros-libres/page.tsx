@@ -1,4 +1,6 @@
-import { Suspense } from "react"
+"use client"
+
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -11,11 +13,55 @@ import {
   createFreeKickGoal,
   getFreeKickGoals,
   deleteFreeKickGoal,
-  getTeamsForFreeKick,
+  getZones,
+  getTeamsByZone,
 } from "@/app/actions/free-kick-goals"
 
-async function FreeKickGoalsContent() {
-  const [freeKickGoals, teams] = await Promise.all([getFreeKickGoals(), getTeamsForFreeKick()])
+interface Zone {
+  id: string
+  name: string
+}
+
+interface Team {
+  id: string
+  name: string
+}
+
+export default function TirosLibresPage() {
+  const [zones, setZones] = useState<Zone[]>([])
+  const [teams, setTeams] = useState<Team[]>([])
+  const [selectedZone, setSelectedZone] = useState<string>("")
+  const [selectedTeam, setSelectedTeam] = useState<string>("")
+  const [freeKickGoals, setFreeKickGoals] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+
+  // Cargar zonas al montar el componente
+  useEffect(() => {
+    async function loadZones() {
+      const zonesData = await getZones()
+      setZones(zonesData)
+
+      const goalsData = await getFreeKickGoals()
+      setFreeKickGoals(goalsData)
+      setLoading(false)
+    }
+    loadZones()
+  }, [])
+
+  // Cargar equipos cuando se selecciona una zona
+  useEffect(() => {
+    async function loadTeams() {
+      if (selectedZone) {
+        const teamsData = await getTeamsByZone(selectedZone)
+        setTeams(teamsData)
+        setSelectedTeam("") // Reset team selection
+      } else {
+        setTeams([])
+        setSelectedTeam("")
+      }
+    }
+    loadTeams()
+  }, [selectedZone])
 
   // Agrupar por equipo para mostrar resumen
   const teamSummary = freeKickGoals.reduce(
@@ -24,7 +70,7 @@ async function FreeKickGoalsContent() {
       if (!acc[teamKey]) {
         acc[teamKey] = {
           teamName: goal.teams.name,
-          zone: goal.teams.zone,
+          zoneName: goal.teams.zones?.name || "Sin zona",
           totalPoints: 0,
           totalGoals: 0,
           count: 0,
@@ -37,6 +83,10 @@ async function FreeKickGoalsContent() {
     },
     {} as Record<string, any>,
   )
+
+  if (loading) {
+    return <div className="flex items-center justify-center h-64">Cargando...</div>
+  }
 
   return (
     <div className="space-y-6">
@@ -60,15 +110,31 @@ async function FreeKickGoalsContent() {
           <CardContent>
             <form action={createFreeKickGoal} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="team_id">Equipo</Label>
-                <Select name="team_id" required>
+                <Label htmlFor="zone">Zona</Label>
+                <Select value={selectedZone} onValueChange={setSelectedZone}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Selecciona un equipo" />
+                    <SelectValue placeholder="Selecciona una zona" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {zones.map((zone) => (
+                      <SelectItem key={zone.id} value={zone.id}>
+                        {zone.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="team_id">Equipo</Label>
+                <Select name="team_id" value={selectedTeam} onValueChange={setSelectedTeam} disabled={!selectedZone}>
+                  <SelectTrigger>
+                    <SelectValue placeholder={selectedZone ? "Selecciona un equipo" : "Primero selecciona una zona"} />
                   </SelectTrigger>
                   <SelectContent>
                     {teams.map((team) => (
                       <SelectItem key={team.id} value={team.id}>
-                        {team.name} - {team.zone}
+                        {team.name}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -86,7 +152,7 @@ async function FreeKickGoalsContent() {
                 <Textarea id="reason" name="reason" placeholder="Describe la razón del tiro libre..." required />
               </div>
 
-              <Button type="submit" className="w-full">
+              <Button type="submit" className="w-full" disabled={!selectedTeam}>
                 <Zap className="mr-2 h-4 w-4" />
                 Adjudicar Tiro Libre
               </Button>
@@ -112,7 +178,7 @@ async function FreeKickGoalsContent() {
                   <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
                     <div>
                       <p className="font-medium">{summary.teamName}</p>
-                      <p className="text-sm text-muted-foreground">{summary.zone}</p>
+                      <p className="text-sm text-muted-foreground">{summary.zoneName}</p>
                     </div>
                     <div className="text-right">
                       <Badge variant="secondary">{summary.totalPoints} pts</Badge>
@@ -143,6 +209,7 @@ async function FreeKickGoalsContent() {
                     <div className="flex items-center gap-2 mb-1">
                       <Badge variant="outline">{goal.teams.name}</Badge>
                       <Badge variant="secondary">{goal.points} puntos</Badge>
+                      <Badge variant="outline">{goal.teams.zones?.name || "Sin zona"}</Badge>
                     </div>
                     <p className="text-sm text-muted-foreground mb-1">{goal.reason}</p>
                     <p className="text-xs text-muted-foreground">
@@ -161,13 +228,5 @@ async function FreeKickGoalsContent() {
         </CardContent>
       </Card>
     </div>
-  )
-}
-
-export default function TirosLibresPage() {
-  return (
-    <Suspense fallback={<div>Cargando...</div>}>
-      <FreeKickGoalsContent />
-    </Suspense>
   )
 }
