@@ -19,29 +19,43 @@ interface Client {
 }
 
 export default function ClientesPage() {
-  const { user } = useAuth()
+  const { user, profile, isLoading: authLoading } = useAuth()
   const [clients, setClients] = useState<Client[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
 
   useEffect(() => {
-    if (user?.team_id) {
-      loadClients(user.team_id)
+    // Solo ejecutar cuando auth no esté cargando y tengamos el profile con team_id
+    if (!authLoading && profile?.team_id) {
+      console.log("Loading clients for team:", profile.team_id)
+      loadClients(profile.team_id)
+    } else if (!authLoading && !profile?.team_id) {
+      // Si no hay team_id, detener el loading
+      console.log("No team_id available, stopping loading")
+      setLoading(false)
     }
-  }, [user?.team_id])
+  }, [authLoading, profile?.team_id])
 
   const loadClients = async (teamId: string) => {
     try {
       setLoading(true)
+      console.log("Calling getCompetitorClientsByTeam with:", teamId)
+
       const result = await getCompetitorClientsByTeam(teamId)
+
+      console.log("Result from getCompetitorClientsByTeam:", result)
+
       if (result.success) {
         setClients(result.data || [])
+        console.log("Clients loaded successfully:", result.data?.length || 0)
       } else {
+        console.error("Error loading clients:", result.error)
         toast({
           title: "Error",
           description: "No se pudieron cargar los clientes",
           variant: "destructive",
         })
+        setClients([])
       }
     } catch (error) {
       console.error("Error loading clients:", error)
@@ -50,6 +64,7 @@ export default function ClientesPage() {
         description: "Error al cargar los clientes",
         variant: "destructive",
       })
+      setClients([])
     } finally {
       setLoading(false)
     }
@@ -59,12 +74,20 @@ export default function ClientesPage() {
     client.client_name.toLowerCase().includes(searchTerm.toLowerCase()),
   )
 
-  if (loading) {
+  // Mostrar loading solo si auth está cargando O si estamos cargando clientes
+  if (authLoading || (loading && profile?.team_id)) {
     return (
-      <div className="flex items-center justify-center h-96">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-corteva-500 mx-auto"></div>
-          <p className="mt-2 text-muted-foreground">Cargando clientes...</p>
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-6">
+        <div className="max-w-7xl mx-auto">
+          <div className="flex items-center justify-center h-96">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-corteva-500 mx-auto"></div>
+              <p className="mt-2 text-muted-foreground">
+                {authLoading ? "Cargando usuario..." : "Cargando clientes..."}
+              </p>
+              <p className="mt-1 text-sm text-gray-400">Team ID: {profile?.team_id || "No disponible"}</p>
+            </div>
+          </div>
         </div>
       </div>
     )
@@ -73,6 +96,28 @@ export default function ClientesPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-6">
       <div className="max-w-7xl mx-auto space-y-8">
+        {/* Debug Info - Solo en desarrollo */}
+        {process.env.NODE_ENV === "development" && (
+          <Card className="bg-yellow-50 border-yellow-200">
+            <CardContent className="p-4">
+              <p className="text-sm text-yellow-800">
+                <strong>Debug:</strong> Auth Loading: {authLoading ? "true" : "false"} | User ID:{" "}
+                {user?.id || "No disponible"} | Profile Team ID: {profile?.team_id || "No disponible"} | Clientes:{" "}
+                {clients.length}
+              </p>
+              {profile?.team_id && (
+                <Button
+                  onClick={() => loadClients(profile.team_id!)}
+                  size="sm"
+                  className="mt-2 bg-yellow-600 hover:bg-yellow-700"
+                >
+                  Recargar Clientes
+                </Button>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
         {/* Header Section */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
@@ -179,15 +224,19 @@ export default function ClientesPage() {
                   description={
                     searchTerm
                       ? "No se encontraron clientes con los filtros aplicados"
-                      : "Aún no hay clientes registrados por tu equipo"
+                      : profile?.team_id
+                        ? "Aún no hay clientes registrados por tu equipo"
+                        : "No tienes un equipo asignado. Contacta al administrador."
                   }
                   action={
-                    <Button asChild className="bg-corteva-600 hover:bg-corteva-700">
-                      <Link href="/capitan/registrar-cliente" className="flex items-center gap-2">
-                        <Plus className="h-4 w-4" />
-                        Registrar Primer Cliente
-                      </Link>
-                    </Button>
+                    profile?.team_id ? (
+                      <Button asChild className="bg-corteva-600 hover:bg-corteva-700">
+                        <Link href="/capitan/registrar-cliente" className="flex items-center gap-2">
+                          <Plus className="h-4 w-4" />
+                          Registrar Primer Cliente
+                        </Link>
+                      </Button>
+                    ) : null
                   }
                 />
               </CardContent>
@@ -218,7 +267,6 @@ export default function ClientesPage() {
                     </div>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    {/* Fecha - Mantenemos solo esta sección */}
                     <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
                       <div className="p-1.5 bg-orange-100 rounded-md">
                         <Calendar className="h-4 w-4 text-orange-600" />
