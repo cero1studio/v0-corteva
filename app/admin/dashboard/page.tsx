@@ -1,174 +1,190 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Card, CardHeader, CardBody, Typography, IconButton } from "@material-tailwind/react"
-import { EllipsisVerticalIcon } from "@heroicons/react/24/outline"
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts"
-import { useTranslations } from "next-intl"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { AdminStatsChart } from "@/components/admin-stats-chart"
+import { AdminZonesChart } from "@/components/admin-zones-chart"
+import { AdminRankingChart } from "@/components/admin-ranking-chart"
+import { supabase } from "@/lib/supabase/client"
+import { useToast } from "@/hooks/use-toast"
 
-const data = [
-  { name: "Jan", uv: 4000, pv: 2400, amt: 2400 },
-  { name: "Feb", uv: 3000, pv: 1398, amt: 2210 },
-  { name: "Mar", uv: 2000, pv: 9800, amt: 2290 },
-  { name: "Apr", uv: 2780, pv: 3908, amt: 2000 },
-  { name: "May", uv: 1890, pv: 4800, amt: 2181 },
-  { name: "Jun", uv: 2390, pv: 3800, amt: 2500 },
-  { name: "Jul", uv: 3490, pv: 4300, amt: 2100 },
-]
-
-const DashboardPage = () => {
-  const t = useTranslations("Admin.Dashboard")
-  const [zoneStats, setZoneStats] = useState({
-    zone1: { goals: 0 },
-    zone2: { goals: 0 },
-    zone3: { goals: 0 },
-    zone4: { goals: 0 },
-  })
+export default function AdminDashboard() {
+  const [loading, setLoading] = useState(true)
+  const [zonesData, setZonesData] = useState<any[]>([])
+  const [teamsData, setTeamsData] = useState<any[]>([])
+  const [salesData, setSalesData] = useState<any[]>([])
+  const { toast } = useToast()
 
   useEffect(() => {
-    const fetchZoneStats = async () => {
-      // Mock data for demonstration purposes
-      const mockData = {
-        zone1: {
-          ventas: 1000,
-          clientes: 50,
-          tiros_libres: 10,
-          puntos_para_gol: 100,
-        },
-        zone2: {
-          ventas: 1500,
-          clientes: 75,
-          tiros_libres: 15,
-          puntos_para_gol: 100,
-        },
-        zone3: {
-          ventas: 800,
-          clientes: 40,
-          tiros_libres: 8,
-          puntos_para_gol: 100,
-        },
-        zone4: {
-          ventas: 2000,
-          clientes: 100,
-          tiros_libres: 20,
-          puntos_para_gol: 100,
-        },
-      }
-
-      const calculateGoals = (zoneData: any) => {
-        const ventasGoals = zoneData.ventas / zoneData.puntos_para_gol
-        const clientesGoals = (zoneData.clientes * 200) / zoneData.puntos_para_gol
-        const tirosLibresGoals = zoneData.tiros_libres
-        return ventasGoals + clientesGoals + tirosLibresGoals
-      }
-
-      setZoneStats({
-        zone1: { goals: calculateGoals(mockData.zone1) },
-        zone2: { goals: calculateGoals(mockData.zone2) },
-        zone3: { goals: calculateGoals(mockData.zone3) },
-        zone4: { goals: calculateGoals(mockData.zone4) },
-      })
-    }
-
-    fetchZoneStats()
+    loadDashboardData()
   }, [])
 
+  async function loadDashboardData() {
+    try {
+      setLoading(true)
+
+      // Cargar zonas
+      const { data: zones, error: zonesError } = await supabase.from("zones").select("*").order("name")
+
+      if (zonesError) throw zonesError
+
+      // Cargar equipos con sus zonas
+      const { data: teams, error: teamsError } = await supabase
+        .from("teams")
+        .select(`
+          *,
+          zones:zone_id(*)
+        `)
+        .order("name")
+
+      if (teamsError) throw teamsError
+
+      // Cargar ventas
+      const { data: sales, error: salesError } = await supabase
+        .from("sales")
+        .select(`
+          *,
+          products(id, name),
+          profiles:representative_id(
+            id, 
+            full_name, 
+            team_id,
+            teams:team_id(
+              id, 
+              name,
+              zone_id,
+              zones:zone_id(id, name)
+            )
+          )
+        `)
+        .order("created_at", { ascending: false })
+
+      if (salesError) throw salesError
+
+      // Procesar datos para las zonas
+      const zonesWithStats = zones.map((zone) => {
+        // Contar equipos por zona
+        const teamsInZone = teams.filter((team) => team.zone_id === zone.id)
+
+        // Calcular goles por zona (en lugar de contar equipos)
+        const goalsInZone = calculateGoalsByZone(zone.id, teams, sales)
+
+        return {
+          ...zone,
+          teams_count: teamsInZone.length,
+          goals_count: goalsInZone,
+        }
+      })
+
+      setZonesData(zonesWithStats)
+      setTeamsData(teams)
+      setSalesData(sales)
+    } catch (error: any) {
+      console.error("Error al cargar datos del dashboard:", error)
+      toast({
+        title: "Error",
+        description: "No se pudieron cargar los datos del dashboard",
+        variant: "destructive",
+      })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Función para calcular goles por zona
+  function calculateGoalsByZone(zoneId: string, teams: any[], sales: any[]) {
+    // Obtener equipos de la zona
+    const teamsInZone = teams.filter((team) => team.zone_id === zoneId)
+    const teamIds = teamsInZone.map((team) => team.id)
+
+    // Filtrar ventas de equipos en la zona
+    const zoneSales = sales.filter(
+      (sale) => sale.profiles?.teams?.zone_id === zoneId || teamIds.includes(sale.profiles?.team_id),
+    )
+
+    // Calcular puntos totales
+    const totalPoints = zoneSales.reduce((sum, sale) => sum + (sale.points || 0), 0)
+
+    // Convertir puntos a goles (100 puntos = 1 gol)
+    const goals = Math.floor(totalPoints / 100)
+
+    return goals
+  }
+
+  if (loading) {
+    return (
+      <div className="flex justify-center items-center h-64">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-corteva-600"></div>
+      </div>
+    )
+  }
+
   return (
-    <div className="container mx-auto py-8">
-      <Typography variant="h1" className="text-3xl font-bold mb-4">
-        {t("title")}
-      </Typography>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        <Card>
-          <CardHeader floated={false} className="card-header-custom">
-            <Typography variant="h6" color="white">
-              {t("zone")} 1
-            </Typography>
-            <IconButton size="sm" variant="text" color="white">
-              <EllipsisVerticalIcon className="h-5 w-5" />
-            </IconButton>
-          </CardHeader>
-          <CardBody>
-            <Typography variant="h4" className="mb-2">
-              {zoneStats.zone1.goals} goles
-            </Typography>
-            <Typography className="font-normal">{t("zoneDescription")}</Typography>
-          </CardBody>
-        </Card>
-
-        <Card>
-          <CardHeader floated={false} className="card-header-custom">
-            <Typography variant="h6" color="white">
-              {t("zone")} 2
-            </Typography>
-            <IconButton size="sm" variant="text" color="white">
-              <EllipsisVerticalIcon className="h-5 w-5" />
-            </IconButton>
-          </CardHeader>
-          <CardBody>
-            <Typography variant="h4" className="mb-2">
-              {zoneStats.zone2.goals} goles
-            </Typography>
-            <Typography className="font-normal">{t("zoneDescription")}</Typography>
-          </CardBody>
-        </Card>
-
-        <Card>
-          <CardHeader floated={false} className="card-header-custom">
-            <Typography variant="h6" color="white">
-              {t("zone")} 3
-            </Typography>
-            <IconButton size="sm" variant="text" color="white">
-              <EllipsisVerticalIcon className="h-5 w-5" />
-            </IconButton>
-          </CardHeader>
-          <CardBody>
-            <Typography variant="h4" className="mb-2">
-              {zoneStats.zone3.goals} goles
-            </Typography>
-            <Typography className="font-normal">{t("zoneDescription")}</Typography>
-          </CardBody>
-        </Card>
-
-        <Card>
-          <CardHeader floated={false} className="card-header-custom">
-            <Typography variant="h6" color="white">
-              {t("zone")} 4
-            </Typography>
-            <IconButton size="sm" variant="text" color="white">
-              <EllipsisVerticalIcon className="h-5 w-5" />
-            </IconButton>
-          </CardHeader>
-          <CardBody>
-            <Typography variant="h4" className="mb-2">
-              {zoneStats.zone4.goals} goles
-            </Typography>
-            <Typography className="font-normal">{t("zoneDescription")}</Typography>
-          </CardBody>
-        </Card>
+    <div className="flex-1 space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-3xl font-bold tracking-tight">Dashboard</h2>
+          <p className="text-muted-foreground">Resumen general del rendimiento de la plataforma</p>
+        </div>
       </div>
 
-      <Card>
-        <CardHeader variant="gradient" color="blue" className="mb-4">
-          <Typography variant="h6" color="white">
-            {t("salesChart")}
-          </Typography>
-        </CardHeader>
-        <CardBody>
-          <ResponsiveContainer width="100%" height={400}>
-            <AreaChart data={data} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="name" />
-              <YAxis />
-              <Tooltip />
-              <Area type="monotone" dataKey="pv" stroke="#8884d8" fill="#8884d8" />
-            </AreaChart>
-          </ResponsiveContainer>
-        </CardBody>
-      </Card>
+      <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-3">
+        {zonesData.map((zone) => (
+          <Card key={zone.id}>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-lg uppercase">{zone.name}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-3xl font-bold text-green-600">{zone.goals_count}</div>
+              <p className="text-sm text-muted-foreground">
+                {zone.goals_count === 1 ? "1 gol" : `${zone.goals_count} goles`}
+              </p>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      <Tabs defaultValue="general" className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="general">Estadísticas Generales</TabsTrigger>
+          <TabsTrigger value="zones">Rendimiento por Zonas</TabsTrigger>
+          <TabsTrigger value="products">Ventas por Producto</TabsTrigger>
+        </TabsList>
+        <TabsContent value="general" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Evolución del Concurso</CardTitle>
+              <CardDescription>Goles acumulados por equipo y semana</CardDescription>
+            </CardHeader>
+            <CardContent className="h-[400px]">
+              <AdminStatsChart data={salesData} />
+            </CardContent>
+          </Card>
+        </TabsContent>
+        <TabsContent value="zones" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Comparativa de Zonas</CardTitle>
+              <CardDescription>Rendimiento por zona geográfica</CardDescription>
+            </CardHeader>
+            <CardContent className="h-[400px]">
+              <AdminZonesChart data={zonesData} />
+            </CardContent>
+          </Card>
+        </TabsContent>
+        <TabsContent value="products" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Ventas por Producto</CardTitle>
+              <CardDescription>Distribución de ventas por producto</CardDescription>
+            </CardHeader>
+            <CardContent className="h-[400px]">
+              <AdminRankingChart />
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }
-
-export default DashboardPage

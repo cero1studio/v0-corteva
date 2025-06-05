@@ -1,167 +1,217 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
+import { Bar } from "react-chartjs-2"
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  Title,
+  Tooltip,
+  Legend,
+  type ChartOptions,
+} from "chart.js"
 import { supabase } from "@/lib/supabase/client"
-import { Skeleton } from "@/components/ui/skeleton"
-import { AlertCircle, MapPin } from "lucide-react"
-import { EmptyState } from "./empty-state"
 
-export function AdminZonesChart() {
-  const [isMounted, setIsMounted] = useState(false)
+ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend)
+
+interface AdminZonesChartProps {
+  data?: any[]
+}
+
+export function AdminZonesChart({ data = [] }: AdminZonesChartProps) {
+  const [chartData, setChartData] = useState<any>({
+    labels: [],
+    datasets: [],
+  })
   const [loading, setLoading] = useState(true)
-  const [data, setData] = useState<any[]>([])
-  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    setIsMounted(true)
-    fetchData()
-  }, [])
+    loadChartData()
+  }, [data])
 
-  const fetchData = async () => {
+  async function loadChartData() {
     try {
       setLoading(true)
 
-      // Obtener zonas
+      // Obtener todas las zonas
       const { data: zones, error: zonesError } = await supabase.from("zones").select("id, name").order("name")
 
       if (zonesError) throw zonesError
 
-      if (zones.length === 0) {
-        setData([])
-        setLoading(false)
-        return
-      }
+      // Obtener todos los equipos con sus zonas
+      const { data: teams, error: teamsError } = await supabase
+        .from("teams")
+        .select(`
+          id, 
+          name, 
+          zone_id,
+          zones:zone_id(id, name)
+        `)
+        .order("name")
 
-      // Obtener configuración de puntos para gol
-      const { data: puntosConfig } = await supabase
-        .from("system_config")
-        .select("value")
-        .eq("key", "puntos_para_gol")
-        .maybeSingle()
+      if (teamsError) throw teamsError
 
-      const puntosParaGol = puntosConfig?.value ? Number(puntosConfig.value) : 100
+      // Obtener todas las ventas
+      const { data: sales, error: salesError } = await supabase.from("sales").select(`
+          id, 
+          points, 
+          representative_id,
+          profiles:representative_id(
+            id, 
+            team_id,
+            teams:team_id(id, name, zone_id)
+          )
+        `)
 
-      // Para cada zona, calcular goles totales (usando la misma lógica del ranking)
-      const zoneData = await Promise.all(
-        zones.map(async (zone) => {
-          // Obtener equipos de la zona
-          const { data: teams, error: teamsError } = await supabase
-            .from("teams")
-            .select("id, name")
-            .eq("zone_id", zone.id)
+      if (salesError) throw salesError
 
-          if (teamsError) throw teamsError
+      // Obtener todos los clientes registrados
+      const { data: clients, error: clientsError } = await supabase.from("competitor_clients").select(`
+          id, 
+          representative_id,
+          profiles:representative_id(
+            id, 
+            team_id,
+            teams:team_id(id, name, zone_id)
+          )
+        `)
 
-          let totalGoals = 0
+      if (clientsError) throw clientsError
 
-          for (const team of teams || []) {
-            // Obtener miembros del equipo
-            const { data: teamMembers } = await supabase.from("profiles").select("id").eq("team_id", team.id)
+      // Obtener todos los tiros libres
+      const { data: freeKicks, error: freeKicksError } = await supabase.from("free_kick_goals").select(`
+          id, 
+          points,
+          team_id,
+          teams:team_id(id, name, zone_id)
+        `)
 
-            const memberIds = teamMembers?.map((member) => member.id) || []
+      if (freeKicksError) throw freeKicksError
 
-            // Obtener puntos de ventas
-            let totalPointsFromSales = 0
-            if (memberIds.length > 0) {
-              const { data: sales } = await supabase.from("sales").select("points").in("representative_id", memberIds)
+      // Calcular goles por zona
+      const zoneGoals = {}
 
-              if (sales) {
-                totalPointsFromSales = sales.reduce((sum, sale) => sum + (sale.points || 0), 0)
-              }
-            }
+      // Inicializar todas las zonas con 0 goles
+      zones.forEach((zone) => {
+        zoneGoals[zone.id] = {
+          name: zone.name,
+          goals: 0,
+        }
+      })
 
-            // Obtener clientes del equipo
-            let totalClients = 0
-            if (memberIds.length > 0) {
-              const { count: clientsCount } = await supabase
-                .from("competitor_clients")
-                .select("*", { count: "exact", head: true })
-                .in("representative_id", memberIds)
+      // Calcular puntos de ventas por zona
+      sales.forEach((sale) => {
+        if (!sale.profiles?.teams?.zone_id || !sale.points) return
 
-              totalClients = clientsCount || 0
-            }
+        const zoneId = sale.profiles.teams.zone_id
+        if (!zoneGoals[zoneId]) return
 
-            // Obtener tiros libres del equipo
-            const { data: freeKicks } = await supabase.from("free_kick_goals").select("goals").eq("team_id", team.id)
+        // Acumular puntos (100 puntos = 1 gol)
+        zoneGoals[zoneId].goals += sale.points / 100
+      })
 
-            let freeKickGoals = 0
-            if (freeKicks) {
-              freeKickGoals = freeKicks.reduce((sum, fk) => sum + (fk.goals || 0), 0)
-            }
+      // Calcular puntos de clientes por zona (200 puntos = 2 goles por cliente)
+      clients.forEach((client) => {
+        if (!client.profiles?.teams?.zone_id) return
 
-            // Calcular goles del equipo
-            const clientsPoints = totalClients * 200
-            const finalTotalPoints = totalPointsFromSales + clientsPoints
-            const goalsFromPoints = Math.floor(finalTotalPoints / puntosParaGol)
-            const teamGoals = goalsFromPoints + freeKickGoals
+        const zoneId = client.profiles.teams.zone_id
+        if (!zoneGoals[zoneId]) return
 
-            totalGoals += teamGoals
-          }
+        // 200 puntos = 2 goles por cliente
+        zoneGoals[zoneId].goals += 2
+      })
 
-          return {
-            name: zone.name,
-            goles: totalGoals,
-          }
-        }),
-      )
+      // Calcular puntos de tiros libres por zona
+      freeKicks.forEach((kick) => {
+        if (!kick.teams?.zone_id || !kick.points) return
 
-      setData(zoneData)
-    } catch (err: any) {
-      console.error("Error al cargar datos del gráfico de zonas:", err)
-      setError(`Error al cargar datos: ${err.message || "Desconocido"}`)
+        const zoneId = kick.teams.zone_id
+        if (!zoneGoals[zoneId]) return
+
+        // Acumular puntos (100 puntos = 1 gol)
+        zoneGoals[zoneId].goals += kick.points / 100
+      })
+
+      // Convertir a formato para Chart.js
+      const labels = Object.values(zoneGoals).map((zone: any) => zone.name)
+      const goalsData = Object.values(zoneGoals).map((zone: any) => Math.floor(zone.goals))
+
+      setChartData({
+        labels,
+        datasets: [
+          {
+            label: "Goles",
+            data: goalsData,
+            backgroundColor: "rgba(75, 192, 192, 0.8)",
+            borderColor: "rgba(75, 192, 192, 1)",
+            borderWidth: 1,
+          },
+        ],
+      })
+    } catch (error) {
+      console.error("Error al cargar datos del gráfico:", error)
     } finally {
       setLoading(false)
     }
   }
 
-  if (!isMounted) {
-    return <div className="h-[400px] flex items-center justify-center">Cargando gráfico...</div>
+  const options: ChartOptions<"bar"> = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        position: "top",
+      },
+      title: {
+        display: false,
+      },
+      tooltip: {
+        callbacks: {
+          label: (context) => {
+            const value = context.parsed.y
+            return `${value} ${value === 1 ? "gol" : "goles"}`
+          },
+        },
+      },
+    },
+    scales: {
+      x: {
+        grid: {
+          display: false,
+        },
+      },
+      y: {
+        beginAtZero: true,
+        ticks: {
+          precision: 0,
+          stepSize: 1,
+        },
+        title: {
+          display: true,
+          text: "Goles",
+        },
+      },
+    },
   }
 
   if (loading) {
-    return <Skeleton className="h-[400px] w-full" />
-  }
-
-  if (error) {
     return (
-      <EmptyState
-        icon={AlertCircle}
-        title="Error al cargar datos"
-        description={error}
-        actionLabel="Reintentar"
-        onClick={fetchData}
-        className="h-[400px]"
-        iconClassName="bg-red-50"
-      />
+      <div className="flex justify-center items-center h-full">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-corteva-600"></div>
+      </div>
     )
   }
 
-  if (data.length === 0) {
+  if (chartData.datasets[0]?.data.every((value) => value === 0)) {
     return (
-      <EmptyState
-        icon={MapPin}
-        title="No hay zonas disponibles"
-        description="Crea zonas geográficas para organizar tus equipos y ver su rendimiento."
-        actionLabel="Crear zona"
-        actionHref="/admin/zonas/nuevo"
-        className="h-[400px]"
-      />
+      <div className="flex flex-col justify-center items-center h-full text-center">
+        <p className="text-muted-foreground">No hay datos suficientes para mostrar el gráfico.</p>
+        <p className="text-sm text-muted-foreground">Registra ventas y clientes para ver el rendimiento por zonas.</p>
+      </div>
     )
   }
 
-  return (
-    <ResponsiveContainer width="100%" height={400}>
-      <BarChart data={data}>
-        <CartesianGrid strokeDasharray="3 3" vertical={false} />
-        <XAxis dataKey="name" />
-        <YAxis />
-        <Tooltip
-          formatter={(value) => [`${value} goles`, "Goles Totales"]}
-          labelFormatter={(label) => `Zona: ${label}`}
-        />
-        <Bar dataKey="goles" name="Goles Totales" fill="#f59e0b" />
-      </BarChart>
-    </ResponsiveContainer>
-  )
+  return <Bar options={options} data={chartData} />
 }
