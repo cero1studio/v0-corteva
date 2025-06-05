@@ -59,21 +59,16 @@ export default function RankingAdminPage() {
 
         // Cargar equipos con sus zonas
         const { data: teamsData, error: teamsError } = await supabase.from("teams").select(`
-          id,
-          name,
-          zone_id,
-          zones (
-            id,
-            name
-          )
-        `)
+      id,
+      name,
+      zone_id,
+      zones (
+        id,
+        name
+      )
+    `)
 
         if (teamsError) throw new Error(`Error al cargar equipos: ${teamsError.message}`)
-
-        // Cargar productos para obtener los puntos
-        const { data: productsData, error: productsError } = await supabase.from("products").select("id, points")
-
-        if (productsError) throw new Error(`Error al cargar productos: ${productsError.message}`)
 
         // Cargar distribuidores
         const { data: distributorsData, error: distributorsError } = await supabase.from("distributors").select("*")
@@ -81,13 +76,13 @@ export default function RankingAdminPage() {
         if (distributorsError) throw new Error(`Error al cargar distribuidores: ${distributorsError.message}`)
 
         // Cargar configuración del sistema para obtener puntos por gol
-        const { data: configData, error: configError } = await supabase.from("system_config").select("*").single()
+        const { data: configData, error: configError } = await supabase
+          .from("system_config")
+          .select("value")
+          .eq("key", "puntos_para_gol")
+          .maybeSingle()
 
-        if (configError) {
-          console.warn("No se pudo cargar la configuración del sistema:", configError.message)
-        }
-
-        const pointsPerGoal = configData?.points_per_goal || 100
+        const pointsPerGoal = configData?.value ? Number(configData.value) : 100
 
         // Inicializar equipos con puntos en 0
         const processedTeams = teamsData.map((team) => {
@@ -107,51 +102,55 @@ export default function RankingAdminPage() {
           teamsMap.set(team.id, team)
         })
 
-        // Crear un mapa de productos para acceso rápido
-        const productsMap = new Map()
-        productsData.forEach((product) => {
-          productsMap.set(product.id, product)
-        })
-
-        // Cargar ventas en lotes para evitar problemas con columnas específicas
-        const { data: salesData, error: salesError } = await supabase.from("sales").select("*")
+        // 1. CARGAR Y PROCESAR VENTAS
+        const { data: salesData, error: salesError } = await supabase.from("sales").select("team_id, points")
 
         if (salesError) throw new Error(`Error al cargar ventas: ${salesError.message}`)
 
         // Procesar ventas y acumular puntos para cada equipo
         salesData.forEach((sale) => {
-          // Buscar el ID del equipo en el objeto de venta
-          let teamId = null
-          for (const key in sale) {
-            if (key.includes("team") || key.includes("equipo")) {
-              if (sale[key] && teamsMap.has(sale[key])) {
-                teamId = sale[key]
-                break
-              }
-            }
-          }
-
-          if (!teamId) return // Si no encontramos un ID de equipo válido, saltamos esta venta
-
-          // Buscar el producto y sus puntos
-          const productId = sale.product_id
-          const quantity = sale.quantity || 1
-
-          if (productId && productsMap.has(productId)) {
-            const product = productsMap.get(productId)
-            const points = (product.points || 0) * quantity
-
-            // Actualizar puntos del equipo
-            const team = teamsMap.get(teamId)
-            if (team) {
-              team.total_points += points
-              team.goals = Math.floor(team.total_points / pointsPerGoal)
-            }
+          if (sale.team_id && teamsMap.has(sale.team_id)) {
+            const team = teamsMap.get(sale.team_id)
+            team.total_points += sale.points || 0
           }
         })
 
-        // Convertir el mapa de equipos de vuelta a un array
-        const updatedTeams = Array.from(teamsMap.values())
+        // 2. CARGAR Y PROCESAR CLIENTES DE COMPETENCIA
+        const { data: clientsData, error: clientsError } = await supabase
+          .from("competitor_clients")
+          .select("team_id, points")
+
+        if (clientsError) throw new Error(`Error al cargar clientes: ${clientsError.message}`)
+
+        // Procesar clientes y acumular puntos (200 puntos por cliente por defecto)
+        clientsData.forEach((client) => {
+          if (client.team_id && teamsMap.has(client.team_id)) {
+            const team = teamsMap.get(client.team_id)
+            const clientPoints = client.points || 200 // 200 puntos por defecto si no está especificado
+            team.total_points += clientPoints
+          }
+        })
+
+        // 3. CARGAR Y PROCESAR TIROS LIBRES
+        const { data: freeKickData, error: freeKickError } = await supabase
+          .from("free_kick_goals")
+          .select("team_id, points")
+
+        if (freeKickError) throw new Error(`Error al cargar tiros libres: ${freeKickError.message}`)
+
+        // Procesar tiros libres y acumular puntos
+        freeKickData.forEach((freeKick) => {
+          if (freeKick.team_id && teamsMap.has(freeKick.team_id)) {
+            const team = teamsMap.get(freeKick.team_id)
+            team.total_points += freeKick.points || 0
+          }
+        })
+
+        // 4. CALCULAR GOLES FINALES PARA CADA EQUIPO
+        const updatedTeams = Array.from(teamsMap.values()).map((team) => ({
+          ...team,
+          goals: Math.floor(team.total_points / pointsPerGoal),
+        }))
 
         // Ordenar equipos por goles y luego por puntos totales
         const sortedTeams = [...updatedTeams].sort((a, b) => {
