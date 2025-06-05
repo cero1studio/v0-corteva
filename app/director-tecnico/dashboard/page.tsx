@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Trophy, Flag, User, Package, Users, TrendingUp } from "lucide-react"
+import { Trophy, Flag, User, Package, Users, TrendingUp, Zap } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
@@ -29,6 +29,7 @@ function DirectorTecnicoDashboardContent() {
   const [salesData, setSalesData] = useState<any[]>([])
   const [clientsData, setClientsData] = useState<any[]>([])
   const [teamsData, setTeamsData] = useState<any[]>([])
+  const [freeKickData, setFreeKickData] = useState<any[]>([])
   const [zoneRanking, setZoneRanking] = useState<any[]>([])
   const [nationalRanking, setNationalRanking] = useState<any[]>([])
   const [zoneData, setZoneData] = useState<any>(null)
@@ -217,7 +218,37 @@ function DirectorTecnicoDashboardContent() {
 
               setClientsData(enrichedClients)
 
-              // Calcular puntos totales por equipo (ventas + clientes)
+              // Cargar tiros libres de todos los equipos de la zona
+              const { data: freeKickDataFromDb, error: freeKickError } = await supabase
+                .from("free_kick_goals")
+                .select(`
+                  *,
+                  teams(id, name)
+                `)
+                .in("team_id", teamIds)
+                .order("created_at", { ascending: false })
+
+              if (freeKickError) {
+                console.error("Error cargando tiros libres:", freeKickError)
+              } else {
+                console.log("Tiros libres cargados:", freeKickDataFromDb?.length || 0)
+
+                // Enriquecer los datos de tiros libres
+                const enrichedFreeKicks =
+                  freeKickDataFromDb?.map((freeKick) => {
+                    const team = teams?.find((team) => team.id === freeKick.team_id)
+
+                    return {
+                      ...freeKick,
+                      team_name: team?.name || "Equipo",
+                      distributor_data: team?.distributors,
+                    }
+                  }) || []
+
+                setFreeKickData(enrichedFreeKicks)
+              }
+
+              // Calcular puntos totales por equipo (ventas + clientes + tiros libres)
               const teamsWithTotalGoals =
                 teams?.map((team) => {
                   // Obtener ventas del equipo
@@ -228,8 +259,21 @@ function DirectorTecnicoDashboardContent() {
                   const teamClients = enrichedClients?.filter((client) => client.team_id === team.id) || []
                   const clientsPoints = teamClients.length * 200 // 200 puntos por cliente
 
+                  // Obtener tiros libres del equipo
+                  const teamFreeKicks =
+                    freeKickData.map((freeKick) => {
+                      const team = teams?.find((team) => team.id === freeKick.team_id)
+
+                      return {
+                        ...freeKick,
+                        team_name: team?.name || "Equipo",
+                        distributor_data: team?.distributors,
+                      }
+                    }) || []
+                  const freeKickPoints = teamFreeKicks.reduce((sum, freeKick) => sum + (freeKick.points || 0), 0)
+
                   // Total de puntos y goles
-                  const totalPoints = salesPoints + clientsPoints
+                  const totalPoints = salesPoints + clientsPoints + freeKickPoints
                   const totalGoals = Math.floor(totalPoints / puntosParaGol)
 
                   return {
@@ -238,8 +282,10 @@ function DirectorTecnicoDashboardContent() {
                     calculated_total_goals: totalGoals,
                     sales_points: salesPoints,
                     clients_points: clientsPoints,
+                    free_kick_points: freeKickPoints,
                     sales_count: teamSales.length,
                     clients_count: teamClients.length,
+                    free_kick_count: teamFreeKicks.length,
                   }
                 }) || []
 
@@ -300,10 +346,12 @@ function DirectorTecnicoDashboardContent() {
   // Calcular estadísticas de la zona
   const puntosVentas = salesData.reduce((sum, sale) => sum + (sale.points || 0), 0)
   const puntosClientes = clientsData.length * 200 // 200 puntos por cliente
-  const totalPuntos = puntosVentas + puntosClientes
+  const puntosTirosLibres = freeKickData.reduce((sum, freeKick) => sum + (freeKick.points || 0), 0)
+  const totalPuntos = puntosVentas + puntosClientes + puntosTirosLibres
   const totalGoles = Math.floor(totalPuntos / puntosParaGol)
   const totalSales = salesData.length
   const totalClients = clientsData.length
+  const totalFreeKicks = freeKickData.length
   const totalTeams = teamsData.length
 
   return (
@@ -339,7 +387,7 @@ function DirectorTecnicoDashboardContent() {
         </div>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-5">
         <Card className="border-2 border-corteva-100">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Equipos en Zona</CardTitle>
@@ -371,6 +419,10 @@ function DirectorTecnicoDashboardContent() {
               <div className="flex justify-between text-xs text-muted-foreground">
                 <span>Puntos por clientes:</span>
                 <span>{puntosClientes.toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between text-xs text-muted-foreground">
+                <span>Puntos por tiros libres:</span>
+                <span>{puntosTirosLibres.toLocaleString()}</span>
               </div>
               <div className="border-t pt-1 flex justify-between text-xs font-medium">
                 <span>Total puntos:</span>
@@ -413,6 +465,23 @@ function DirectorTecnicoDashboardContent() {
             )}
           </CardContent>
         </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Tiros Libres</CardTitle>
+            <Zap className="h-4 w-4 text-yellow-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{totalFreeKicks}</div>
+            {totalFreeKicks > 0 ? (
+              <p className="text-xs text-muted-foreground mt-2">
+                Último tiro libre: {freeKickData[0] ? new Date(freeKickData[0].created_at).toLocaleDateString() : "N/A"}
+              </p>
+            ) : (
+              <p className="text-xs text-muted-foreground mt-2">No hay tiros libres adjudicados</p>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
       <Tabs defaultValue="ranking" className="space-y-4">
@@ -421,6 +490,7 @@ function DirectorTecnicoDashboardContent() {
           <TabsTrigger value="equipos">Equipos</TabsTrigger>
           <TabsTrigger value="ventas">Ventas</TabsTrigger>
           <TabsTrigger value="clientes">Clientes</TabsTrigger>
+          <TabsTrigger value="tiros-libres">Tiros Libres</TabsTrigger>
         </TabsList>
 
         <TabsContent value="ranking" className="space-y-4">
@@ -539,7 +609,7 @@ function DirectorTecnicoDashboardContent() {
                     </div>
                   </CardHeader>
                   <CardContent className="pt-0">
-                    <div className="grid grid-cols-3 gap-2 text-center">
+                    <div className="grid grid-cols-4 gap-2 text-center">
                       <div>
                         <div className="text-lg font-bold text-blue-600">{team.sales_count || 0}</div>
                         <div className="text-xs text-muted-foreground">Ventas</div>
@@ -547,6 +617,10 @@ function DirectorTecnicoDashboardContent() {
                       <div>
                         <div className="text-lg font-bold text-purple-600">{team.clients_count || 0}</div>
                         <div className="text-xs text-muted-foreground">Clientes</div>
+                      </div>
+                      <div>
+                        <div className="text-lg font-bold text-yellow-600">{team.free_kick_count || 0}</div>
+                        <div className="text-xs text-muted-foreground">T. Libres</div>
                       </div>
                       <div>
                         <div className="text-lg font-bold text-orange-600">
@@ -679,6 +753,45 @@ function DirectorTecnicoDashboardContent() {
                   icon="user"
                   title="No hay clientes registrados"
                   description="Cuando los equipos registren clientes, aparecerán aquí"
+                />
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="tiros-libres" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Zap className="h-5 w-5 text-yellow-500" />
+                Tiros Libres de la Zona
+              </CardTitle>
+              <CardDescription>Goles adjudicados por tiro libre en tu zona</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {freeKickData.length > 0 ? (
+                <div className="space-y-4">
+                  {freeKickData.slice(0, 8).map((freeKick) => (
+                    <div key={freeKick.id} className="flex justify-between items-center border-b pb-2">
+                      <div>
+                        <p className="font-medium">{freeKick.team_name}</p>
+                        <p className="text-sm text-muted-foreground">{freeKick.reason}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {new Date(freeKick.created_at).toLocaleDateString()}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-medium text-yellow-600">+{Math.floor(freeKick.points / 100)} goles</p>
+                        <p className="text-sm text-muted-foreground">{freeKick.points} puntos</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <EmptyState
+                  icon="zap"
+                  title="No hay tiros libres adjudicados"
+                  description="Cuando se adjudiquen tiros libres, aparecerán aquí"
                 />
               )}
             </CardContent>
