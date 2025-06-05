@@ -88,23 +88,29 @@ export async function getTeamRankingByZone(zoneId?: string) {
       const memberIds = teamMembers?.map((member) => member.id) || []
       console.log(`Miembros del equipo ${team.name}:`, memberIds)
 
-      // 1. OBTENER PUNTOS DE VENTAS (por representative_id)
+      // 1. OBTENER PUNTOS DE VENTAS - BUSCAR POR AMBOS CAMPOS
       let totalSalesPoints = 0
+
+      // Buscar ventas por representative_id (miembros del equipo)
       if (memberIds.length > 0) {
-        const { data: sales, error: salesError } = await supabase
+        const { data: salesByRep, error: salesRepError } = await supabase
           .from("sales")
           .select("points")
           .in("representative_id", memberIds)
 
-        if (!salesError && sales) {
-          totalSalesPoints = sales.reduce((sum, sale) => sum + (sale.points || 0), 0)
+        if (!salesRepError && salesByRep) {
+          totalSalesPoints += salesByRep.reduce((sum, sale) => sum + (sale.points || 0), 0)
         }
       }
 
-      // También obtener ventas directas por team_id (si existen)
-      const { data: teamSales } = await supabase.from("sales").select("points").eq("team_id", team.id)
-      if (teamSales) {
-        totalSalesPoints += teamSales.reduce((sum, sale) => sum + (sale.points || 0), 0)
+      // Buscar ventas directas por team_id
+      const { data: salesByTeam, error: salesTeamError } = await supabase
+        .from("sales")
+        .select("points")
+        .eq("team_id", team.id)
+
+      if (!salesTeamError && salesByTeam) {
+        totalSalesPoints += salesByTeam.reduce((sum, sale) => sum + (sale.points || 0), 0)
       }
 
       console.log(`Puntos de ventas para ${team.name}:`, totalSalesPoints)
@@ -359,20 +365,23 @@ export async function getUserTeamInfo(
 
     const memberIds = teamMembers?.map((member) => member.id) || []
 
-    // 1. CALCULAR PUNTOS DE VENTAS
+    // 1. CALCULAR PUNTOS DE VENTAS - BUSCAR POR AMBOS CAMPOS
     let totalPointsFromSales = 0
-    if (memberIds.length > 0) {
-      const { data: sales } = await supabase.from("sales").select("points").in("representative_id", memberIds)
 
-      if (sales) {
-        totalPointsFromSales = sales.reduce((sum, sale) => sum + (sale.points || 0), 0)
+    // Buscar ventas por representative_id (miembros del equipo)
+    if (memberIds.length > 0) {
+      const { data: salesByRep } = await supabase.from("sales").select("points").in("representative_id", memberIds)
+
+      if (salesByRep) {
+        totalPointsFromSales += salesByRep.reduce((sum, sale) => sum + (sale.points || 0), 0)
       }
     }
 
-    // También ventas directas por team_id
-    const { data: teamSales } = await supabase.from("sales").select("points").eq("team_id", team.id)
-    if (teamSales) {
-      totalPointsFromSales += teamSales.reduce((sum, sale) => sum + (sale.points || 0), 0)
+    // Buscar ventas directas por team_id
+    const { data: salesByTeam } = await supabase.from("sales").select("points").eq("team_id", team.id)
+
+    if (salesByTeam) {
+      totalPointsFromSales += salesByTeam.reduce((sum, sale) => sum + (sale.points || 0), 0)
     }
 
     // 2. CALCULAR PUNTOS DE CLIENTES
