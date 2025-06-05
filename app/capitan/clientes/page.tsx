@@ -7,10 +7,10 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Search, Users, Plus, Calendar, User, Building2 } from "lucide-react"
+import { getCompetitorClientsByTeam } from "@/app/actions/clients"
 import { toast } from "@/hooks/use-toast"
 import { EmptyState } from "@/components/empty-state"
 import Link from "next/link"
-import { supabase } from "@/lib/supabase/client"
 
 interface Client {
   id: string
@@ -25,66 +25,62 @@ export default function ClientesPage() {
   const [clients, setClients] = useState<Client[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
+  const [userTeamId, setUserTeamId] = useState<string | null>(null)
 
   useEffect(() => {
-    if (user?.id && user?.team_id) {
-      loadClients()
-    } else {
-      setLoading(false)
+    if (user?.id) {
+      loadUserTeamAndClients()
     }
-  }, [user?.id, user?.team_id])
+  }, [user?.id])
 
-  const loadClients = async () => {
+  const loadUserTeamAndClients = async () => {
     try {
       setLoading(true)
-      console.log("Cargando clientes para:")
-      console.log("- User ID:", user?.id)
-      console.log("- Team ID:", user?.team_id)
-      console.log("- User completo:", user)
+      console.log("Cargando datos para usuario:", user?.id)
 
-      if (!user?.id || !user?.team_id) {
-        console.log("Faltan datos del usuario")
+      // Primero obtener el team_id del usuario desde la base de datos
+      const { createServerSupabaseClient } = await import("@/lib/supabase/server")
+      const supabase = createServerSupabaseClient()
+
+      const { data: profile, error: profileError } = await supabase
+        .from("profiles")
+        .select("team_id, full_name")
+        .eq("id", user?.id)
+        .single()
+
+      console.log("Perfil del usuario:", profile)
+      console.log("Error del perfil:", profileError)
+
+      if (profileError || !profile?.team_id) {
+        console.log("No se pudo obtener el team_id del usuario")
+        toast({
+          title: "Error",
+          description: "No se pudo obtener la información del equipo",
+          variant: "destructive",
+        })
         setClients([])
         return
       }
 
-      // Buscar clientes por representative_id O por team_id
-      const { data: clientsByRep, error: errorRep } = await supabase
-        .from("competitor_clients")
-        .select("id, client_name, created_at, representative_id, team_id")
-        .eq("representative_id", user.id)
+      setUserTeamId(profile.team_id)
 
-      const { data: clientsByTeam, error: errorTeam } = await supabase
-        .from("competitor_clients")
-        .select("id, client_name, created_at, representative_id, team_id")
-        .eq("team_id", user.team_id)
+      // Ahora cargar los clientes usando la función existente
+      const result = await getCompetitorClientsByTeam(profile.team_id)
 
-      console.log("Clientes por representative_id:", clientsByRep)
-      console.log("Error rep:", errorRep)
-      console.log("Clientes por team_id:", clientsByTeam)
-      console.log("Error team:", errorTeam)
+      console.log("Resultado de clientes:", result)
 
-      // Combinar resultados y eliminar duplicados
-      const allClients = [...(clientsByRep || []), ...(clientsByTeam || [])]
-
-      // Eliminar duplicados basándose en el ID
-      const uniqueClients = allClients.filter(
-        (client, index, self) => index === self.findIndex((c) => c.id === client.id),
-      )
-
-      console.log("Clientes únicos encontrados:", uniqueClients.length)
-      console.log("Clientes:", uniqueClients)
-
-      if (errorRep || errorTeam) {
-        console.error("Errores:", { errorRep, errorTeam })
+      if (result.success) {
+        setClients(result.data || [])
+        console.log(`Clientes cargados: ${result.data?.length || 0}`)
+      } else {
+        console.error("Error al cargar clientes:", result.error)
         toast({
-          title: "Advertencia",
-          description: "Hubo algunos errores al cargar los clientes",
+          title: "Error",
+          description: "No se pudieron cargar los clientes: " + result.error,
           variant: "destructive",
         })
+        setClients([])
       }
-
-      setClients(uniqueClients)
     } catch (error) {
       console.error("Error general:", error)
       toast({
@@ -111,7 +107,6 @@ export default function ClientesPage() {
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-corteva-500 mx-auto"></div>
               <p className="mt-2 text-muted-foreground">Cargando clientes...</p>
               <p className="mt-1 text-sm text-gray-400">User ID: {user?.id || "No disponible"}</p>
-              <p className="mt-1 text-sm text-gray-400">Team ID: {user?.team_id || "No disponible"}</p>
             </div>
           </div>
         </div>
@@ -188,11 +183,10 @@ export default function ClientesPage() {
         <Card className="bg-yellow-50 border-yellow-200">
           <CardContent className="p-4">
             <p className="text-sm text-yellow-800">
-              <strong>Debug:</strong> User ID: {user?.id || "No disponible"} | Team ID:{" "}
-              {user?.team_id || "No disponible"} | Clientes encontrados: {clients.length} | Usuario:{" "}
-              {user?.full_name || "No disponible"}
+              <strong>Debug:</strong> User ID: {user?.id || "No disponible"} | Team ID: {userTeamId || "No disponible"}{" "}
+              | Clientes encontrados: {clients.length} | Usuario: {user?.full_name || "No disponible"}
             </p>
-            <Button onClick={loadClients} size="sm" className="mt-2 bg-yellow-600 hover:bg-yellow-700">
+            <Button onClick={loadUserTeamAndClients} size="sm" className="mt-2 bg-yellow-600 hover:bg-yellow-700">
               Recargar Clientes
             </Button>
           </CardContent>
