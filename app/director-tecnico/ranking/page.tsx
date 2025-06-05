@@ -10,16 +10,88 @@ import { EmptyState } from "@/components/empty-state"
 import { AuthGuard } from "@/components/auth-guard"
 import { TeamLevelBadge } from "@/components/team-level-badge"
 
+interface TeamRanking {
+  id: string
+  name: string
+  total_points: number
+  goals: number
+  distributor_name: string
+  zone_name: string
+}
+
 function DirectorTecnicoRankingContent() {
   const [loading, setLoading] = useState(true)
-  const [zoneTeams, setZoneTeams] = useState<any[]>([])
-  const [nationalTeams, setNationalTeams] = useState<any[]>([])
+  const [zoneTeams, setZoneTeams] = useState<TeamRanking[]>([])
+  const [nationalTeams, setNationalTeams] = useState<TeamRanking[]>([])
   const [userData, setUserData] = useState<any>(null)
   const { toast } = useToast()
 
   useEffect(() => {
     loadData()
   }, [])
+
+  async function calculateTeamPoints(teamId: string, memberIds: string[]) {
+    // 1. CALCULAR PUNTOS DE VENTAS
+    let totalSalesPoints = 0
+
+    // Buscar ventas por representative_id (miembros del equipo)
+    if (memberIds.length > 0) {
+      const { data: salesByRep } = await supabase.from("sales").select("points").in("representative_id", memberIds)
+
+      if (salesByRep) {
+        totalSalesPoints += salesByRep.reduce((sum, sale) => sum + (sale.points || 0), 0)
+      }
+    }
+
+    // Buscar ventas directas por team_id
+    const { data: salesByTeam } = await supabase.from("sales").select("points").eq("team_id", teamId)
+
+    if (salesByTeam) {
+      totalSalesPoints += salesByTeam.reduce((sum, sale) => sum + (sale.points || 0), 0)
+    }
+
+    // 2. CALCULAR PUNTOS DE CLIENTES (evitar duplicados)
+    let totalClientsPoints = 0
+    const countedClientIds = new Set()
+
+    if (memberIds.length > 0) {
+      const { data: clientsByRep } = await supabase
+        .from("competitor_clients")
+        .select("id, points")
+        .in("representative_id", memberIds)
+
+      if (clientsByRep) {
+        for (const client of clientsByRep) {
+          if (!countedClientIds.has(client.id)) {
+            totalClientsPoints += client.points || 200
+            countedClientIds.add(client.id)
+          }
+        }
+      }
+    }
+
+    // Clientes directos por team_id
+    const { data: clientsByTeam } = await supabase.from("competitor_clients").select("id, points").eq("team_id", teamId)
+
+    if (clientsByTeam) {
+      for (const client of clientsByTeam) {
+        if (!countedClientIds.has(client.id)) {
+          totalClientsPoints += client.points || 200
+          countedClientIds.add(client.id)
+        }
+      }
+    }
+
+    // 3. CALCULAR PUNTOS DE TIROS LIBRES
+    const { data: freeKicks } = await supabase.from("free_kick_goals").select("points").eq("team_id", teamId)
+
+    let totalFreeKickPoints = 0
+    if (freeKicks) {
+      totalFreeKickPoints = freeKicks.reduce((sum, freeKick) => sum + (freeKick.points || 0), 0)
+    }
+
+    return totalSalesPoints + totalClientsPoints + totalFreeKickPoints
+  }
 
   async function loadData() {
     try {
@@ -45,6 +117,15 @@ function DirectorTecnicoRankingContent() {
       if (profileError) throw profileError
       setUserData(profileData)
 
+      // Obtener configuración de puntos para gol
+      const { data: puntosConfig } = await supabase
+        .from("system_config")
+        .select("value")
+        .eq("key", "puntos_para_gol")
+        .maybeSingle()
+
+      const puntosParaGol = puntosConfig?.value ? Number(puntosConfig.value) : 100
+
       if (!profileData.zone_id) {
         toast({
           title: "Error",
@@ -54,45 +135,84 @@ function DirectorTecnicoRankingContent() {
         return
       }
 
-      // Obtener equipos de la zona ordenados por puntos
+      // Obtener equipos de la zona
       const { data: zoneTeamsData, error: zoneTeamsError } = await supabase
         .from("teams")
         .select(`
           id, 
-          name, 
-          total_points,
-          distributor_id,
-          distributors(name, logo_url)
+          name,
+          distributors(name),
+          zones(name)
         `)
         .eq("zone_id", profileData.zone_id)
-        .order("total_points", { ascending: false })
 
       if (zoneTeamsError) {
         console.error("Error al obtener equipos de zona:", zoneTeamsError)
       } else {
-        console.log("Equipos de zona cargados:", zoneTeamsData?.length || 0)
-        setZoneTeams(zoneTeamsData || [])
+        // Calcular puntos reales para cada equipo de la zona
+        const zoneRanking: TeamRanking[] = []
+
+        for (const team of zoneTeamsData || []) {
+          // Obtener miembros del equipo
+          const { data: teamMembers } = await supabase.from("profiles").select("id").eq("team_id", team.id)
+
+          const memberIds = teamMembers?.map((member) => member.id) || []
+          const totalPoints = await calculateTeamPoints(team.id, memberIds)
+          const goals = Math.floor(totalPoints / puntosParaGol)
+
+          zoneRanking.push({
+            id: team.id,
+            name: team.name,
+            total_points: totalPoints,
+            goals: goals,
+            distributor_name: team.distributors?.name || "Sin distribuidor",
+            zone_name: team.zones?.name || "Sin zona",
+          })
+        }
+
+        // Ordenar por puntos totales
+        const sortedZoneRanking = zoneRanking.sort((a, b) => b.total_points - a.total_points)
+        setZoneTeams(sortedZoneRanking)
+        console.log("Equipos de zona cargados:", sortedZoneRanking.length)
       }
 
       // Obtener ranking nacional (todos los equipos)
-      const { data: nationalTeamsData, error: nationalTeamsError } = await supabase
-        .from("teams")
-        .select(`
+      const { data: nationalTeamsData, error: nationalTeamsError } = await supabase.from("teams").select(`
           id, 
-          name, 
-          total_points,
-          distributor_id,
+          name,
           zone_id,
-          distributors(name, logo_url),
+          distributors(name),
           zones(name)
         `)
-        .order("total_points", { ascending: false })
 
       if (nationalTeamsError) {
         console.error("Error al obtener equipos nacionales:", nationalTeamsError)
       } else {
-        console.log("Equipos nacionales cargados:", nationalTeamsData?.length || 0)
-        setNationalTeams(nationalTeamsData || [])
+        // Calcular puntos reales para cada equipo nacional
+        const nationalRanking: TeamRanking[] = []
+
+        for (const team of nationalTeamsData || []) {
+          // Obtener miembros del equipo
+          const { data: teamMembers } = await supabase.from("profiles").select("id").eq("team_id", team.id)
+
+          const memberIds = teamMembers?.map((member) => member.id) || []
+          const totalPoints = await calculateTeamPoints(team.id, memberIds)
+          const goals = Math.floor(totalPoints / puntosParaGol)
+
+          nationalRanking.push({
+            id: team.id,
+            name: team.name,
+            total_points: totalPoints,
+            goals: goals,
+            distributor_name: team.distributors?.name || "Sin distribuidor",
+            zone_name: team.zones?.name || "Sin zona",
+          })
+        }
+
+        // Ordenar por puntos totales
+        const sortedNationalRanking = nationalRanking.sort((a, b) => b.total_points - a.total_points)
+        setNationalTeams(sortedNationalRanking)
+        console.log("Equipos nacionales cargados:", sortedNationalRanking.length)
       }
     } catch (error: any) {
       console.error("Error al cargar datos:", error)
@@ -152,6 +272,9 @@ function DirectorTecnicoRankingContent() {
                           Distribuidor
                         </th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Goles
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                           Puntos
                         </th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -168,11 +291,12 @@ function DirectorTecnicoRankingContent() {
                             </div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{team.name}</td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                            {team.distributors?.name || "Sin distribuidor"}
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{team.distributor_name}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-green-600 font-semibold">
+                            {team.goals}
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-semibold">
-                            {team.total_points || 0}
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-blue-600 font-semibold">
+                            {team.total_points}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                             <TeamLevelBadge position={index + 1} />
@@ -221,6 +345,9 @@ function DirectorTecnicoRankingContent() {
                           Distribuidor
                         </th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Goles
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                           Puntos
                         </th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -237,14 +364,13 @@ function DirectorTecnicoRankingContent() {
                             </div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{team.name}</td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                            {team.zones?.name || "Sin zona"}
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{team.zone_name}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{team.distributor_name}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-green-600 font-semibold">
+                            {team.goals}
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                            {team.distributors?.name || "Sin distribuidor"}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-semibold">
-                            {team.total_points || 0}
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-blue-600 font-semibold">
+                            {team.total_points}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                             <TeamLevelBadge position={index + 1} />
