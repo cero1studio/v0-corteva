@@ -36,6 +36,7 @@ export default function TirosLibresPage() {
   const [freeKickGoals, setFreeKickGoals] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
+  const [deleting, setDeleting] = useState<string | null>(null)
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
 
   // Cargar zonas al montar el componente
@@ -100,6 +101,29 @@ export default function TirosLibresPage() {
       setMessage({ type: "error", text: "Error inesperado" })
     } finally {
       setSubmitting(false)
+    }
+  }
+
+  const handleDelete = async (id: string) => {
+    setDeleting(id)
+    setMessage(null)
+
+    try {
+      const result = await deleteFreeKickGoal(id)
+
+      if (result.success) {
+        setMessage({ type: "success", text: "Tiro libre eliminado exitosamente" })
+        // Recargar los datos
+        const goalsData = await getFreeKickGoals()
+        setFreeKickGoals(goalsData)
+      } else {
+        setMessage({ type: "error", text: result.error || "Error al eliminar tiro libre" })
+      }
+    } catch (error) {
+      console.error("Error deleting goal:", error)
+      setMessage({ type: "error", text: "Error inesperado al eliminar" })
+    } finally {
+      setDeleting(null)
     }
   }
 
@@ -263,11 +287,18 @@ export default function TirosLibresPage() {
                       Por {goal.profiles?.full_name || "Admin"} • {new Date(goal.created_at).toLocaleDateString()}
                     </p>
                   </div>
-                  <form action={deleteFreeKickGoal.bind(null, goal.id)}>
-                    <Button variant="ghost" size="sm" type="submit">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleDelete(goal.id)}
+                    disabled={deleting === goal.id}
+                  >
+                    {deleting === goal.id ? (
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-900"></div>
+                    ) : (
                       <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </form>
+                    )}
+                  </Button>
                 </div>
               ))
             )}
