@@ -102,12 +102,12 @@ export default function RankingAdminPage() {
           teamsMap.set(team.id, team)
         })
 
-        // 1. CARGAR Y PROCESAR VENTAS
+        // 1. CARGAR Y PROCESAR VENTAS - CALCULAR GOLES DE VENTAS
         const { data: salesData, error: salesError } = await supabase.from("sales").select("team_id, points")
 
         if (salesError) throw new Error(`Error al cargar ventas: ${salesError.message}`)
 
-        // Procesar ventas y acumular puntos para cada equipo
+        // Procesar ventas y calcular goles por ventas
         salesData.forEach((sale) => {
           if (sale.team_id && teamsMap.has(sale.team_id)) {
             const team = teamsMap.get(sale.team_id)
@@ -115,42 +115,67 @@ export default function RankingAdminPage() {
           }
         })
 
-        // 2. CARGAR Y PROCESAR CLIENTES DE COMPETENCIA
+        // Calcular goles de ventas para cada equipo
+        teamsMap.forEach((team) => {
+          const salesGoals = Math.floor(team.total_points / pointsPerGoal)
+          team.goals += salesGoals
+        })
+
+        // 2. CARGAR Y PROCESAR CLIENTES DE COMPETENCIA - CALCULAR GOLES DE CLIENTES
         const { data: clientsData, error: clientsError } = await supabase
           .from("competitor_clients")
           .select("team_id, points")
 
         if (clientsError) throw new Error(`Error al cargar clientes: ${clientsError.message}`)
 
-        // Procesar clientes y acumular puntos (200 puntos por cliente por defecto)
+        // Procesar clientes y calcular goles por clientes
+        const clientsPointsByTeam = new Map()
         clientsData.forEach((client) => {
-          if (client.team_id && teamsMap.has(client.team_id)) {
-            const team = teamsMap.get(client.team_id)
+          if (client.team_id) {
             const clientPoints = client.points || 200 // 200 puntos por defecto si no está especificado
-            team.total_points += clientPoints
+            const currentPoints = clientsPointsByTeam.get(client.team_id) || 0
+            clientsPointsByTeam.set(client.team_id, currentPoints + clientPoints)
           }
         })
 
-        // 3. CARGAR Y PROCESAR TIROS LIBRES
+        // Agregar goles de clientes a cada equipo
+        clientsPointsByTeam.forEach((totalClientPoints, teamId) => {
+          if (teamsMap.has(teamId)) {
+            const team = teamsMap.get(teamId)
+            const clientGoals = Math.floor(totalClientPoints / pointsPerGoal)
+            team.goals += clientGoals
+            team.total_points += totalClientPoints
+          }
+        })
+
+        // 3. CARGAR Y PROCESAR TIROS LIBRES - SUMAR GOLES DIRECTOS
         const { data: freeKickData, error: freeKickError } = await supabase
           .from("free_kick_goals")
           .select("team_id, points")
 
         if (freeKickError) throw new Error(`Error al cargar tiros libres: ${freeKickError.message}`)
 
-        // Procesar tiros libres y acumular puntos
+        // Procesar tiros libres - estos ya vienen como puntos que equivalen a goles (100 puntos = 1 gol)
+        const freeKickGoalsByTeam = new Map()
         freeKickData.forEach((freeKick) => {
-          if (freeKick.team_id && teamsMap.has(freeKick.team_id)) {
-            const team = teamsMap.get(freeKick.team_id)
-            team.total_points += freeKick.points || 0
+          if (freeKick.team_id) {
+            const freeKickGoals = Math.floor((freeKick.points || 0) / pointsPerGoal)
+            const currentGoals = freeKickGoalsByTeam.get(freeKick.team_id) || 0
+            freeKickGoalsByTeam.set(freeKick.team_id, currentGoals + freeKickGoals)
           }
         })
 
-        // 4. CALCULAR GOLES FINALES PARA CADA EQUIPO
-        const updatedTeams = Array.from(teamsMap.values()).map((team) => ({
-          ...team,
-          goals: Math.floor(team.total_points / pointsPerGoal),
-        }))
+        // Agregar goles de tiros libres a cada equipo
+        freeKickGoalsByTeam.forEach((totalFreeKickGoals, teamId) => {
+          if (teamsMap.has(teamId)) {
+            const team = teamsMap.get(teamId)
+            team.goals += totalFreeKickGoals
+            team.total_points += totalFreeKickGoals * pointsPerGoal // Agregar puntos equivalentes
+          }
+        })
+
+        // 4. OBTENER EQUIPOS FINALES CON TODOS LOS GOLES SUMADOS
+        const updatedTeams = Array.from(teamsMap.values())
 
         // Ordenar equipos por goles y luego por puntos totales
         const sortedTeams = [...updatedTeams].sort((a, b) => {
