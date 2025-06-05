@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
+import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
 import { supabase } from "@/lib/supabase/client"
 import { Skeleton } from "@/components/ui/skeleton"
 import { AlertCircle, MapPin } from "lucide-react"
@@ -23,7 +23,7 @@ export function AdminZonesChart() {
       setLoading(true)
 
       // Obtener zonas
-      const { data: zones, error: zonesError } = await supabase.from("zones").select("id, name")
+      const { data: zones, error: zonesError } = await supabase.from("zones").select("id, name").order("name")
 
       if (zonesError) throw zonesError
 
@@ -33,67 +33,75 @@ export function AdminZonesChart() {
         return
       }
 
-      // Para cada zona, obtener métricas relevantes
+      // Obtener configuración de puntos para gol
+      const { data: puntosConfig } = await supabase
+        .from("system_config")
+        .select("value")
+        .eq("key", "puntos_para_gol")
+        .maybeSingle()
+
+      const puntosParaGol = puntosConfig?.value ? Number(puntosConfig.value) : 100
+
+      // Para cada zona, calcular goles totales (usando la misma lógica del ranking)
       const zoneData = await Promise.all(
         zones.map(async (zone) => {
           // Obtener equipos de la zona
-          const { data: teamIds, error: teamIdsError } = await supabase
+          const { data: teams, error: teamsError } = await supabase
             .from("teams")
-            .select("id")
+            .select("id, name")
             .eq("zone_id", zone.id)
 
-          if (teamIdsError) throw teamIdsError
+          if (teamsError) throw teamsError
 
           let totalGoals = 0
-          let totalSales = 0
-          let totalClients = 0
-          let totalFreeKicks = 0
 
-          if (teamIds.length > 0) {
-            const teamIdList = teamIds.map((t) => t.id)
+          for (const team of teams || []) {
+            // Obtener miembros del equipo
+            const { data: teamMembers } = await supabase.from("profiles").select("id").eq("team_id", team.id)
 
-            // Obtener goles de ventas
-            const { data: sales, error: salesError } = await supabase
-              .from("sales")
-              .select("points")
-              .in("team_id", teamIdList)
+            const memberIds = teamMembers?.map((member) => member.id) || []
 
-            if (salesError) throw salesError
+            // Obtener puntos de ventas
+            let totalPointsFromSales = 0
+            if (memberIds.length > 0) {
+              const { data: sales } = await supabase.from("sales").select("points").in("representative_id", memberIds)
 
-            if (sales && sales.length > 0) {
-              totalGoals = sales.reduce((sum, sale) => sum + (sale.points || 0), 0)
-              totalSales = sales.length
+              if (sales) {
+                totalPointsFromSales = sales.reduce((sum, sale) => sum + (sale.points || 0), 0)
+              }
             }
 
-            // Obtener tiros libres anotados
-            const { data: freeKicks, error: freeKicksError } = await supabase
-              .from("free_kick_goals")
-              .select("goals")
-              .in("team_id", teamIdList)
+            // Obtener clientes del equipo
+            let totalClients = 0
+            if (memberIds.length > 0) {
+              const { count: clientsCount } = await supabase
+                .from("competitor_clients")
+                .select("*", { count: "exact", head: true })
+                .in("representative_id", memberIds)
 
-            if (!freeKicksError && freeKicks && freeKicks.length > 0) {
-              const freeKickGoals = freeKicks.reduce((sum, fk) => sum + (fk.goals || 0), 0)
-              totalGoals += freeKickGoals
-              totalFreeKicks = freeKicks.length
-            }
-
-            // Obtener clientes registrados
-            const { count: clientsCount, error: clientsError } = await supabase
-              .from("clients")
-              .select("*", { count: "exact", head: true })
-              .in("team_id", teamIdList)
-
-            if (!clientsError) {
               totalClients = clientsCount || 0
             }
+
+            // Obtener tiros libres del equipo
+            const { data: freeKicks } = await supabase.from("free_kick_goals").select("goals").eq("team_id", team.id)
+
+            let freeKickGoals = 0
+            if (freeKicks) {
+              freeKickGoals = freeKicks.reduce((sum, fk) => sum + (fk.goals || 0), 0)
+            }
+
+            // Calcular goles del equipo
+            const clientsPoints = totalClients * 200
+            const finalTotalPoints = totalPointsFromSales + clientsPoints
+            const goalsFromPoints = Math.floor(finalTotalPoints / puntosParaGol)
+            const teamGoals = goalsFromPoints + freeKickGoals
+
+            totalGoals += teamGoals
           }
 
           return {
             name: zone.name,
             goles: totalGoals,
-            ventas: totalSales,
-            clientes: totalClients,
-            tirosLibres: totalFreeKicks,
           }
         }),
       )
@@ -147,34 +155,12 @@ export function AdminZonesChart() {
       <BarChart data={data}>
         <CartesianGrid strokeDasharray="3 3" vertical={false} />
         <XAxis dataKey="name" />
-        <YAxis yAxisId="left" orientation="left" />
-        <YAxis yAxisId="right" orientation="right" />
+        <YAxis />
         <Tooltip
-          formatter={(value, name) => {
-            const labels = {
-              goles: "Goles Totales",
-              ventas: "Ventas Registradas",
-              clientes: "Clientes Registrados",
-              tirosLibres: "Tiros Libres Anotados",
-            }
-            return [value, labels[name as keyof typeof labels] || name]
-          }}
+          formatter={(value) => [`${value} goles`, "Goles Totales"]}
+          labelFormatter={(label) => `Zona: ${label}`}
         />
-        <Legend
-          formatter={(value) => {
-            const labels = {
-              goles: "Goles Totales",
-              ventas: "Ventas",
-              clientes: "Clientes",
-              tirosLibres: "Tiros Libres",
-            }
-            return labels[value as keyof typeof labels] || value
-          }}
-        />
-        <Bar yAxisId="left" dataKey="goles" name="goles" fill="#f59e0b" />
-        <Bar yAxisId="right" dataKey="ventas" name="ventas" fill="#4ade80" />
-        <Bar yAxisId="right" dataKey="clientes" name="clientes" fill="#3b82f6" />
-        <Bar yAxisId="right" dataKey="tirosLibres" name="tirosLibres" fill="#ec4899" />
+        <Bar dataKey="goles" name="Goles Totales" fill="#f59e0b" />
       </BarChart>
     </ResponsiveContainer>
   )
