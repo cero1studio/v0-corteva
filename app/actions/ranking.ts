@@ -86,33 +86,40 @@ export async function getTeamRankingByZone(zoneId?: string) {
 
       const memberIds = teamMembers?.map((member) => member.id) || []
 
-      // Obtener todas las ventas de los miembros del equipo
+      // 1. OBTENER PUNTOS DE VENTAS
       const { data: sales, error: salesError } = await supabase
         .from("sales")
         .select("points")
         .in("representative_id", memberIds.length > 0 ? memberIds : ["no-members"])
 
-      let totalPoints = 0
+      let totalSalesPoints = 0
       if (!salesError && sales) {
-        totalPoints = sales.reduce((sum, sale) => sum + (sale.points || 0), 0)
+        totalSalesPoints = sales.reduce((sum, sale) => sum + (sale.points || 0), 0)
       }
 
-      // Obtener clientes del equipo (a través de los representantes)
-      let totalClients = 0
+      // 2. OBTENER PUNTOS DE CLIENTES DE COMPETENCIA
+      let totalClientsPoints = 0
       if (memberIds.length > 0) {
-        const { count: clientsCount } = await supabase
+        const { data: clients } = await supabase
           .from("competitor_clients")
-          .select("*", { count: "exact", head: true })
+          .select("points")
           .in("representative_id", memberIds)
 
-        totalClients = clientsCount || 0
+        if (clients) {
+          totalClientsPoints = clients.reduce((sum, client) => sum + (client.points || 200), 0)
+        }
       }
 
-      // Sumar puntos de clientes (200 puntos por cliente)
-      const clientsPoints = totalClients * 200
-      const finalTotalPoints = totalPoints + clientsPoints
+      // 3. OBTENER PUNTOS DE TIROS LIBRES
+      const { data: freeKicks } = await supabase.from("free_kick_goals").select("points").eq("team_id", team.id)
 
-      // Calcular goles
+      let totalFreeKickPoints = 0
+      if (freeKicks) {
+        totalFreeKickPoints = freeKicks.reduce((sum, freeKick) => sum + (freeKick.points || 0), 0)
+      }
+
+      // 4. SUMAR TODOS LOS PUNTOS Y CALCULAR GOLES
+      const finalTotalPoints = totalSalesPoints + totalClientsPoints + totalFreeKickPoints
       const goals = Math.floor(finalTotalPoints / puntosParaGol)
 
       ranking.push({
@@ -329,7 +336,7 @@ export async function getUserTeamInfo(
 
     const memberIds = teamMembers?.map((member) => member.id) || []
 
-    // Calcular puntos reales del equipo
+    // 1. CALCULAR PUNTOS DE VENTAS
     const { data: sales } = await supabase
       .from("sales")
       .select("points")
@@ -340,19 +347,29 @@ export async function getUserTeamInfo(
       totalPointsFromSales = sales.reduce((sum, sale) => sum + (sale.points || 0), 0)
     }
 
-    // Obtener clientes del equipo
-    let totalClients = 0
+    // 2. CALCULAR PUNTOS DE CLIENTES
+    let totalPointsFromClients = 0
     if (memberIds.length > 0) {
-      const { count: clientsCount } = await supabase
+      const { data: clients } = await supabase
         .from("competitor_clients")
-        .select("*", { count: "exact", head: true })
+        .select("points")
         .in("representative_id", memberIds)
 
-      totalClients = clientsCount || 0
+      if (clients) {
+        totalPointsFromClients = clients.reduce((sum, client) => sum + (client.points || 200), 0)
+      }
     }
 
-    const totalPointsFromClients = totalClients * 200
-    const totalPoints = totalPointsFromSales + totalPointsFromClients
+    // 3. CALCULAR PUNTOS DE TIROS LIBRES
+    const { data: freeKicks } = await supabase.from("free_kick_goals").select("points").eq("team_id", team.id)
+
+    let totalPointsFromFreeKicks = 0
+    if (freeKicks) {
+      totalPointsFromFreeKicks = freeKicks.reduce((sum, freeKick) => sum + (freeKick.points || 0), 0)
+    }
+
+    // 4. SUMAR TODOS LOS PUNTOS
+    const totalPoints = totalPointsFromSales + totalPointsFromClients + totalPointsFromFreeKicks
 
     // Obtener configuración de puntos para gol
     const { data: puntosConfig } = await supabase
