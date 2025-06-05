@@ -1,6 +1,6 @@
 "use server"
 
-import { createServerSupabaseClient } from "@/lib/supabase/server"
+import { adminSupabase } from "@/lib/supabase/server"
 import { revalidatePath } from "next/cache"
 
 export interface FreeKickGoal {
@@ -23,8 +23,6 @@ export interface FreeKickGoal {
 }
 
 export async function createFreeKickGoal(formData: FormData) {
-  const supabase = createServerSupabaseClient()
-
   const team_id = formData.get("team_id") as string
   const goals = formData.get("goals") as string
   const reason = formData.get("reason") as string
@@ -44,25 +42,14 @@ export async function createFreeKickGoal(formData: FormData) {
     // Convertir goles a puntos (1 gol = 100 puntos)
     const points = finalGoals * 100
 
-    // Obtener el usuario actual
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser()
-
-    let userId = null
-    if (user && !userError) {
-      userId = user.id
-    }
-
-    const { data, error } = await supabase
+    const { data, error } = await adminSupabase
       .from("free_kick_goals")
       .insert([
         {
           team_id: team_id,
           points: points,
           reason: reason,
-          created_by: userId,
+          created_by: null, // Usar null para evitar problemas de UUID
         },
       ])
       .select()
@@ -81,9 +68,8 @@ export async function createFreeKickGoal(formData: FormData) {
 }
 
 export async function getFreeKickGoals() {
-  const supabase = createServerSupabaseClient()
   try {
-    const { data: goals, error } = await supabase.from("free_kick_goals").select(`
+    const { data: goals, error } = await adminSupabase.from("free_kick_goals").select(`
         id,
         team_id,
         points,
@@ -115,9 +101,8 @@ export async function getFreeKickGoals() {
 }
 
 export async function getFreeKickGoalsByTeam(teamId: string) {
-  const supabase = createServerSupabaseClient()
   try {
-    const { data, error } = await supabase
+    const { data, error } = await adminSupabase
       .from("free_kick_goals")
       .select(`
         id,
@@ -143,10 +128,8 @@ export async function getFreeKickGoalsByTeam(teamId: string) {
 }
 
 export async function deleteFreeKickGoal(id: string) {
-  const supabase = createServerSupabaseClient()
-
   try {
-    const { error } = await supabase.from("free_kick_goals").delete().eq("id", id)
+    const { error } = await adminSupabase.from("free_kick_goals").delete().eq("id", id)
 
     if (error) throw error
 
@@ -159,9 +142,11 @@ export async function deleteFreeKickGoal(id: string) {
 }
 
 export async function getZones() {
-  const supabase = createServerSupabaseClient()
   try {
-    const { data: zones, error } = await supabase.from("zones").select("id, name").order("name", { ascending: true })
+    const { data: zones, error } = await adminSupabase
+      .from("zones")
+      .select("id, name")
+      .order("name", { ascending: true })
 
     if (error) {
       console.error("Error fetching zones:", error)
@@ -176,9 +161,8 @@ export async function getZones() {
 }
 
 export async function getTeamsByZone(zoneId: string) {
-  const supabase = createServerSupabaseClient()
   try {
-    const { data: teams, error } = await supabase
+    const { data: teams, error } = await adminSupabase
       .from("teams")
       .select("id, name")
       .eq("zone_id", zoneId)
