@@ -405,7 +405,7 @@ function DirectorTecnicoDashboardContent() {
                   Zona: {zoneData?.name || "N/A"}
                 </div>
               </div>
-              <p className="text-muted-foreground mt-1">Supervisando {totalTeams} equipos en tu zona</p>
+              <div className="text-muted-foreground mt-1">Supervisando {totalTeams} equipos en tu zona</div>
             </div>
           </div>
         </div>
@@ -421,7 +421,7 @@ function DirectorTecnicoDashboardContent() {
               </div>
               <div className="flex-1">
                 <h3 className="font-bold text-corteva-900 mb-2 text-lg">⚽ Tiro libre sin arquero</h3>
-                <p className="text-corteva-700 leading-relaxed">{retoActual}</p>
+                <div className="text-corteva-700 leading-relaxed">{retoActual}</div>
               </div>
             </div>
           </CardContent>
@@ -436,7 +436,7 @@ function DirectorTecnicoDashboardContent() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{totalTeams}</div>
-            <p className="text-xs text-muted-foreground mt-2">Equipos bajo tu supervisión</p>
+            <div className="text-xs text-muted-foreground mt-2">Equipos bajo tu supervisión</div>
           </CardContent>
           <CardFooter>
             <Button asChild variant="ghost" size="sm" className="w-full">
@@ -481,11 +481,11 @@ function DirectorTecnicoDashboardContent() {
           <CardContent>
             <div className="text-2xl font-bold">{totalSales}</div>
             {totalSales > 0 ? (
-              <p className="text-xs text-muted-foreground mt-2">
+              <div className="text-xs text-muted-foreground mt-2">
                 Última venta: {salesData[0] ? new Date(salesData[0].created_at).toLocaleDateString() : "N/A"}
-              </p>
+              </div>
             ) : (
-              <p className="text-xs text-muted-foreground mt-2">No hay ventas registradas</p>
+              <div className="text-xs text-muted-foreground mt-2">No hay ventas registradas</div>
             )}
           </CardContent>
         </Card>
@@ -498,11 +498,11 @@ function DirectorTecnicoDashboardContent() {
           <CardContent>
             <div className="text-2xl font-bold">{totalClients}</div>
             {totalClients > 0 ? (
-              <p className="text-xs text-muted-foreground mt-2">
+              <div className="text-xs text-muted-foreground mt-2">
                 Último registro: {clientsData[0] ? new Date(clientsData[0].created_at).toLocaleDateString() : "N/A"}
-              </p>
+              </div>
             ) : (
-              <p className="text-xs text-muted-foreground mt-2">No hay clientes registrados</p>
+              <div className="text-xs text-muted-foreground mt-2">No hay clientes registrados</div>
             )}
           </CardContent>
         </Card>
@@ -515,11 +515,11 @@ function DirectorTecnicoDashboardContent() {
           <CardContent>
             <div className="text-2xl font-bold">{totalFreeKicks}</div>
             {totalFreeKicks > 0 ? (
-              <p className="text-xs text-muted-foreground mt-2">
+              <div className="text-xs text-muted-foreground mt-2">
                 Último tiro libre: {freeKickData[0] ? new Date(freeKickData[0].created_at).toLocaleDateString() : "N/A"}
-              </p>
+              </div>
             ) : (
-              <p className="text-xs text-muted-foreground mt-2">No hay tiros libres adjudicados</p>
+              <div className="text-xs text-muted-foreground mt-2">No hay tiros libres adjudicados</div>
             )}
           </CardContent>
         </Card>
@@ -557,13 +557,13 @@ function DirectorTecnicoDashboardContent() {
                             {team.position === 3 && <span className="text-lg">🥉</span>}
                           </div>
                           <div>
-                            <p className="font-medium text-sm">{team.team_name}</p>
-                            <p className="text-xs text-muted-foreground">{team.distributor_name}</p>
+                            <div className="font-medium text-sm">{team.team_name}</div>
+                            <div className="text-xs text-muted-foreground">{team.distributor_name}</div>
                           </div>
                         </div>
                         <div className="text-right">
-                          <p className="font-medium text-green-600 text-sm">{team.goals} goles</p>
-                          <p className="text-xs text-muted-foreground">{team.total_points.toLocaleString()} pts</p>
+                          <div className="font-medium text-green-600 text-sm">{team.goals} goles</div>
+                          <div className="text-xs text-muted-foreground">{team.total_points.toLocaleString()} pts</div>
                         </div>
                       </div>
                     ))}
@@ -599,13 +599,13 @@ function DirectorTecnicoDashboardContent() {
                             {team.position === 3 && <span className="text-lg">🥉</span>}
                           </div>
                           <div>
-                            <p className="font-medium text-sm">{team.team_name}</p>
-                            <p className="text-xs text-muted-foreground">{team.zone_name}</p>
+                            <div className="font-medium text-sm">{team.team_name}</div>
+                            <div className="text-xs text-muted-foreground">{team.zone_name}</div>
                           </div>
                         </div>
                         <div className="text-right">
-                          <p className="font-medium text-green-600 text-sm">{team.goals} goles</p>
-                          <p className="text-xs text-muted-foreground">{team.total_points.toLocaleString()} pts</p>
+                          <div className="font-medium text-green-600 text-sm">{team.goals} goles</div>
+                          <div className="text-xs text-muted-foreground">{team.total_points.toLocaleString()} pts</div>
                         </div>
                       </div>
                     ))}
@@ -732,18 +732,18 @@ function DirectorTecnicoDashboardContent() {
                             />
                           </div>
                           <div>
-                            <p className="font-medium">{sale.products?.name || "Producto"}</p>
-                            <p className="text-sm text-muted-foreground">
+                            <div className="font-medium">{sale.products?.name || "Producto"}</div>
+                            <div className="text-sm text-muted-foreground">
                               {sale.representative_name} - {sale.team_name}
-                            </p>
-                            <p className="text-xs text-muted-foreground">
+                            </div>
+                            <div className="text-xs text-muted-foreground">
                               {new Date(sale.created_at).toLocaleDateString()}
-                            </p>
+                            </div>
                           </div>
                         </div>
                         <div className="text-right">
-                          <p className="font-medium text-green-600">+{sale.points || 0} puntos</p>
-                          <p className="text-sm text-muted-foreground">Cantidad: {sale.quantity}</p>
+                          <div className="font-medium text-green-600">+{sale.points || 0} puntos</div>
+                          <div className="text-sm text-muted-foreground">Cantidad: {sale.quantity}</div>
                         </div>
                       </div>
                     ))}
@@ -775,13 +775,13 @@ function DirectorTecnicoDashboardContent() {
                   {clientsData.slice(0, 8).map((client) => (
                     <div key={client.id} className="flex justify-between items-center border-b pb-2">
                       <div>
-                        <p className="font-medium">{client.ganadero_name || client.client_name || "Cliente"}</p>
-                        <p className="text-sm text-muted-foreground">
+                        <div className="font-medium">{client.ganadero_name || client.client_name || "Cliente"}</div>
+                        <div className="text-sm text-muted-foreground">
                           Registrado por: {client.representative_name} - {client.team_name}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
+                        </div>
+                        <div className="text-xs text-muted-foreground">
                           {new Date(client.created_at).toLocaleDateString()}
-                        </p>
+                        </div>
                       </div>
                       <div className="text-right">
                         <Badge variant="outline">{client.producto_anterior || "Competidor no especificado"}</Badge>
@@ -815,15 +815,15 @@ function DirectorTecnicoDashboardContent() {
                   {freeKickData.slice(0, 8).map((freeKick) => (
                     <div key={freeKick.id} className="flex justify-between items-center border-b pb-2">
                       <div>
-                        <p className="font-medium">{freeKick.team_name}</p>
-                        <p className="text-sm text-muted-foreground">{freeKick.reason}</p>
-                        <p className="text-xs text-muted-foreground">
+                        <div className="font-medium">{freeKick.team_name}</div>
+                        <div className="text-sm text-muted-foreground">{freeKick.reason}</div>
+                        <div className="text-xs text-muted-foreground">
                           {new Date(freeKick.created_at).toLocaleDateString()}
-                        </p>
+                        </div>
                       </div>
                       <div className="text-right">
-                        <p className="font-medium text-yellow-600">+{Math.floor(freeKick.points / 100)} goles</p>
-                        <p className="text-sm text-muted-foreground">{freeKick.points} puntos</p>
+                        <div className="font-medium text-yellow-600">+{Math.floor(freeKick.points / 100)} goles</div>
+                        <div className="text-sm text-muted-foreground">{freeKick.points} puntos</div>
                       </div>
                     </div>
                   ))}

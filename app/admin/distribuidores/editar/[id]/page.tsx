@@ -12,11 +12,12 @@ import { Label } from "@/components/ui/label"
 import { useToast } from "@/components/ui/use-toast"
 import { ArrowLeft, Save, Building } from "lucide-react"
 import Link from "next/link"
+import { getImageUrl } from "@/lib/utils/image"
 
 interface Distributor {
   id: string
   name: string
-  logo_url?: string
+  logo_url?: string | null
   created_at: string
 }
 
@@ -45,7 +46,8 @@ export default function EditarDistribuidorPage() {
 
       setDistributor(data)
       if (data.logo_url) {
-        setPreviewUrl(data.logo_url)
+        // Usar getImageUrl para obtener la URL correcta
+        setPreviewUrl(getImageUrl(data.logo_url))
       }
     } catch (error) {
       console.error("Error fetching distributor:", error)
@@ -77,22 +79,31 @@ export default function EditarDistribuidorPage() {
 
     setUploading(true)
     try {
-      const fileExt = selectedFile.name.split(".").pop()
-      const fileName = `distributor-${Date.now()}.${fileExt}`
-      const filePath = `distributors/${fileName}`
+      // Crear FormData para enviar el archivo
+      const formData = new FormData()
+      formData.append("file", selectedFile)
+      formData.append("folder", "distributors")
 
-      const { error: uploadError } = await supabase.storage.from("distributor-logos").upload(filePath, selectedFile)
+      // Usar el endpoint de API para subir la imagen
+      const response = await fetch("/api/upload", {
+        method: "POST",
+        body: formData,
+      })
 
-      if (uploadError) {
-        console.error("Error uploading image:", uploadError)
-        return null
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || "Error al subir la imagen")
       }
 
-      const { data } = supabase.storage.from("distributor-logos").getPublicUrl(filePath)
-
-      return data.publicUrl
+      const data = await response.json()
+      return data.path // Devuelve la ruta relativa
     } catch (error) {
       console.error("Error in uploadImage:", error)
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Error inesperado al subir la imagen",
+        variant: "destructive",
+      })
       return null
     } finally {
       setUploading(false)
@@ -121,11 +132,7 @@ export default function EditarDistribuidorPage() {
         if (uploadedUrl) {
           logoUrl = uploadedUrl
         } else {
-          toast({
-            title: "Error",
-            description: "No se pudo subir la imagen. Intenta de nuevo.",
-            variant: "destructive",
-          })
+          // Si falla la subida, no continuar
           setLoading(false)
           return
         }
@@ -237,7 +244,7 @@ export default function EditarDistribuidorPage() {
                   <div className="flex items-center gap-4">
                     <div className="w-16 h-16 border rounded-lg overflow-hidden bg-white">
                       <img
-                        src={previewUrl || "/placeholder.svg"}
+                        src={previewUrl || "/placeholder.svg?height=64&width=64&text=Logo"}
                         alt="Vista previa"
                         className="w-full h-full object-contain"
                         onError={(e) => {
