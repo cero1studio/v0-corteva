@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -270,11 +270,11 @@ function DirectorTecnicoEquiposContent() {
                     </div>
                     <div>
                       <CardTitle className="text-xl">{team.name}</CardTitle>
-                      <div className="text-sm text-muted-foreground flex items-center gap-2 mt-1">
+                      <CardDescription className="flex items-center gap-2 mt-1">
                         <Badge variant="outline">{team.distributors?.name || "Sin distribuidor"}</Badge>
                         <span>•</span>
                         <span>{team.members_count || 0} miembros</span>
-                      </div>
+                      </CardDescription>
                     </div>
                   </div>
                   <div className="text-right">

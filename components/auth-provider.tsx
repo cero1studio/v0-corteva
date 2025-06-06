@@ -10,10 +10,12 @@ import type { Session, User } from "@supabase/supabase-js"
 import {
   cacheSession,
   cacheProfile,
+  getCachedSession,
+  getCachedProfile,
   clearAllCache,
+  hasCachedSession,
+  hasCachedProfile,
   refreshCacheTimestamp,
-  getCachedSessionForced,
-  getCachedProfileForced,
   type UserProfile,
 } from "@/lib/session-cache"
 
@@ -69,42 +71,55 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [])
 
-  const fetchUserProfile = useCallback(async (userId: string, userEmail?: string): Promise<UserProfile | null> => {
-    try {
-      const { data, error: profileError } = await supabase
-        .from("profiles")
-        .select("id, full_name, role, team_id, zone_id, distributor_id")
-        .eq("id", userId)
-        .single()
-
-      if (profileError || !data) {
-        setError(profileError?.message || "Perfil no encontrado")
-        return null
-      }
-
-      let teamName = null
-      if (data.role === "capitan" && data.team_id) {
+  const fetchUserProfile = useCallback(
+    async (userId: string, userEmail?: string, retries = 3): Promise<UserProfile | null> => {
+      for (let attempt = 0; attempt < retries; attempt++) {
         try {
-          const { data: teamData } = await supabase.from("teams").select("name").eq("id", data.team_id).single()
-          if (teamData) teamName = teamData.name
-        } catch {}
-      }
+          const { data, error: profileError } = await supabase
+            .from("profiles")
+            .select("id, full_name, role, team_id, zone_id, distributor_id")
+            .eq("id", userId)
+            .single()
 
-      return {
-        id: data.id,
-        email: userEmail,
-        role: data.role,
-        full_name: data.full_name,
-        team_id: data.team_id,
-        team_name: teamName,
-        zone_id: data.zone_id,
-        distributor_id: data.distributor_id,
+          if (profileError || !data) {
+            if (attempt === retries - 1) {
+              setError(profileError?.message || "Perfil no encontrado")
+              return null
+            }
+            await new Promise((resolve) => setTimeout(resolve, 1000 * (attempt + 1)))
+            continue
+          }
+
+          let teamName = null
+          if (data.role === "capitan" && data.team_id) {
+            try {
+              const { data: teamData } = await supabase.from("teams").select("name").eq("id", data.team_id).single()
+              if (teamData) teamName = teamData.name
+            } catch {}
+          }
+
+          return {
+            id: data.id,
+            email: userEmail,
+            role: data.role,
+            full_name: data.full_name,
+            team_id: data.team_id,
+            team_name: teamName,
+            zone_id: data.zone_id,
+            distributor_id: data.distributor_id,
+          }
+        } catch (err: any) {
+          if (attempt === retries - 1) {
+            setError(err.message)
+            return null
+          }
+          await new Promise((resolve) => setTimeout(resolve, 1000 * (attempt + 1)))
+        }
       }
-    } catch (err: any) {
-      setError(err.message)
       return null
-    }
-  }, [])
+    },
+    [],
+  )
 
   const handleRedirection = useCallback(
     (userProfile: UserProfile) => {
@@ -125,23 +140,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [pathname, getDashboardRoute, router],
   )
 
-  // Inicialización inmediata con caché para URLs directas
   useEffect(() => {
     let mounted = true
+    let initTimeout: NodeJS.Timeout
 
     const initializeAuth = async () => {
       try {
         console.log("AUTH: Initializing authentication...")
 
+        // Para URLs directas, intentar usar caché inmediatamente
+        const isDirectUrl = pathname && pathname !== "/" && pathname !== "/login"
         const isPublicRoute = publicRoutes.some((route) => pathname?.startsWith(route))
 
-        // Para URLs directas no públicas, usar caché inmediatamente
-        if (!isPublicRoute && pathname !== "/login") {
-          const { session: cachedSession, user: cachedUser } = getCachedSessionForced()
-          const cachedProfile = getCachedProfileForced()
+        if (isDirectUrl && !isPublicRoute && hasCachedSession() && hasCachedProfile()) {
+          const { session: cachedSession, user: cachedUser } = getCachedSession()
+          const cachedProfile = getCachedProfile()
 
           if (cachedSession && cachedUser && cachedProfile) {
-            console.log("AUTH: Using cached session immediately for direct URL")
+            console.log("AUTH: Using cached session for direct URL access")
             setSession(cachedSession)
             setUser(cachedUser)
             setProfile(cachedProfile)
@@ -149,35 +165,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setIsInitialized(true)
             refreshCacheTimestamp()
 
-            // Verificar sesión real en segundo plano sin bloquear
-            setTimeout(async () => {
-              try {
-                const { data, error } = await supabase.auth.getSession()
-                if (!error && data.session && mounted) {
-                  console.log("AUTH: Background session verification successful")
-                  setSession(data.session)
-                  setUser(data.session.user)
-                  cacheSession(data.session, data.session.user)
+            // Actualizar en segundo plano
+            supabase.auth.getSession().then(({ data, error }) => {
+              if (!error && data.session && mounted) {
+                setSession(data.session)
+                setUser(data.session.user)
+                cacheSession(data.session, data.session.user)
 
-                  const userProfile = await fetchUserProfile(data.session.user.id, data.session.user.email)
+                fetchUserProfile(data.session.user.id, data.session.user.email).then((userProfile) => {
                   if (userProfile && mounted) {
                     setProfile(userProfile)
                     cacheProfile(userProfile)
                   }
-                } else if (error) {
-                  console.log("AUTH: Background session verification failed, keeping cache")
-                }
-              } catch (err) {
-                console.log("AUTH: Background verification error, keeping cache")
+                })
               }
-            }, 100) // Verificar muy rápido en segundo plano
+            })
 
             return
           }
         }
 
-        // Para login y rutas públicas, o si no hay caché, verificar sesión normalmente
-        console.log("AUTH: No cache or public route, checking session normally")
+        // Timeout para evitar loading infinito
+        initTimeout = setTimeout(() => {
+          if (mounted) {
+            console.log("AUTH: Timeout reached, setting initialized")
+            setIsLoading(false)
+            setIsInitialized(true)
+
+            // Si no hay sesión después del timeout, redirigir a login
+            if (!isPublicRoute && pathname !== "/login") {
+              console.log("AUTH: No session after timeout, redirecting to login")
+              router.push("/login")
+            }
+          }
+        }, 6000) // Reducido para URLs directas
 
         const {
           data: { session },
@@ -186,16 +207,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         if (!mounted) return
 
+        clearTimeout(initTimeout)
+
         if (error) {
           console.error("AUTH: Session error:", error)
           setSession(null)
           setUser(null)
           setProfile(null)
-          if (isPublicRoute) clearAllCache()
+          clearAllCache()
         } else if (session) {
-          console.log("AUTH: Session found")
+          console.log("AUTH: Session found, fetching profile")
           setSession(session)
           setUser(session.user)
+
+          // Guardar en caché
           cacheSession(session, session.user)
 
           const userProfile = await fetchUserProfile(session.user.id, session.user.email)
@@ -203,6 +228,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setProfile(userProfile)
             cacheProfile(userProfile)
 
+            // Solo redirigir si estamos en login
             if (pathname === "/login") {
               handleRedirection(userProfile)
             }
@@ -212,18 +238,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setSession(null)
           setUser(null)
           setProfile(null)
+          clearAllCache()
 
-          if (isPublicRoute || pathname === "/login") {
-            clearAllCache()
-          }
-
+          // Solo redirigir a login si no estamos en rutas públicas
           if (!isPublicRoute && pathname !== "/login") {
-            console.log("AUTH: Redirecting to login")
+            console.log("AUTH: Redirecting to login from private route")
             router.push("/login")
           }
         }
       } catch (err) {
         console.error("AUTH Init Error:", err)
+        if (initTimeout) clearTimeout(initTimeout)
       } finally {
         if (mounted) {
           setIsLoading(false)
@@ -236,6 +261,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     return () => {
       mounted = false
+      if (initTimeout) clearTimeout(initTimeout)
     }
   }, [fetchUserProfile, handleRedirection, pathname, router])
 
@@ -256,6 +282,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           cacheSession(session, session.user)
           cacheProfile(userProfile)
 
+          // Solo redirigir en login exitoso
           if (pathname === "/login") {
             handleRedirection(userProfile)
           }
@@ -267,6 +294,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setError(null)
         clearAllCache()
 
+        // Solo redirigir a login si no estamos ya ahí
         if (pathname !== "/login") {
           console.log("AUTH: Signed out, redirecting to login")
           router.push("/login")

@@ -16,8 +16,7 @@ export type UserProfile = {
 const SESSION_CACHE_KEY = "sg_session_cache"
 const PROFILE_CACHE_KEY = "sg_profile_cache"
 const CACHE_TIMESTAMP_KEY = "sg_cache_timestamp"
-// Aumentar el tiempo de expiración de caché a 7 días para mayor persistencia
-const CACHE_EXPIRY_TIME = 7 * 24 * 60 * 60 * 1000 // 7 días en milisegundos
+const CACHE_EXPIRY_TIME = 24 * 60 * 60 * 1000 // 24 horas en milisegundos
 
 // Interfaz para el objeto de caché
 interface SessionCache {
@@ -96,28 +95,6 @@ export const getCachedSession = (): { session: Session | null; user: User | null
   }
 }
 
-// Función para forzar el uso de caché sin verificar expiración
-export const getCachedSessionForced = (): { session: Session | null; user: User | null } => {
-  if (typeof window === "undefined") return { session: null, user: null }
-
-  try {
-    const cachedData = localStorage.getItem(SESSION_CACHE_KEY)
-    if (!cachedData) return { session: null, user: null }
-
-    const { session, user }: SessionCache = JSON.parse(cachedData)
-
-    if (session && user) {
-      console.log("✅ Using forced cached session (ignoring expiry)")
-      return { session, user }
-    }
-
-    return { session: null, user: null }
-  } catch (error) {
-    console.error("❌ Error retrieving forced cached session:", error)
-    return { session: null, user: null }
-  }
-}
-
 /**
  * Recupera el perfil de usuario desde localStorage
  */
@@ -141,28 +118,6 @@ export const getCachedProfile = (): UserProfile | null => {
     return profile
   } catch (error) {
     console.error("❌ Error retrieving cached profile:", error)
-    return null
-  }
-}
-
-// Función para obtener perfil forzado sin verificar expiración
-export const getCachedProfileForced = (): UserProfile | null => {
-  if (typeof window === "undefined") return null
-
-  try {
-    const cachedData = localStorage.getItem(PROFILE_CACHE_KEY)
-    if (!cachedData) return null
-
-    const { profile }: ProfileCache = JSON.parse(cachedData)
-
-    if (profile) {
-      console.log("✅ Using forced cached profile (ignoring expiry)")
-      return profile
-    }
-
-    return null
-  } catch (error) {
-    console.error("❌ Error retrieving forced cached profile:", error)
     return null
   }
 }
@@ -282,22 +237,5 @@ export const getCacheDebugInfo = () => {
     }
   } catch {
     return null
-  }
-}
-
-// Agregar una función para verificar si la sesión es válida sin expirar
-export const isSessionValid = (): boolean => {
-  if (typeof window === "undefined") return false
-
-  try {
-    const cachedData = localStorage.getItem(SESSION_CACHE_KEY)
-    if (!cachedData) return false
-
-    const { session }: SessionCache = JSON.parse(cachedData)
-
-    // Verificar si la sesión tiene los datos necesarios
-    return !!(session && session.user && session.access_token)
-  } catch {
-    return false
   }
 }
