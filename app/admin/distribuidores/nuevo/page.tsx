@@ -10,7 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useToast } from "@/components/ui/use-toast"
-import { ArrowLeft, Save, Building } from "lucide-react"
+import { ArrowLeft, Save, Building, Upload } from "lucide-react"
 import Link from "next/link"
 
 export default function NuevoDistribuidorPage() {
@@ -28,6 +28,26 @@ export default function NuevoDistribuidorPage() {
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (file) {
+      // Validar tipo de archivo
+      if (!file.type.startsWith("image/")) {
+        toast({
+          title: "Error",
+          description: "Por favor selecciona un archivo de imagen válido",
+          variant: "destructive",
+        })
+        return
+      }
+
+      // Validar tamaño (máximo 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        toast({
+          title: "Error",
+          description: "La imagen debe ser menor a 5MB",
+          variant: "destructive",
+        })
+        return
+      }
+
       setSelectedFile(file)
       const reader = new FileReader()
       reader.onload = (e) => {
@@ -46,18 +66,36 @@ export default function NuevoDistribuidorPage() {
       const fileName = `distributor-${Date.now()}.${fileExt}`
       const filePath = `distributors/${fileName}`
 
-      const { error: uploadError } = await supabase.storage.from("distributor-logos").upload(filePath, selectedFile)
+      console.log("Subiendo imagen:", filePath) // Debug
+
+      const { error: uploadError } = await supabase.storage.from("distributor-logos").upload(filePath, selectedFile, {
+        cacheControl: "3600",
+        upsert: false,
+      })
 
       if (uploadError) {
         console.error("Error uploading image:", uploadError)
+        toast({
+          title: "Error al subir imagen",
+          description: uploadError.message,
+          variant: "destructive",
+        })
         return null
       }
 
-      const { data } = supabase.storage.from("distributor-logos").getPublicUrl(filePath)
+      // Verificar que la imagen se subió correctamente
+      const { data: publicUrlData } = supabase.storage.from("distributor-logos").getPublicUrl(filePath)
 
-      return data.publicUrl
+      console.log("URL pública generada:", publicUrlData.publicUrl) // Debug
+
+      return filePath // Guardamos la ruta, no la URL completa
     } catch (error) {
       console.error("Error in uploadImage:", error)
+      toast({
+        title: "Error",
+        description: "Error inesperado al subir la imagen",
+        variant: "destructive",
+      })
       return null
     } finally {
       setUploading(false)
@@ -82,19 +120,16 @@ export default function NuevoDistribuidorPage() {
 
       // Si hay una imagen seleccionada, subirla primero
       if (selectedFile) {
-        const uploadedUrl = await uploadImage()
-        if (uploadedUrl) {
-          logoUrl = uploadedUrl
+        const uploadedPath = await uploadImage()
+        if (uploadedPath) {
+          logoUrl = uploadedPath
         } else {
-          toast({
-            title: "Error",
-            description: "No se pudo subir la imagen. Intenta de nuevo.",
-            variant: "destructive",
-          })
           setLoading(false)
-          return
+          return // El error ya se mostró en uploadImage
         }
       }
+
+      console.log("Creando distribuidor con logo_url:", logoUrl) // Debug
 
       const { data, error } = await supabase
         .from("distributors")
@@ -104,7 +139,12 @@ export default function NuevoDistribuidorPage() {
         })
         .select()
 
-      if (error) throw error
+      if (error) {
+        console.error("Error creating distributor:", error)
+        throw error
+      }
+
+      console.log("Distribuidor creado:", data) // Debug
 
       toast({
         title: "Distribuidor creado",
@@ -159,13 +199,27 @@ export default function NuevoDistribuidorPage() {
             <div className="space-y-2">
               <Label htmlFor="logo">Logo del distribuidor</Label>
               <div className="space-y-4">
-                <Input id="logo" type="file" accept="image/*" onChange={handleFileSelect} className="cursor-pointer" />
+                <div className="flex items-center gap-4">
+                  <Input
+                    id="logo"
+                    type="file"
+                    accept="image/*"
+                    onChange={handleFileSelect}
+                    className="cursor-pointer flex-1"
+                  />
+                  {uploading && (
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Upload className="h-4 w-4 animate-pulse" />
+                      Subiendo...
+                    </div>
+                  )}
+                </div>
                 <p className="text-xs text-muted-foreground">
-                  Selecciona una imagen para el logo del distribuidor (PNG, JPG, etc.)
+                  Selecciona una imagen para el logo del distribuidor (PNG, JPG, etc. - Máximo 5MB)
                 </p>
 
                 {previewUrl && (
-                  <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-4 p-4 border rounded-lg bg-gray-50">
                     <div className="w-16 h-16 border rounded-lg overflow-hidden bg-white">
                       <img
                         src={previewUrl || "/placeholder.svg"}
@@ -173,7 +227,12 @@ export default function NuevoDistribuidorPage() {
                         className="w-full h-full object-contain"
                       />
                     </div>
-                    <span className="text-sm text-muted-foreground">Vista previa</span>
+                    <div className="flex-1">
+                      <p className="text-sm font-medium">Vista previa</p>
+                      <p className="text-xs text-muted-foreground">
+                        {selectedFile?.name} ({(selectedFile?.size || 0 / 1024).toFixed(1)} KB)
+                      </p>
+                    </div>
                   </div>
                 )}
               </div>

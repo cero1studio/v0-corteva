@@ -73,3 +73,14 @@ export interface FreeKickGoal {
   created_at?: string
   updated_at?: string
 }
+
+export type UserProfile = {
+  id: string
+  email?: string
+  role: string
+  full_name?: string
+  team_id?: string | null
+  team_name?: string | null
+  zone_id?: string
+  distributor_id?: string
+}
