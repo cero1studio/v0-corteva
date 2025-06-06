@@ -34,14 +34,7 @@ export function getDistributorLogoUrl(distributor: { name: string; logo_url: str
   // Si tiene una imagen personalizada en Storage
   if (distributor.logo_url) {
     try {
-      // Si ya es una URL completa, devolverla
-      if (distributor.logo_url.startsWith("http")) {
-        return distributor.logo_url
-      }
-
-      // Si es una ruta de Storage, generar URL pública
-      const { data } = supabase.storage.from("distributor-logos").getPublicUrl(distributor.logo_url)
-      return data.publicUrl
+      return getImageUrl(distributor.logo_url)
     } catch (error) {
       console.error("Error loading distributor logo:", error)
       // Fall through to the default logo logic
@@ -75,30 +68,4 @@ export function getDistributorLogoUrl(distributor: { name: string; logo_url: str
 
   // Logo por defecto si no hay coincidencia
   return "/placeholder.svg?height=100&width=100"
-}
-
-// Nueva función específica para URLs de distribuidores desde la base de datos
-export function getDistributorImageUrl(logoUrl: string | null): string {
-  if (!logoUrl) {
-    return "/placeholder.svg?height=100&width=100&text=Logo"
-  }
-
-  // Si ya es una URL completa, devolverla
-  if (logoUrl.startsWith("http")) {
-    return logoUrl
-  }
-
-  // Si es una ruta local, devolverla
-  if (logoUrl.startsWith("/")) {
-    return logoUrl
-  }
-
-  // Si es una ruta de Supabase Storage, generar URL pública
-  try {
-    const { data } = supabase.storage.from("distributor-logos").getPublicUrl(logoUrl)
-    return data.publicUrl
-  } catch (error) {
-    console.error("Error generating distributor image URL:", error)
-    return "/placeholder.svg?height=100&width=100&text=Error"
-  }
 }

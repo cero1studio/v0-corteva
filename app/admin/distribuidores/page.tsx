@@ -7,15 +7,15 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { useToast } from "@/components/ui/use-toast"
-import { PlusCircle, Edit, Trash2, Building, RefreshCw } from "lucide-react"
+import { PlusCircle, Edit, Trash2, Building } from "lucide-react"
 import { EmptyState } from "@/components/empty-state"
-import { getDistributorImageUrl } from "@/lib/utils/image"
 import Link from "next/link"
+import { getDistributorLogoUrl } from "@/lib/utils/image"
 
 interface Distributor {
   id: string
   name: string
-  logo_url?: string
+  logo_url?: string | null
   created_at: string
 }
 
@@ -23,7 +23,6 @@ export default function DistribuidoresPage() {
   const router = useRouter()
   const [distributors, setDistributors] = useState<Distributor[]>([])
   const [loading, setLoading] = useState(true)
-  const [imageErrors, setImageErrors] = useState<Set<string>>(new Set())
   const { toast } = useToast()
 
   useEffect(() => {
@@ -37,7 +36,6 @@ export default function DistribuidoresPage() {
 
       if (error) throw error
 
-      console.log("Distribuidores cargados:", data) // Debug
       setDistributors(data || [])
     } catch (error) {
       console.error("Error al cargar distribuidores:", error)
@@ -84,18 +82,6 @@ export default function DistribuidoresPage() {
     }
   }
 
-  const handleImageError = (distributorId: string) => {
-    setImageErrors((prev) => new Set(prev).add(distributorId))
-  }
-
-  const handleImageLoad = (distributorId: string) => {
-    setImageErrors((prev) => {
-      const newSet = new Set(prev)
-      newSet.delete(distributorId)
-      return newSet
-    })
-  }
-
   if (loading) {
     return (
       <div className="space-y-6">
@@ -131,18 +117,12 @@ export default function DistribuidoresPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h2 className="text-3xl font-bold tracking-tight">Gestión de Distribuidores</h2>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={fetchDistributors} disabled={loading}>
-            <RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-            Actualizar
-          </Button>
-          <Button asChild>
-            <Link href="/admin/distribuidores/nuevo">
-              <PlusCircle className="mr-2 h-4 w-4" />
-              Nuevo Distribuidor
-            </Link>
-          </Button>
-        </div>
+        <Button asChild>
+          <Link href="/admin/distribuidores/nuevo">
+            <PlusCircle className="mr-2 h-4 w-4" />
+            Nuevo Distribuidor
+          </Link>
+        </Button>
       </div>
 
       <Card>
@@ -171,68 +151,51 @@ export default function DistribuidoresPage() {
                 <TableRow>
                   <TableHead>Nombre</TableHead>
                   <TableHead>Logo</TableHead>
-                  <TableHead>URL de imagen</TableHead>
                   <TableHead className="text-right">Acciones</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {distributors.map((distributor) => {
-                  const imageUrl = getDistributorImageUrl(distributor.logo_url)
-                  const hasImageError = imageErrors.has(distributor.id)
-
-                  return (
-                    <TableRow key={distributor.id}>
-                      <TableCell>
-                        <div className="font-medium">{distributor.name}</div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="w-16 h-8 bg-white border rounded overflow-hidden flex items-center justify-center">
-                          {hasImageError ? (
-                            <span className="text-xs text-muted-foreground">Error</span>
-                          ) : (
-                            <img
-                              src={imageUrl || "/placeholder.svg"}
-                              alt={`Logo de ${distributor.name}`}
-                              className="w-full h-full object-contain"
-                              onError={() => handleImageError(distributor.id)}
-                              onLoad={() => handleImageLoad(distributor.id)}
-                            />
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div
-                          className="text-xs text-muted-foreground max-w-xs truncate"
-                          title={distributor.logo_url || "N/A"}
+                {distributors.map((distributor) => (
+                  <TableRow key={distributor.id}>
+                    <TableCell>
+                      <div className="font-medium">{distributor.name}</div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="w-16 h-8 bg-white border rounded overflow-hidden">
+                        <img
+                          src={getDistributorLogoUrl({
+                            name: distributor.name,
+                            logo_url: distributor.logo_url || "/placeholder.svg",
+                          })}
+                          alt={`Logo de ${distributor.name}`}
+                          className="w-full h-full object-contain"
+                          onError={(e) => {
+                            e.currentTarget.src = "/placeholder.svg?height=32&width=64&text=Logo"
+                          }}
+                        />
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-2">
+                        <Button variant="ghost" size="icon" asChild>
+                          <Link href={`/admin/distribuidores/editar/${distributor.id}`}>
+                            <Edit className="h-4 w-4" />
+                            <span className="sr-only">Editar</span>
+                          </Link>
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleDeleteDistributor(distributor.id, distributor.name)}
+                          className="text-red-500 hover:text-red-700"
                         >
-                          {distributor.logo_url || "N/A"}
-                        </div>
-                        <div className="text-xs text-blue-600 max-w-xs truncate" title={imageUrl}>
-                          {imageUrl}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-2">
-                          <Button variant="ghost" size="icon" asChild>
-                            <Link href={`/admin/distribuidores/editar/${distributor.id}`}>
-                              <Edit className="h-4 w-4" />
-                              <span className="sr-only">Editar</span>
-                            </Link>
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleDeleteDistributor(distributor.id, distributor.name)}
-                            className="text-red-500 hover:text-red-700"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                            <span className="sr-only">Eliminar</span>
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  )
-                })}
+                          <Trash2 className="h-4 w-4" />
+                          <span className="sr-only">Eliminar</span>
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
               </TableBody>
             </Table>
           )}
