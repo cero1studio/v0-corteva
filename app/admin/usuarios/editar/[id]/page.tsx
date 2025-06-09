@@ -12,6 +12,8 @@ import { useToast } from "@/components/ui/use-toast"
 import { ArrowLeft, Save } from "lucide-react"
 import Link from "next/link"
 import { getUserById, updateUser, getZones, getDistributors } from "@/app/actions/users"
+import { Eye, EyeOff } from "lucide-react"
+const [showPassword, setShowPassword] = useState(false)
 
 interface Team {
   id: string
@@ -274,13 +276,24 @@ export default function EditarUsuarioPage({ params }: PageProps) {
             </div>
             <div className="space-y-2">
               <Label htmlFor="password">Nueva contraseña (opcional)</Label>
-              <Input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Dejar en blanco para mantener la actual"
-              />
+              <div className="relative">
+                <Input
+                  id="password"
+                  type={showPassword ? "text" : "password"}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Dejar en blanco para mantener la actual"
+                  className="pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((prev) => !prev)}
+                  className="absolute inset-y-0 right-3 flex items-center text-gray-500 hover:text-gray-700 focus:outline-none"
+                  aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
+                >
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
             </div>
             <div className="space-y-2">
               <Label htmlFor="fullName">Nombre completo</Label>
