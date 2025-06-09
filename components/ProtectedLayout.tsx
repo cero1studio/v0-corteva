@@ -1,10 +1,9 @@
 "use client"
 
 import type React from "react"
-
-import { useEffect } from "react"
+import { useEffect, useContext } from "react"
 import { useRouter } from "next/navigation"
-import { useAuth } from "@/hooks/use-auth"
+import { AuthContext } from "@/components/auth-provider"
 
 type Props = {
   allowedRoles: string[]
@@ -12,7 +11,7 @@ type Props = {
 }
 
 export function ProtectedLayout({ allowedRoles, children }: Props) {
-  const { isLoading, profile } = useAuth()
+  const { isLoading, profile } = useContext(AuthContext)
   const router = useRouter()
 
   useEffect(() => {
