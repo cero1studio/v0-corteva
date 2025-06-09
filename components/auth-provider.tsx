@@ -1,131 +1,309 @@
 "use client"
 
-import { createContext, useContext, useState, useEffect, type ReactNode } from "react"
-import type { Session, User } from "@supabase/supabase-js"
+import type React from "react"
+import { createContext, useContext, useEffect, useState, useCallback } from "react"
 import { supabase } from "@/lib/supabase/client"
-import { useRouter } from "next/router"
+import { useRouter, usePathname } from "next/navigation"
+import type { Session, User } from "@supabase/supabase-js"
 
-interface AuthContextType {
+// Importar las funciones de caché
+import {
+  cacheSession,
+  cacheProfile,
+  clearAllCache,
+  refreshCacheTimestamp,
+  getCachedSessionForced,
+  getCachedProfileForced,
+  type UserProfile,
+} from "@/lib/session-cache"
+
+type AuthContextType = {
   session: Session | null
   user: User | null
-  profile: any | null
-  loading: boolean
-  signUp: (email: string, password: string) => Promise<void>
-  signIn: (email: string, password: string) => Promise<void>
+  profile: UserProfile | null
+  isLoading: boolean
+  isInitialized: boolean
+  error: string | null
+  signIn: (email: string, password: string) => Promise<{ error: string | null }>
   signOut: () => Promise<void>
-  updateProfile: (updates: any) => Promise<void>
+  refreshProfile: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
-interface Props {
-  children: ReactNode
-}
-
-export const AuthProvider = ({ children }: Props) => {
+export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
   const [user, setUser] = useState<User | null>(null)
-  const [profile, setProfile] = useState<any | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState<any>(null)
+  const [profile, setProfile] = useState<UserProfile | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [isInitialized, setIsInitialized] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const router = useRouter()
+  const pathname = usePathname()
 
-  useEffect(() => {
-    const getSession = async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession()
+  const publicRoutes = [
+    "/login",
+    "/register",
+    "/forgot-password",
+    "/reset-password",
+    "/primer-acceso",
+    "/ranking-publico",
+  ]
 
-      setSession(session)
-      setUser(session?.user || null)
-
-      if (session?.user) {
-        await getProfile(session.user.id)
-      }
-
-      setLoading(false)
+  const getDashboardRoute = useCallback((role: string, teamId?: string | null) => {
+    switch (role) {
+      case "admin":
+        return "/admin/dashboard"
+      case "capitan":
+        return teamId ? "/capitan/dashboard" : "/capitan/crear-equipo"
+      case "director_tecnico":
+        return "/director-tecnico/dashboard"
+      case "supervisor":
+        return "/supervisor/dashboard"
+      case "representante":
+        return "/representante/dashboard"
+      case "arbitro":
+        return "/arbitro/dashboard"
+      default:
+        return "/login"
     }
-
-    getSession()
-
-    supabase.auth.onAuthStateChange(async (_event, session) => {
-      setSession(session)
-      setUser(session?.user || null)
-      if (session?.user) {
-        await getProfile(session.user.id)
-      } else {
-        setProfile(null)
-      }
-    })
   }, [])
 
-  const getProfile = async (userId: string) => {
+  const fetchUserProfile = useCallback(async (userId: string, userEmail?: string): Promise<UserProfile | null> => {
     try {
-      const { data: profileData, error } = await supabase
+      const { data, error: profileError } = await supabase
         .from("profiles")
         .select("id, full_name, role, team_id, zone_id, distributor_id")
         .eq("id", userId)
         .single()
 
-      if (error) {
-        console.error("Error fetching profile:", error)
+      if (profileError || !data) {
+        setError(profileError?.message || "Perfil no encontrado")
+        return null
       }
 
-      setProfile(profileData)
-    } catch (error) {
-      console.error("Unexpected error fetching profile:", error)
-    }
-  }
+      let teamName = null
+      if (data.role === "capitan" && data.team_id) {
+        try {
+          const { data: teamData } = await supabase.from("teams").select("name").eq("id", data.team_id).single()
+          if (teamData) teamName = teamData.name
+        } catch {}
+      }
 
-  const signUp = async (email: string, password: string) => {
-    try {
-      setLoading(true)
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          emailRedirectTo: `${window.location.origin}/api/auth/callback`,
-        },
-      })
-      if (error) throw error
-      alert("Check your email for the confirmation link.")
-    } catch (error: any) {
-      alert(error.error_description || error.message)
-    } finally {
-      setLoading(false)
+      return {
+        id: data.id,
+        email: userEmail,
+        role: data.role,
+        full_name: data.full_name,
+        team_id: data.team_id,
+        team_name: teamName,
+        zone_id: data.zone_id,
+        distributor_id: data.distributor_id,
+      }
+    } catch (err: any) {
+      setError(err.message)
+      return null
     }
-  }
+  }, [])
+
+  const handleRedirection = useCallback(
+    (userProfile: UserProfile) => {
+      const currentPath = pathname || "/"
+      const dashboardRoute = getDashboardRoute(userProfile.role, userProfile.team_id)
+
+      console.log("AUTH: Current path:", currentPath, "Dashboard route:", dashboardRoute)
+
+      // Solo redirigir desde login
+      if (currentPath === "/login") {
+        console.log("AUTH: Redirecting from login to dashboard")
+        router.push(dashboardRoute)
+      } else if (userProfile.role === "capitan" && !userProfile.team_id && currentPath !== "/capitan/crear-equipo") {
+        console.log("AUTH: Captain without team, redirecting to create team")
+        router.push("/capitan/crear-equipo")
+      }
+    },
+    [pathname, getDashboardRoute, router],
+  )
+
+  // Inicialización inmediata con caché para URLs directas
+  useEffect(() => {
+    let mounted = true
+
+    const initializeAuth = async () => {
+      try {
+        console.log("AUTH: Initializing authentication...")
+
+        const isPublicRoute = publicRoutes.some((route) => pathname?.startsWith(route))
+
+        // Para URLs directas no públicas, usar caché inmediatamente
+        if (!isPublicRoute && pathname !== "/login") {
+          const { session: cachedSession, user: cachedUser } = getCachedSessionForced()
+          const cachedProfile = getCachedProfileForced()
+
+          if (cachedSession && cachedUser && cachedProfile) {
+            console.log("AUTH: Using cached session immediately for direct URL")
+            setSession(cachedSession)
+            setUser(cachedUser)
+            setProfile(cachedProfile)
+            setIsLoading(false)
+            setIsInitialized(true)
+            refreshCacheTimestamp()
+
+            // Verificar sesión real en segundo plano sin bloquear
+            setTimeout(async () => {
+              try {
+                const { data, error } = await supabase.auth.getSession()
+                if (!error && data.session && mounted) {
+                  console.log("AUTH: Background session verification successful")
+                  setSession(data.session)
+                  setUser(data.session.user)
+                  cacheSession(data.session, data.session.user)
+
+                  const userProfile = await fetchUserProfile(data.session.user.id, data.session.user.email)
+                  if (userProfile && mounted) {
+                    setProfile(userProfile)
+                    cacheProfile(userProfile)
+                  }
+                } else if (error) {
+                  console.log("AUTH: Background session verification failed, keeping cache")
+                }
+              } catch (err) {
+                console.log("AUTH: Background verification error, keeping cache")
+              }
+            }, 100) // Verificar muy rápido en segundo plano
+
+            return
+          }
+        }
+
+        // Para login y rutas públicas, o si no hay caché, verificar sesión normalmente
+        console.log("AUTH: No cache or public route, checking session normally")
+
+        const {
+          data: { session },
+          error,
+        } = await supabase.auth.getSession()
+
+        if (!mounted) return
+
+        if (error) {
+          console.error("AUTH: Session error:", error)
+          setSession(null)
+          setUser(null)
+          setProfile(null)
+          if (isPublicRoute) clearAllCache()
+        } else if (session) {
+          console.log("AUTH: Session found")
+          setSession(session)
+          setUser(session.user)
+          cacheSession(session, session.user)
+
+          const userProfile = await fetchUserProfile(session.user.id, session.user.email)
+          if (mounted && userProfile) {
+            setProfile(userProfile)
+            cacheProfile(userProfile)
+
+            if (pathname === "/login") {
+              handleRedirection(userProfile)
+            }
+          }
+        } else {
+          console.log("AUTH: No session found")
+          setSession(null)
+          setUser(null)
+          setProfile(null)
+
+          if (isPublicRoute || pathname === "/login") {
+            clearAllCache()
+          }
+
+          if (!isPublicRoute && pathname !== "/login") {
+            console.log("AUTH: Redirecting to login")
+            router.push("/login")
+          }
+        }
+      } catch (err) {
+        console.error("AUTH Init Error:", err)
+      } finally {
+        if (mounted) {
+          setIsLoading(false)
+          setIsInitialized(true)
+        }
+      }
+    }
+
+    initializeAuth()
+
+    return () => {
+      mounted = false
+    }
+  }, [fetchUserProfile, handleRedirection, pathname, router])
+
+  useEffect(() => {
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log("AUTH: State change event:", event)
+
+      if (event === "SIGNED_IN" && session) {
+        setSession(session)
+        setUser(session.user)
+        setError(null)
+
+        const userProfile = await fetchUserProfile(session.user.id, session.user.email)
+        if (userProfile) {
+          setProfile(userProfile)
+          cacheSession(session, session.user)
+          cacheProfile(userProfile)
+
+          if (pathname === "/login") {
+            handleRedirection(userProfile)
+          }
+        }
+      } else if (event === "SIGNED_OUT") {
+        setSession(null)
+        setUser(null)
+        setProfile(null)
+        setError(null)
+        clearAllCache()
+
+        if (pathname !== "/login") {
+          console.log("AUTH: Signed out, redirecting to login")
+          router.push("/login")
+        }
+      } else if (event === "TOKEN_REFRESHED" && session) {
+        console.log("AUTH: Token refreshed")
+        setSession(session)
+        setUser(session.user)
+        cacheSession(session, session.user)
+      }
+    })
+
+    return () => subscription.unsubscribe()
+  }, [fetchUserProfile, handleRedirection, pathname, router])
 
   const signIn = async (email: string, password: string) => {
     try {
-      setLoading(true)
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      })
-      if (error) throw error
-    } catch (error: any) {
-      alert(error.error_description || error.message)
+      setIsLoading(true)
+      setError(null)
+      const { error: signInError } = await supabase.auth.signInWithPassword({ email, password })
+      if (signInError) {
+        setError(signInError.message)
+        return { error: signInError.message }
+      }
+      return { error: null }
+    } catch (err: any) {
+      setError(err.message)
+      return { error: err.message }
     } finally {
-      setLoading(false)
-    }
-  }
-
-  const clearAllCache = () => {
-    if (typeof window !== "undefined") {
-      localStorage.clear()
-      sessionStorage.clear()
+      setIsLoading(false)
     }
   }
 
   const signOut = async () => {
     try {
       setIsLoading(true)
-      if (typeof window !== "undefined") {
-        localStorage.clear()
-        sessionStorage.clear()
-      }
+      clearAllCache()
       await supabase.auth.signOut()
     } catch (err: any) {
       console.error("AUTH: Error signing out:", err)
@@ -134,29 +312,27 @@ export const AuthProvider = ({ children }: Props) => {
     }
   }
 
-  const updateProfile = async (updates: any) => {
-    try {
-      setLoading(true)
-      const { error } = await supabase.from("profiles").upsert({
-        id: user?.id,
-        ...updates,
-      })
-      if (error) throw error
-      alert("Profile updated!")
-      await getProfile(user?.id as string) // Refresh profile data
-    } catch (error: any) {
-      alert(error.error_description || error.message)
-    } finally {
-      setLoading(false)
+  const refreshProfile = useCallback(async () => {
+    if (!user) return
+    setIsLoading(true)
+    const userProfile = await fetchUserProfile(user.id, user.email)
+    if (userProfile) {
+      setProfile(userProfile)
+      cacheProfile(userProfile)
     }
-  }
+    setIsLoading(false)
+  }, [user, fetchUserProfile])
 
-  const value = { session, user, profile, loading, signUp, signIn, signOut, updateProfile }
-
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
+  return (
+    <AuthContext.Provider
+      value={{ session, user, profile, isLoading, isInitialized, error, signIn, signOut, refreshProfile }}
+    >
+      {children}
+    </AuthContext.Provider>
+  )
 }
 
-export const useAuth = () => {
+export function useAuth() {
   const context = useContext(AuthContext)
   if (context === undefined) {
     throw new Error("useAuth must be used within an AuthProvider")

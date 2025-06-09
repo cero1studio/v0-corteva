@@ -66,18 +66,8 @@ export function UserProfile() {
   }, [])
 
   const handleSignOut = async () => {
-    try {
-      console.log("Cerrando sesión desde user profile...")
-      await supabase.auth.signOut()
-      // Limpiar cualquier estado local
-      setUser(null)
-      // Forzar redirección
-      window.location.href = "/login"
-    } catch (error) {
-      console.error("Error al cerrar sesión:", error)
-      // Forzar redirección incluso si hay error
-      window.location.href = "/login"
-    }
+    await supabase.auth.signOut()
+    router.push("/login")
   }
 
   if (isLoading) {
