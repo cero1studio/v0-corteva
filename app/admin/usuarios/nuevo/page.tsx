@@ -2,107 +2,247 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
+import { createUser } from "@/app/actions/users"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Button } from "@/components/ui/button"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useToast } from "@/components/ui/use-toast"
-import { Eye, EyeOff } from "lucide-react"
+import { supabase } from "@/lib/supabase/client"
+
+interface Zone {
+  id: string
+  name: string
+}
+
+interface Distributor {
+  id: string
+  name: string
+}
+
+interface Team {
+  id: string
+  name: string
+}
 
 export default function NuevoUsuarioPage() {
-  const router = useRouter()
-  const [formData, setFormData] = useState({
-    name: "",
-    email: "",
-    password: "",
-  })
-  const [loading, setLoading] = useState(false)
-  const { toast } = useToast()
-  const [showPassword, setShowPassword] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [role, setRole] = useState("")
+  const [zones, setZones] = useState<Zone[]>([])
+  const [distributors, setDistributors] = useState<Distributor[]>([])
+  const [teams, setTeams] = useState<Team[]>([])
+  const [selectedZone, setSelectedZone] = useState("")
+  const [selectedDistributor, setSelectedDistributor] = useState("")
+  const [selectedTeam, setSelectedTeam] = useState("")
+  const [loadingZones, setLoadingZones] = useState(false)
+  const [loadingDistributors, setLoadingDistributors] = useState(false)
+  const [loadingTeams, setLoadingTeams] = useState(false)
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value,
-    })
+  const router = useRouter()
+  const { toast } = useToast()
+
+  useEffect(() => {
+    fetchZones()
+    fetchDistributors()
+    fetchTeams()
+  }, [])
+
+  async function fetchZones() {
+    try {
+      setLoadingZones(true)
+      const { data, error } = await supabase.from("zones").select("id, name").order("name")
+
+      if (error) throw error
+      setZones(data || [])
+    } catch (error) {
+      console.error("Error al cargar zonas:", error)
+    } finally {
+      setLoadingZones(false)
+    }
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setLoading(true)
+  async function fetchDistributors() {
+    try {
+      setLoadingDistributors(true)
+      const { data, error } = await supabase.from("distributors").select("id, name").order("name")
+
+      if (error) throw error
+      setDistributors(data || [])
+    } catch (error) {
+      console.error("Error al cargar distribuidores:", error)
+    } finally {
+      setLoadingDistributors(false)
+    }
+  }
+
+  async function fetchTeams() {
+    try {
+      setLoadingTeams(true)
+      const { data, error } = await supabase.from("teams").select("id, name").order("name")
+
+      if (error) throw error
+      setTeams(data || [])
+    } catch (error) {
+      console.error("Error al cargar equipos:", error)
+    } finally {
+      setLoadingTeams(false)
+    }
+  }
+
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setIsSubmitting(true)
 
     try {
-      const response = await fetch("/api/usuarios", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(formData),
-      })
+      const formData = new FormData(event.currentTarget)
 
-      if (response.ok) {
+      // Si el rol es capitán o director técnico, necesitamos guardar la zona y distribuidor
+      if (role === "capitan" || role === "director_tecnico" || role === "arbitro") {
+        formData.append("zoneId", selectedZone)
+        formData.append("distributorId", selectedDistributor)
+        // No asignamos equipo, el capitán lo creará
+        formData.delete("teamId")
+      }
+
+      const result = await createUser(formData)
+
+      if (result.error) {
         toast({
-          title: "Usuario creado exitosamente",
+          title: "Error",
+          description: result.error,
+          variant: "destructive",
+        })
+      } else {
+        toast({
+          title: "Usuario creado",
+          description: "El usuario ha sido creado exitosamente",
         })
         router.push("/admin/usuarios")
-      } else {
-        const errorData = await response.json()
-        toast({
-          variant: "destructive",
-          title: "Error al crear usuario",
-          description: errorData.message || "Ocurrió un error inesperado.",
-        })
       }
     } catch (error: any) {
+      console.error("Error al crear usuario:", error)
       toast({
+        title: "Error",
+        description: error.message || "Error al crear usuario",
         variant: "destructive",
-        title: "Error al crear usuario",
-        description: error.message || "Ocurrió un error inesperado.",
       })
     } finally {
-      setLoading(false)
+      setIsSubmitting(false)
     }
   }
 
   return (
-    <div className="container max-w-2xl mx-auto mt-10">
-      <h1 className="text-2xl font-bold mb-4">Crear Nuevo Usuario</h1>
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <Label htmlFor="name">Nombre</Label>
-          <Input id="name" name="name" value={formData.name} onChange={handleInputChange} required />
-        </div>
-        <div>
-          <Label htmlFor="email">Email</Label>
-          <Input id="email" name="email" type="email" value={formData.email} onChange={handleInputChange} required />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="password">Contraseña</Label>
-          <div className="relative">
-            <Input
-              id="password"
-              name="password"
-              type={showPassword ? "text" : "password"}
-              placeholder="********"
-              value={formData.password}
-              onChange={handleInputChange}
-              required
-              className="pr-10"
-            />
-            <button
-              type="button"
-              className="absolute inset-y-0 right-0 pr-3 flex items-center"
-              onClick={() => setShowPassword(!showPassword)}
-            >
-              {showPassword ? <EyeOff className="h-4 w-4 text-gray-400" /> : <Eye className="h-4 w-4 text-gray-400" />}
-            </button>
-          </div>
-        </div>
-        <Button disabled={loading} type="submit">
-          {loading ? "Creando..." : "Crear Usuario"}
-        </Button>
-      </form>
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h2 className="text-3xl font-bold tracking-tight">Nuevo Usuario</h2>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Crear Usuario</CardTitle>
+          <CardDescription>Ingresa los datos del nuevo usuario</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="fullName">Nombre completo</Label>
+                  <Input id="fullName" name="fullName" placeholder="Nombre completo" required />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="email">Correo electrónico</Label>
+                  <Input id="email" name="email" type="email" placeholder="correo@ejemplo.com" required />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="password">Contraseña</Label>
+                  <Input id="password" name="password" type="password" placeholder="********" required />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="role">Rol</Label>
+                  <Select name="role" value={role} onValueChange={(value) => setRole(value)} required>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecciona un rol" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="admin">Administrador</SelectItem>
+                      <SelectItem value="capitan">Capitán</SelectItem>
+                      <SelectItem value="director_tecnico">Director Técnico</SelectItem>
+                      <SelectItem value="arbitro">Árbitro</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {(role === "capitan" || role === "director_tecnico" || role === "arbitro") && (
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="zoneId">Zona</Label>
+                    <Select name="zoneId" value={selectedZone} onValueChange={setSelectedZone} required>
+                      <SelectTrigger>
+                        <SelectValue placeholder={loadingZones ? "Cargando..." : "Selecciona una zona"} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {zones.map((zone) => (
+                          <SelectItem key={zone.id} value={zone.id}>
+                            {zone.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="distributorId">Distribuidor</Label>
+                    <Select
+                      name="distributorId"
+                      value={selectedDistributor}
+                      onValueChange={setSelectedDistributor}
+                      required
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder={loadingDistributors ? "Cargando..." : "Selecciona un distribuidor"} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {distributors.map((distributor) => (
+                          <SelectItem key={distributor.id} value={distributor.id}>
+                            {distributor.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              )}
+
+              {role === "admin" && (
+                <div className="p-3 bg-gray-50 rounded-md text-sm text-gray-500">
+                  Los administradores no pueden tener equipos, zonas o distribuidores asignados.
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => router.push("/admin/usuarios")}
+                disabled={isSubmitting}
+              >
+                Cancelar
+              </Button>
+              <Button type="submit" disabled={isSubmitting}>
+                {isSubmitting ? "Creando..." : "Crear Usuario"}
+              </Button>
+            </div>
+          </form>
+        </CardContent>
+      </Card>
     </div>
   )
 }

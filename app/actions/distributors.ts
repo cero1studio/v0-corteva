@@ -91,3 +91,5 @@ export async function deleteDistributor(id: string) {
     return { success: false, error: "Error interno del servidor" }
   }
 }
+
+import { getDistributors } from "@/app/actions/distributors"

@@ -1,17 +1,18 @@
 "use client"
 
 import type React from "react"
-import { useEffect, useContext } from "react"
+import { useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { AuthContext } from "@/components/auth-provider"
+import { useAuth } from "@/components/auth-provider"
 
 type Props = {
   allowedRoles: string[]
   children: React.ReactNode
 }
 
+
 export function ProtectedLayout({ allowedRoles, children }: Props) {
-  const { isLoading, profile } = useContext(AuthContext)
+  const { isLoading, profile } = useAuth()
   const router = useRouter()
 
   useEffect(() => {
@@ -44,7 +45,7 @@ function getDashboardRoute(role: string, hasTeam: boolean) {
     case "representante":
       return "/representante/dashboard"
     case "arbitro":
-      return "/director-tecnico/dashboard"
+      return "/arbitro/dashboard"
     default:
       return "/login"
   }
