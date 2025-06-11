@@ -194,21 +194,16 @@ export async function testSupabaseConfig() {
   }
 }
 
-export async function createUser(formData: FormData) {
+export async function createUser(userData: any) {
   try {
-    const email = formData.get("email") as string
-    const password = formData.get("password") as string
-    const fullName = formData.get("fullName") as string
-    const role = formData.get("role") as string
-    const zoneId = formData.get("zoneId") as string
-    const distributorId = formData.get("distributorId") as string
+    const { email, password, full_name, role, zone_id, distributor_id, team_id } = userData
 
     console.log("Iniciando creación de usuario...")
     console.log("Email:", email)
-    console.log("Nombre:", fullName)
+    console.log("Nombre:", full_name)
     console.log("Rol:", role)
 
-    if (!email || !password || !fullName || !role) {
+    if (!email || !password || !full_name || !role) {
       return { error: "Todos los campos son obligatorios" }
     }
 
@@ -240,7 +235,7 @@ export async function createUser(formData: FormData) {
       password: password,
       email_confirm: true,
       user_metadata: {
-        full_name: fullName,
+        full_name: full_name,
         role: role,
       },
     })
@@ -260,10 +255,11 @@ export async function createUser(formData: FormData) {
     const profileData = {
       id: authData.user.id,
       email: email,
-      full_name: fullName,
+      full_name: full_name,
       role: role,
-      zone_id: zoneId && zoneId !== "none" ? zoneId : null,
-      distributor_id: distributorId && distributorId !== "none" ? distributorId : null,
+      zone_id: zone_id && zone_id !== "none" && zone_id !== "" ? zone_id : null,
+      distributor_id: distributor_id && distributor_id !== "none" && distributor_id !== "" ? distributor_id : null,
+      team_id: team_id && team_id !== "none" && team_id !== "" ? team_id : null,
     }
 
     console.log("Creando perfil:", profileData)
