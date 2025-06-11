@@ -1,101 +1,81 @@
-// ESTE console.log DEBE APARECER SI EL MÓDULO SE CARGA
-console.log("--- app/director-tecnico/ranking/page.tsx MODULE LOADED (FULL VERSION) ---")
-
 import { createServerClient } from "@/lib/supabase/server"
 import { AuthGuard } from "@/components/auth-guard"
-import { getTeamRankingByZone, type TeamRanking } from "@/app/actions/ranking"
-import { RankingDisplay } from "./components/ranking-display"
+import { getSimpleRanking, getUserZone, type SimpleTeamRanking } from "@/app/actions/ranking-simple"
+import { SimpleRankingDisplay } from "./components/simple-ranking-display"
 
 export default async function DirectorTecnicoRankingPage() {
-  // ESTE console.log DEBE APARECER SI LA FUNCIÓN DEL COMPONENTE SE EJECUTA
-  console.log("DirectorTecnicoRankingPage: INICIO de ejecución del Server Component (FULL VERSION).")
+  console.log("DirectorTecnicoRankingPage: Iniciando carga de página")
 
   const supabase = createServerClient()
 
-  let zoneTeams: TeamRanking[] = []
-  let nationalTeams: TeamRanking[] = []
-  let userZoneName = "mi zona"
-  let errorMessage: string | null = null
+  let zoneTeams: SimpleTeamRanking[] = []
+  let nationalTeams: SimpleTeamRanking[] = []
+  let zoneName = "Mi Zona"
+  let error: string | undefined
 
   try {
-    console.log("DirectorTecnicoRankingPage: Intentando obtener usuario autenticado.")
+    // Obtener usuario autenticado
     const {
-      data: { user: authUser },
+      data: { user },
     } = await supabase.auth.getUser()
-    console.log("DirectorTecnicoRankingPage: Usuario autenticado obtenido:", authUser ? authUser.id : "NINGUNO")
 
-    if (!authUser) {
-      console.log("DirectorTecnicoRankingPage: No hay usuario autenticado. Devolviendo AuthGuard con spinner.")
+    if (!user) {
+      console.log("DirectorTecnicoRankingPage: Usuario no autenticado")
       return (
         <AuthGuard allowedRoles={["Director Tecnico", "arbitro"]}>
-          <div className="flex justify-center items-center h-full">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-corteva-600"></div>
+          <div className="flex justify-center items-center h-64">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
           </div>
         </AuthGuard>
       )
     }
 
-    console.log("DirectorTecnicoRankingPage: Obteniendo perfil del usuario.")
-    const { data: profileData, error: profileError } = await supabase
-      .from("profiles")
-      .select(`
-         *,
-         zones:zone_id(*)
-       `)
-      .eq("id", authUser.id)
-      .single()
+    console.log("DirectorTecnicoRankingPage: Usuario autenticado:", user.id)
 
-    if (profileError) {
-      console.error("DirectorTecnicoRankingPage: ERROR al obtener perfil:", profileError)
-      errorMessage = "Error al cargar el perfil del usuario."
-    } else if (!profileData) {
-      console.warn("DirectorTecnicoRankingPage: Datos de perfil nulos.")
-      errorMessage = "No se encontró el perfil del usuario."
-    } else if (!profileData.zone_id) {
-      console.warn("DirectorTecnicoRankingPage: El usuario no tiene una zona asignada.")
-      errorMessage = "No tienes una zona asignada. Por favor, contacta al administrador."
-    } else {
-      userZoneName = profileData.zones?.name || "mi zona"
-      console.log("DirectorTecnicoRankingPage: Nombre de zona del usuario:", userZoneName)
+    // Obtener zona del usuario
+    const userZoneResult = await getUserZone(user.id)
 
-      console.log("DirectorTecnicoRankingPage: Iniciando obtención de ranking de zona.")
-      const zoneRankingResult = await getTeamRankingByZone(profileData.zone_id)
-      if (zoneRankingResult.success) {
-        zoneTeams = zoneRankingResult.data || []
-        console.log("DirectorTecnicoRankingPage: Ranking de zona obtenido. Equipos:", zoneTeams.length)
+    if (userZoneResult.success && userZoneResult.data) {
+      zoneName = userZoneResult.data.zoneName
+
+      // Obtener ranking de zona
+      console.log("DirectorTecnicoRankingPage: Obteniendo ranking de zona")
+      const zoneResult = await getSimpleRanking(userZoneResult.data.zoneId)
+
+      if (zoneResult.success) {
+        zoneTeams = zoneResult.data || []
+        console.log("DirectorTecnicoRankingPage: Ranking de zona obtenido:", zoneTeams.length, "equipos")
       } else {
-        console.error("DirectorTecnicoRankingPage: ERROR al obtener ranking de zona:", zoneRankingResult.error)
-        errorMessage = zoneRankingResult.error || "No se pudo cargar el ranking de zona."
+        console.error("DirectorTecnicoRankingPage: Error en ranking de zona:", zoneResult.error)
       }
+    } else {
+      console.warn("DirectorTecnicoRankingPage: No se pudo obtener zona del usuario:", userZoneResult.error)
+      zoneName = "Sin Zona"
+    }
 
-      console.log("DirectorTecnicoRankingPage: Iniciando obtención de ranking nacional.")
-      const nationalRankingResult = await getTeamRankingByZone() // Sin zoneId para nacional
-      if (nationalRankingResult.success) {
-        nationalTeams = nationalRankingResult.data || []
-        console.log("DirectorTecnicoRankingPage: Ranking nacional obtenido. Equipos:", nationalTeams.length)
-      } else {
-        console.error("DirectorTecnicoRankingPage: ERROR al obtener ranking nacional:", nationalRankingResult.error)
-        if (!errorMessage) {
-          errorMessage = nationalRankingResult.error || "No se pudo cargar el ranking nacional."
-        }
+    // Obtener ranking nacional
+    console.log("DirectorTecnicoRankingPage: Obteniendo ranking nacional")
+    const nationalResult = await getSimpleRanking()
+
+    if (nationalResult.success) {
+      nationalTeams = nationalResult.data || []
+      console.log("DirectorTecnicoRankingPage: Ranking nacional obtenido:", nationalTeams.length, "equipos")
+    } else {
+      console.error("DirectorTecnicoRankingPage: Error en ranking nacional:", nationalResult.error)
+      if (!error) {
+        error = nationalResult.error
       }
     }
-  } catch (error: any) {
-    console.error("DirectorTecnicoRankingPage: ERROR GENERAL durante la carga de datos:", error)
-    errorMessage = error?.message || "Error desconocido al cargar los rankings."
+  } catch (err: any) {
+    console.error("DirectorTecnicoRankingPage: Error general:", err)
+    error = "Error al cargar los datos del ranking"
   }
 
-  console.log(
-    "DirectorTecnicoRankingPage: FIN de la obtención de datos del Server Component. Renderizando RankingDisplay.",
-  )
+  console.log("DirectorTecnicoRankingPage: Renderizando componente")
+
   return (
     <AuthGuard allowedRoles={["Director Tecnico", "arbitro"]}>
-      <RankingDisplay
-        zoneTeams={zoneTeams}
-        nationalTeams={nationalTeams}
-        zoneName={userZoneName}
-        errorMessage={errorMessage}
-      />
+      <SimpleRankingDisplay zoneTeams={zoneTeams} nationalTeams={nationalTeams} zoneName={zoneName} error={error} />
     </AuthGuard>
   )
 }
