@@ -1,19 +1,34 @@
 "use client"
 
+import { useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Trophy, TrendingUp } from "lucide-react"
+import { useToast } from "@/hooks/use-toast"
 import { EmptyState } from "@/components/empty-state"
 import { TeamLevelBadge } from "@/components/team-level-badge"
-import type { TeamRanking } from "@/app/actions/ranking" // Importar el tipo desde la acción
+import type { TeamRanking } from "@/app/actions/ranking" // Import the type
 
 interface RankingDisplayProps {
   zoneTeams: TeamRanking[]
   nationalTeams: TeamRanking[]
   zoneName: string
+  errorMessage: string | null // New prop for server-side errors
 }
 
-export function RankingDisplay({ zoneTeams, nationalTeams, zoneName }: RankingDisplayProps) {
+export function RankingDisplay({ zoneTeams, nationalTeams, zoneName, errorMessage }: RankingDisplayProps) {
+  const { toast } = useToast()
+
+  useEffect(() => {
+    if (errorMessage) {
+      toast({
+        title: "Error",
+        description: errorMessage,
+        variant: "destructive",
+      })
+    }
+  }, [errorMessage, toast])
+
   return (
     <div className="space-y-6">
       <div>
@@ -32,7 +47,7 @@ export function RankingDisplay({ zoneTeams, nationalTeams, zoneName }: RankingDi
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Trophy className="h-5 w-5 text-yellow-500" />
-                Ranking de {zoneName || "mi zona"}
+                Ranking de {zoneName}
               </CardTitle>
               <CardDescription>Posiciones de los equipos en tu zona</CardDescription>
             </CardHeader>
@@ -63,16 +78,14 @@ export function RankingDisplay({ zoneTeams, nationalTeams, zoneName }: RankingDi
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
-                      {zoneTeams.map((team) => (
-                        <tr key={team.team_id}>
+                      {zoneTeams.map((team, index) => (
+                        <tr key={team.id}>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                             <div className="flex items-center justify-center w-8 h-8 rounded-full bg-gray-100 text-gray-800 font-bold">
-                              {team.position}
+                              {index + 1}
                             </div>
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                            {team.team_name}
-                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{team.name}</td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{team.distributor_name}</td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-green-600 font-semibold">
                             {team.goals}
@@ -81,7 +94,7 @@ export function RankingDisplay({ zoneTeams, nationalTeams, zoneName }: RankingDi
                             {team.total_points}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                            <TeamLevelBadge position={team.position} />
+                            <TeamLevelBadge position={index + 1} />
                           </td>
                         </tr>
                       ))}
@@ -138,16 +151,14 @@ export function RankingDisplay({ zoneTeams, nationalTeams, zoneName }: RankingDi
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
-                      {nationalTeams.map((team) => (
-                        <tr key={team.team_id}>
+                      {nationalTeams.map((team, index) => (
+                        <tr key={team.id}>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                             <div className="flex items-center justify-center w-8 h-8 rounded-full bg-gray-100 text-gray-800 font-bold">
-                              {team.position}
+                              {index + 1}
                             </div>
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                            {team.team_name}
-                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{team.name}</td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{team.zone_name}</td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{team.distributor_name}</td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-green-600 font-semibold">
@@ -157,7 +168,7 @@ export function RankingDisplay({ zoneTeams, nationalTeams, zoneName }: RankingDi
                             {team.total_points}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                            <TeamLevelBadge position={team.position} />
+                            <TeamLevelBadge position={index + 1} />
                           </td>
                         </tr>
                       ))}
