@@ -1,8 +1,11 @@
 import { createClient } from "@supabase/supabase-js"
 import type { Database } from "@/types/supabase"
+import { createBrowserClient } from "@supabase/ssr"
 
 // Singleton pattern para el cliente de Supabase
 let supabaseInstance: ReturnType<typeof createClient<Database>> | null = null
+// Usamos una variable global para asegurar que solo se cree una instancia del cliente Supabase
+let supabaseClient: ReturnType<typeof createBrowserClient> | undefined
 
 export const getSupabaseClient = () => {
   if (supabaseInstance) return supabaseInstance
@@ -45,6 +48,16 @@ export const getSupabaseClient = () => {
     console.error("❌ Error initializing Supabase client:", error)
     throw error
   }
+}
+
+export function getClientSupabaseClient() {
+  if (!supabaseClient) {
+    supabaseClient = createBrowserClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    )
+  }
+  return supabaseClient
 }
 
 // Exportar para uso directo
