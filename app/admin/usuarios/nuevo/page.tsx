@@ -45,52 +45,89 @@ export default function NuevoUsuarioPage() {
   const { toast } = useToast()
 
   useEffect(() => {
-    fetchZones()
-    fetchDistributors()
-    fetchTeams()
+    let isMounted = true
+
+    const loadData = async () => {
+      await Promise.all([fetchZones(isMounted), fetchDistributors(isMounted), fetchTeams(isMounted)])
+    }
+
+    loadData()
+
+    return () => {
+      isMounted = false
+    }
   }, [])
 
-  async function fetchZones() {
+  async function fetchZones(isMounted = true) {
     try {
       setLoadingZones(true)
       const { data, error } = await supabase.from("zones").select("id, name").order("name")
 
       if (error) throw error
-      setZones(data || [])
+      if (isMounted) {
+        setZones(data || [])
+      }
     } catch (error) {
       console.error("Error al cargar zonas:", error)
+      if (isMounted) {
+        setZones([])
+      }
     } finally {
-      setLoadingZones(false)
+      if (isMounted) {
+        setLoadingZones(false)
+      }
     }
   }
 
-  async function fetchDistributors() {
+  async function fetchDistributors(isMounted = true) {
     try {
       setLoadingDistributors(true)
       const { data, error } = await supabase.from("distributors").select("id, name").order("name")
 
       if (error) throw error
-      setDistributors(data || [])
+      if (isMounted) {
+        setDistributors(data || [])
+      }
     } catch (error) {
       console.error("Error al cargar distribuidores:", error)
+      if (isMounted) {
+        setDistributors([])
+      }
     } finally {
-      setLoadingDistributors(false)
+      if (isMounted) {
+        setLoadingDistributors(false)
+      }
     }
   }
 
-  async function fetchTeams() {
+  async function fetchTeams(isMounted = true) {
     try {
       setLoadingTeams(true)
       const { data, error } = await supabase.from("teams").select("id, name").order("name")
 
       if (error) throw error
-      setTeams(data || [])
+      if (isMounted) {
+        setTeams(data || [])
+      }
     } catch (error) {
       console.error("Error al cargar equipos:", error)
+      if (isMounted) {
+        setTeams([])
+      }
     } finally {
-      setLoadingTeams(false)
+      if (isMounted) {
+        setLoadingTeams(false)
+      }
     }
   }
+
+  useEffect(() => {
+    // Reset form state on mount
+    setRole("")
+    setSelectedZone("")
+    setSelectedDistributor("")
+    setSelectedTeam("")
+  }, [])
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
