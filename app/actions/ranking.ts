@@ -77,92 +77,168 @@ export async function getTeamRankingByZone(zoneId?: string) {
       return { success: false, error: teamsError.message }
     }
 
-    // Calcular puntos reales de ventas para cada equipo
+    // Obtener todos los IDs de equipos para hacer consultas batch
+    const teamIds = teams?.map((team) => team.id) || []
+    const allMemberIds: string[] = []
+    const teamMemberMap = new Map<string, string[]>()
+
+    // Obtener todos los miembros de todos los equipos en una sola consulta
+    if (teamIds.length > 0) {
+      const { data: allMembers } = await supabase.from("profiles").select("id, team_id").in("team_id", teamIds)
+
+      if (allMembers) {
+        allMembers.forEach((member) => {
+          if (!teamMemberMap.has(member.team_id)) {
+            teamMemberMap.set(member.team_id, [])
+          }
+          teamMemberMap.get(member.team_id)!.push(member.id)
+          allMemberIds.push(member.id)
+        })
+      }
+    }
+
+    // Obtener todas las ventas en consultas batch
+    const [salesByRep, salesByTeam, clientsByRep, clientsByTeam, allFreeKicks] = await Promise.allSettled([
+      // Ventas por representante
+      allMemberIds.length > 0
+        ? supabase.from("sales").select("points, representative_id").in("representative_id", allMemberIds)
+        : Promise.resolve({ data: [], error: null }),
+
+      // Ventas por equipo
+      teamIds.length > 0
+        ? supabase.from("sales").select("points, team_id").in("team_id", teamIds)
+        : Promise.resolve({ data: [], error: null }),
+
+      // Clientes por representante
+      allMemberIds.length > 0
+        ? supabase
+            .from("competitor_clients")
+            .select("id, points, representative_id")
+            .in("representative_id", allMemberIds)
+        : Promise.resolve({ data: [], error: null }),
+
+      // Clientes por equipo
+      teamIds.length > 0
+        ? supabase.from("competitor_clients").select("id, points, team_id").in("team_id", teamIds)
+        : Promise.resolve({ data: [], error: null }),
+
+      // Tiros libres
+      teamIds.length > 0
+        ? supabase.from("free_kick_goals").select("points, team_id").in("team_id", teamIds)
+        : Promise.resolve({ data: [], error: null }),
+    ])
+
+    // Procesar resultados y manejar errores
+    const salesRepData = salesByRep.status === "fulfilled" ? salesByRep.value.data || [] : []
+    const salesTeamData = salesByTeam.status === "fulfilled" ? salesByTeam.value.data || [] : []
+    const clientsRepData = clientsByRep.status === "fulfilled" ? clientsByRep.value.data || [] : []
+    const clientsTeamData = clientsByTeam.status === "fulfilled" ? clientsByTeam.value.data || [] : []
+    const freeKicksData = allFreeKicks.status === "fulfilled" ? allFreeKicks.value.data || [] : []
+
+    // Crear mapas para acceso rápido
+    const salesByRepMap = new Map<string, number>()
+    const salesByTeamMap = new Map<string, number>()
+    const clientsByRepMap = new Map<string, Set<string>>()
+    const clientsByTeamMap = new Map<string, Set<string>>()
+    const freeKicksByTeamMap = new Map<string, number>()
+
+    // Procesar ventas por representante
+    salesRepData.forEach((sale) => {
+      if (sale.representative_id) {
+        salesByRepMap.set(sale.representative_id, (salesByRepMap.get(sale.representative_id) || 0) + (sale.points || 0))
+      }
+    })
+
+    // Procesar ventas por equipo
+    salesTeamData.forEach((sale) => {
+      if (sale.team_id) {
+        salesByTeamMap.set(sale.team_id, (salesByTeamMap.get(sale.team_id) || 0) + (sale.points || 0))
+      }
+    })
+
+    // Procesar clientes por representante
+    clientsRepData.forEach((client) => {
+      if (client.representative_id) {
+        if (!clientsByRepMap.has(client.representative_id)) {
+          clientsByRepMap.set(client.representative_id, new Set())
+        }
+        clientsByRepMap.get(client.representative_id)!.add(client.id)
+      }
+    })
+
+    // Procesar clientes por equipo
+    clientsTeamData.forEach((client) => {
+      if (client.team_id) {
+        if (!clientsByTeamMap.has(client.team_id)) {
+          clientsByTeamMap.set(client.team_id, new Set())
+        }
+        clientsByTeamMap.get(client.team_id)!.add(client.id)
+      }
+    })
+
+    // Procesar tiros libres
+    freeKicksData.forEach((freeKick) => {
+      if (freeKick.team_id) {
+        freeKicksByTeamMap.set(
+          freeKick.team_id,
+          (freeKicksByTeamMap.get(freeKick.team_id) || 0) + (freeKick.points || 0),
+        )
+      }
+    })
+
+    // Calcular puntos para cada equipo
     const ranking: TeamRanking[] = []
 
     for (const team of teams || []) {
       console.log(`Calculando puntos para equipo: ${team.name}`)
 
-      // Obtener miembros del equipo
-      const { data: teamMembers } = await supabase.from("profiles").select("id").eq("team_id", team.id)
-      const memberIds = teamMembers?.map((member) => member.id) || []
-      console.log(`Miembros del equipo ${team.name}:`, memberIds)
+      const memberIds = teamMemberMap.get(team.id) || []
 
-      // 1. OBTENER PUNTOS DE VENTAS - BUSCAR POR AMBOS CAMPOS
+      // 1. CALCULAR PUNTOS DE VENTAS
       let totalSalesPoints = 0
 
-      // Buscar ventas por representative_id (miembros del equipo)
-      if (memberIds.length > 0) {
-        const { data: salesByRep, error: salesRepError } = await supabase
-          .from("sales")
-          .select("points")
-          .in("representative_id", memberIds)
+      // Sumar ventas por representantes del equipo
+      memberIds.forEach((memberId) => {
+        totalSalesPoints += salesByRepMap.get(memberId) || 0
+      })
 
-        if (!salesRepError && salesByRep) {
-          totalSalesPoints += salesByRep.reduce((sum, sale) => sum + (sale.points || 0), 0)
-        }
-      }
-
-      // Buscar ventas directas por team_id
-      const { data: salesByTeam, error: salesTeamError } = await supabase
-        .from("sales")
-        .select("points")
-        .eq("team_id", team.id)
-
-      if (!salesTeamError && salesByTeam) {
-        totalSalesPoints += salesByTeam.reduce((sum, sale) => sum + (sale.points || 0), 0)
-      }
+      // Sumar ventas directas por team_id
+      totalSalesPoints += salesByTeamMap.get(team.id) || 0
 
       console.log(`Puntos de ventas para ${team.name}:`, totalSalesPoints)
 
-      // 2. OBTENER PUNTOS DE CLIENTES DE COMPETENCIA
+      // 2. CALCULAR PUNTOS DE CLIENTES
       let totalClientsPoints = 0
+      const countedClientIds = new Set<string>()
 
-      // IMPORTANTE: Evitar contar clientes duplicados
-      // Crear un conjunto para almacenar IDs de clientes ya contados
-      const countedClientIds = new Set()
-
-      // Obtener clientes por representative_id
-      if (memberIds.length > 0) {
-        const { data: clientsByRep } = await supabase
-          .from("competitor_clients")
-          .select("id, points")
-          .in("representative_id", memberIds)
-
-        if (clientsByRep) {
-          for (const client of clientsByRep) {
-            if (!countedClientIds.has(client.id)) {
-              totalClientsPoints += client.points || 200
-              countedClientIds.add(client.id)
+      // Clientes por representantes
+      memberIds.forEach((memberId) => {
+        const clientIds = clientsByRepMap.get(memberId)
+        if (clientIds) {
+          clientIds.forEach((clientId) => {
+            if (!countedClientIds.has(clientId)) {
+              totalClientsPoints += 200 // Puntos por cliente
+              countedClientIds.add(clientId)
             }
-          }
+          })
         }
-      }
+      })
 
-      // Obtener clientes por team_id
-      const { data: clientsByTeam } = await supabase
-        .from("competitor_clients")
-        .select("id, points")
-        .eq("team_id", team.id)
-
-      if (clientsByTeam) {
-        for (const client of clientsByTeam) {
-          if (!countedClientIds.has(client.id)) {
-            totalClientsPoints += client.points || 200
-            countedClientIds.add(client.id)
+      // Clientes directos por equipo
+      const teamClientIds = clientsByTeamMap.get(team.id)
+      if (teamClientIds) {
+        teamClientIds.forEach((clientId) => {
+          if (!countedClientIds.has(clientId)) {
+            totalClientsPoints += 200
+            countedClientIds.add(clientId)
           }
-        }
+        })
       }
 
       console.log(`Puntos de clientes para ${team.name}:`, totalClientsPoints)
 
-      // 3. OBTENER PUNTOS DE TIROS LIBRES (por team_id)
-      const { data: freeKicks } = await supabase.from("free_kick_goals").select("points").eq("team_id", team.id)
-      let totalFreeKickPoints = 0
-      if (freeKicks) {
-        totalFreeKickPoints = freeKicks.reduce((sum, freeKick) => sum + (freeKick.points || 0), 0)
-      }
-
+      // 3. CALCULAR PUNTOS DE TIROS LIBRES
+      const totalFreeKickPoints = freeKicksByTeamMap.get(team.id) || 0
       console.log(`Puntos de tiros libres para ${team.name}:`, totalFreeKickPoints)
 
       // 4. SUMAR TODOS LOS PUNTOS Y CALCULAR GOLES
