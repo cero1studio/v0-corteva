@@ -271,6 +271,7 @@ export default function AdminClientesPage() {
     const razonSocial = client.razon_social || ""
     const tipoVenta = client.tipo_venta || ""
     const ubicacionFinca = client.ubicacion_finca || ""
+    const area_finca_hectareas: number | null = client.area_finca_hectareas
     const productoAnterior = client.producto_anterior || ""
     const productoSuperGanaderia = client.producto_super_ganaderia || ""
     const volumenVentaEstimado = client.volumen_venta_estimado || ""

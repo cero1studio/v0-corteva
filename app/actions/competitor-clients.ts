@@ -11,7 +11,7 @@ export async function registerCompetitorClient(formData: FormData) {
 
   // Obtener datos del formulario
   const clientName = formData.get("client_name") as string
-  const clientNameCompetitora = (formData.get("client_name_competitora") as string) || null
+  const competitorName = (formData.get("competitor_name") as string) || null
   const ganaderoName = (formData.get("ganadero_name") as string) || null
   const razonSocial = (formData.get("razon_social") as string) || null
   const tipoVenta = (formData.get("tipo_venta") as string) || null
@@ -33,7 +33,7 @@ export async function registerCompetitorClient(formData: FormData) {
       .from("competitor_clients")
       .insert({
         client_name: clientName,
-        competitor_name: clientNameCompetitora,
+        competitor_name: competitorName,
         ganadero_name: ganaderoName,
         razon_social: razonSocial,
         tipo_venta: tipoVenta,
@@ -77,7 +77,7 @@ export async function getCompetitorClientsByTeam(teamId: string) {
       .select(`
         id,
         client_name,
-        client_name_competitora,
+        competitor_name,
         ganadero_name,
         razon_social,
         tipo_venta,
@@ -157,7 +157,7 @@ export async function getCompetitorClientsByUser(userId: string) {
       .select(`
         id,
         client_name,
-        client_name_competitora,
+        competitor_name,
         ganadero_name,
         razon_social,
         tipo_venta,
@@ -227,7 +227,7 @@ export async function getAllCompetitorClients() {
       .select(`
         id,
         client_name,
-        client_name_competitora,
+        competitor_name,
         ganadero_name,
         razon_social,
         tipo_venta,
