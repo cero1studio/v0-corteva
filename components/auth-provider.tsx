@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { createContext, useContext, useEffect, useState, useCallback } from "react"
+import { createContext, useContext, useEffect, useState, useCallback, useRef } from "react"
 import { supabase } from "@/lib/supabase/client"
 import { useRouter, usePathname } from "next/navigation"
 import type { Session, User } from "@supabase/supabase-js"
@@ -40,6 +40,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [error, setError] = useState<string | null>(null)
   const router = useRouter()
   const pathname = usePathname()
+
+  // Usar useRef para acceder al valor actual de session en closures
+  const sessionRef = useRef<Session | null>(null)
+
+  // Mantener la referencia actualizada
+  useEffect(() => {
+    sessionRef.current = session
+  }, [session])
 
   const publicRoutes = [
     "/login",
@@ -191,8 +199,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setIsLoading(false)
             setIsInitialized(true)
 
-            // Si no estamos en una ruta pública y no tenemos sesión, ir a login
-            if (!isPublicRoute && !session) {
+            // Usar sessionRef.current en lugar de session
+            if (!isPublicRoute && !sessionRef.current) {
               console.log("AUTH: TIMEOUT - Redirecting to login")
               router.push("/login")
             }
