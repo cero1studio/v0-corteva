@@ -37,8 +37,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
   const [user, setUser] = useState<User | null>(null)
   const [profile, setProfile] = useState<UserProfile | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
-  const [isInitialized, setIsInitialized] = useState(false)
+  const [isLoading, setIsLoading] = useState(true) // Controls initial loading state
+  const [isInitialized, setIsInitialized] = useState(false) // Ensures initialization runs once
   const [error, setError] = useState<string | null>(null)
   const router = useRouter()
   const pathname = usePathname()
@@ -130,17 +130,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [pathname, getDashboardRoute, router],
   )
 
-  // Inicialización inmediata con caché para URLs directas
+  // Main initialization effect
   useEffect(() => {
     let mounted = true
 
     const initializeAuth = async () => {
+      if (isInitialized) {
+        console.log("AUTH: Already initialized, skipping.")
+        return
+      }
+
       try {
         console.log("AUTH: Initializing authentication...")
+        setIsLoading(true) // Set loading true at the start of initialization
 
         const isPublicRoute = publicRoutes.some((route) => pathname?.startsWith(route))
 
-        // Para URLs directas no públicas, usar caché inmediatamente
+        // Try to get session from cache first for non-public routes
         if (!isPublicRoute && pathname !== "/login") {
           const { session: cachedSession, user: cachedUser } = getCachedSessionForced()
           const cachedProfile = getCachedProfileForced()
@@ -150,11 +156,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setSession(cachedSession)
             setUser(cachedUser)
             setProfile(cachedProfile)
-            setIsLoading(false)
+            setIsLoading(false) // Set loading false if cache is used
             setIsInitialized(true)
             refreshCacheTimestamp()
 
-            // Verificar sesión real en segundo plano sin bloquear
+            // Verify real session in background without blocking
             setTimeout(async () => {
               try {
                 const { data, error } = await supabase.auth.getSession()
@@ -170,18 +176,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                     cacheProfile(userProfile)
                   }
                 } else if (error) {
-                  console.log("AUTH: Background session verification failed, keeping cache")
+                  console.log("AUTH: Background session verification failed, clearing cache and redirecting to login")
+                  clearAllCache()
+                  if (mounted && pathname !== "/login") {
+                    router.push("/login")
+                  }
                 }
               } catch (err) {
-                console.log("AUTH: Background verification error, keeping cache")
+                console.log("AUTH: Background verification error, clearing cache and redirecting to login")
+                clearAllCache()
+                if (mounted && pathname !== "/login") {
+                  router.push("/login")
+                }
               }
-            }, 100) // Verificar muy rápido en segundo plano
-
-            return
+            }, 100) // Verify very quickly in background
+            return // Exit if cached session is used
           }
         }
 
-        // Para login y rutas públicas, o si no hay caché, verificar sesión normalmente
+        // If no cache or public route, check session normally
         console.log("AUTH: No cache or public route, checking session normally")
 
         const {
@@ -196,7 +209,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setSession(null)
           setUser(null)
           setProfile(null)
-          if (isPublicRoute) clearAllCache()
+          clearAllCache() // Clear cache on session error
+          if (!isPublicRoute && pathname !== "/login") {
+            console.log("AUTH: Redirecting to login due to session error")
+            router.push("/login")
+          }
         } else if (session) {
           console.log("AUTH: Session found")
           setSession(session)
@@ -217,22 +234,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setSession(null)
           setUser(null)
           setProfile(null)
-
-          if (isPublicRoute || pathname === "/login") {
-            clearAllCache()
-          }
+          clearAllCache() // Clear cache if no session found
 
           if (!isPublicRoute && pathname !== "/login") {
-            console.log("AUTH: Redirecting to login")
+            console.log("AUTH: Redirecting to login (no session)")
             router.push("/login")
           }
         }
       } catch (err) {
         console.error("AUTH Init Error:", err)
+        setError((err as Error).message || "Error de inicialización de autenticación")
+        clearAllCache() // Clear cache on any initialization error
+        if (mounted && pathname !== "/login") {
+          router.push("/login")
+        }
       } finally {
         if (mounted) {
           setIsLoading(false)
-          setIsInitialized(true)
+          setIsInitialized(true) // Mark as initialized
         }
       }
     }
@@ -242,8 +261,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => {
       mounted = false
     }
-  }, [fetchUserProfile, handleRedirection, pathname, router, publicRoutes, supabase])
+  }, [fetchUserProfile, handleRedirection, pathname, router, publicRoutes, supabase, isInitialized]) // Add isInitialized to dependencies
 
+  // Auth state change listener
   useEffect(() => {
     const {
       data: { subscription },
@@ -286,7 +306,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     })
 
     return () => subscription.unsubscribe()
-  }, [fetchUserProfile, handleRedirection, pathname, router, supabase])
+  }, [fetchUserProfile, handleRedirection, pathname, router, supabase]) // Add supabase to dependencies
 
   const signIn = async (email: string, password: string) => {
     try {
