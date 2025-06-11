@@ -63,8 +63,8 @@ export async function getTeamRankingByZone(zoneId?: string) {
         id,
         name,
         zone_id,
-        zones!left(id, name), // Usar LEFT JOIN
-        distributors!left(id, name, logo_url) // Usar LEFT JOIN
+        zones!left(id, name),
+        distributors!left(id, name, logo_url)
       `)
 
     if (zoneId) {
@@ -292,8 +292,8 @@ export async function getSalesRankingByZone(zoneId?: string) {
     let teamsQuery = supabase.from("teams").select(`
         id,
         name,
-        zones!left(id, name), // Usar LEFT JOIN
-        distributors!left(id, name, logo_url) // Usar LEFT JOIN
+        zones!left(id, name),
+        distributors!left(id, name, logo_url)
       `)
 
     if (zoneId) {
@@ -369,8 +369,8 @@ export async function getClientsRankingByZone(zoneId?: string) {
     let teamsQuery = supabase.from("teams").select(`
         id,
         name,
-        zones!left(id, name), // Usar LEFT JOIN
-        distributors!left(id, name, logo_url) // Usar LEFT JOIN
+        zones!left(id, name),
+        distributors!left(id, name, logo_url)
       `)
 
     if (zoneId) {
@@ -485,7 +485,7 @@ export async function getUserTeamInfo(
         id,
         name,
         zone_id,
-        zones!left(name) // Usar LEFT JOIN
+        zones!left(name)
       `)
       .eq("id", profile.team_id)
       .single()
