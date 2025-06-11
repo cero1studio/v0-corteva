@@ -42,7 +42,6 @@ export function ClientForm({ open, setOpen, zones, teams, users, onSuccess }: Cl
   const [loading, setLoading] = useState(false)
   const [selectedZoneId, setSelectedZoneId] = useState<string>("")
   const [selectedTeamId, setSelectedTeamId] = useState<string>("")
-  const [formErrors, setFormErrors] = useState<Record<string, string>>({})
 
   const [formData, setFormData] = useState({
     client_name: "",
@@ -65,7 +64,6 @@ export function ClientForm({ open, setOpen, zones, teams, users, onSuccess }: Cl
   const availableTeams = selectedZoneId ? teams.filter((team) => team.zone_id === selectedZoneId) : teams
 
   // Encuentra el capitán del equipo seleccionado
-  const selectedTeam = teams.find((team) => team.id === selectedTeamId)
   const teamCaptain = selectedTeamId
     ? users.find((user) => user.role === "Capitan" && user.team_id === selectedTeamId)
     : null
@@ -73,55 +71,22 @@ export function ClientForm({ open, setOpen, zones, teams, users, onSuccess }: Cl
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { id, value } = e.target
     setFormData((prev) => ({ ...prev, [id]: value }))
-    setFormErrors((prev) => ({ ...prev, [id]: "" })) // Limpiar error al cambiar
   }
 
   const handleZoneChange = (value: string) => {
     setSelectedZoneId(value)
     setSelectedTeamId("") // Resetear equipo al cambiar la zona
-    setFormErrors((prev) => ({ ...prev, zone: "", team: "" })) // Limpiar errores de zona y equipo
   }
 
   const handleTeamChange = (value: string) => {
     setSelectedTeamId(value)
-    setFormErrors((prev) => ({ ...prev, team: "" })) // Limpiar error de equipo
   }
 
   const handleTipoVentaChange = (value: string) => {
     setFormData((prev) => ({ ...prev, tipo_venta: value }))
     if (value !== "distribuidor") {
       setFormData((prev) => ({ ...prev, nombre_almacen: "" }))
-      setFormErrors((prev) => ({ ...prev, nombre_almacen: "" }))
     }
-  }
-
-  const validateForm = () => {
-    const newErrors: Record<string, string> = {}
-    let isValid = true
-
-    if (!formData.client_name.trim()) {
-      newErrors.client_name = "El nombre del cliente es requerido."
-      isValid = false
-    }
-    if (!selectedZoneId || selectedZoneId === "default") {
-      newErrors.zone = "La zona es requerida."
-      isValid = false
-    }
-    if (!selectedTeamId || selectedTeamId === "default") {
-      newErrors.team = "El equipo es requerido."
-      isValid = false
-    }
-    if (selectedTeamId && !teamCaptain) {
-      newErrors.team = "El equipo seleccionado no tiene un Capitán asignado."
-      isValid = false
-    }
-    if (formData.tipo_venta === "distribuidor" && !formData.nombre_almacen.trim()) {
-      newErrors.nombre_almacen = "El nombre del almacén es requerido para este tipo de venta."
-      isValid = false
-    }
-
-    setFormErrors(newErrors)
-    return isValid
   }
 
   const resetForm = () => {
@@ -143,16 +108,48 @@ export function ClientForm({ open, setOpen, zones, teams, users, onSuccess }: Cl
     })
     setSelectedZoneId("")
     setSelectedTeamId("")
-    setFormErrors({})
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    if (!validateForm()) {
+    // Validación básica
+    if (!formData.client_name.trim()) {
       toast({
         title: "Error de validación",
-        description: "Por favor, corrige los errores en el formulario.",
+        description: "El nombre del cliente es requerido.",
+        variant: "destructive",
+      })
+      return
+    }
+    if (!selectedZoneId || selectedZoneId === "default") {
+      toast({
+        title: "Error de validación",
+        description: "La zona es requerida.",
+        variant: "destructive",
+      })
+      return
+    }
+    if (!selectedTeamId || selectedTeamId === "default") {
+      toast({
+        title: "Error de validación",
+        description: "El equipo es requerido.",
+        variant: "destructive",
+      })
+      return
+    }
+    if (!teamCaptain) {
+      toast({
+        title: "Error de validación",
+        description: "El equipo seleccionado no tiene un Capitán asignado.",
+        variant: "destructive",
+      })
+      return
+    }
+    if (formData.tipo_venta === "distribuidor" && !formData.nombre_almacen.trim()) {
+      toast({
+        title: "Error de validación",
+        description: "El nombre del almacén es requerido para este tipo de venta.",
         variant: "destructive",
       })
       return
@@ -169,7 +166,7 @@ export function ClientForm({ open, setOpen, zones, teams, users, onSuccess }: Cl
         form.append(key, value)
       })
       form.append("team_id", selectedTeamId)
-      form.append("representative", teamCaptain!.id)
+      form.append("representative", teamCaptain.id)
 
       const result = await registerCompetitorClient(form)
 
@@ -236,7 +233,6 @@ export function ClientForm({ open, setOpen, zones, teams, users, onSuccess }: Cl
                   ))}
                 </SelectContent>
               </Select>
-              {formErrors.zone && <p className="text-red-500 text-sm mt-1">{formErrors.zone}</p>}
             </div>
 
             <div>
@@ -256,7 +252,6 @@ export function ClientForm({ open, setOpen, zones, teams, users, onSuccess }: Cl
                   ))}
                 </SelectContent>
               </Select>
-              {formErrors.team && <p className="text-red-500 text-sm mt-1">{formErrors.team}</p>}
             </div>
 
             {selectedTeamId && teamCaptain && (
@@ -283,7 +278,6 @@ export function ClientForm({ open, setOpen, zones, teams, users, onSuccess }: Cl
                   placeholder="Nombre del cliente"
                   required
                 />
-                {formErrors.client_name && <p className="text-red-500 text-sm mt-1">{formErrors.client_name}</p>}
               </div>
 
               <div>
@@ -369,9 +363,6 @@ export function ClientForm({ open, setOpen, zones, teams, users, onSuccess }: Cl
                     placeholder="Nombre del almacén"
                     required
                   />
-                  {formErrors.nombre_almacen && (
-                    <p className="text-red-500 text-sm mt-1">{formErrors.nombre_almacen}</p>
-                  )}
                 </div>
               )}
 
