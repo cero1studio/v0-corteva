@@ -1,15 +1,14 @@
 "use client"
 
-import { useEffect, useState, useCallback } from "react"
+import { useEffect, useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Search, Filter, Download, Trophy, Medal, Database, BarChart3 } from "lucide-react"
-import { AdminRankingChart } from "@/components/admin-ranking-chart" // Para top 3 equipos
-import { AdminZonesChart } from "@/components/admin-zones-chart" // Para top 2 zonas
+import { Search, Filter, Download, Trophy, Medal, Database } from "lucide-react"
+import { AdminRankingChart } from "@/components/admin-ranking-chart"
 import { getTeamRankingByZone } from "@/app/actions/ranking"
 import { EmptyState } from "@/components/empty-state"
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
@@ -25,8 +24,6 @@ type Team = {
   goals: number
   position?: number
   total_points: number
-  distributor_name: string
-  distributor_logo?: string
 }
 
 type Zone = {
@@ -37,258 +34,156 @@ type Zone = {
   teams_count: number
 }
 
-type Distributor = {
-  id: string
-  name: string
-  logo_url?: string
-}
-
 export default function RankingAdminPage() {
   const [searchTerm, setSearchTerm] = useState("")
   const [zoneFilter, setZoneFilter] = useState("all")
   const [selectedZone, setSelectedZone] = useState<string | null>(null)
-  const [distributorFilter, setDistributorFilter] = useState("all")
-  const [activeTab, setActiveTab] = useState("nacional")
-
-  const [isLoadingNational, setIsLoadingNational] = useState(true)
-  const [isLoadingZone, setIsLoadingZone] = useState(false)
-  const [isLoadingCharts, setIsLoadingCharts] = useState(true)
-  const [isLoadingZonesData, setIsLoadingZonesData] = useState(true) // Para la lista de zonas del filtro
-
-  const [nationalRankingTeams, setNationalRankingTeams] = useState<Team[]>([])
-  const [zoneRankingTeams, setZoneRankingTeams] = useState<Team[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [teams, setTeams] = useState<Team[]>([])
+  const [teamsInZone, setTeamsInZone] = useState<Team[]>([])
   const [zones, setZones] = useState<Zone[]>([])
-  const [distributors, setDistributors] = useState<Distributor[]>([])
+  const [distributors, setDistributors] = useState<any[]>([])
+  const [distributorFilter, setDistributorFilter] = useState("all")
   const [winningZone, setWinningZone] = useState<Zone | null>(null)
-  const [top3Teams, setTop3Teams] = useState<Team[]>([])
-  const [top2Zones, setTop2Zones] = useState<Zone[]>([])
   const [error, setError] = useState<string | null>(null)
+  const [debugInfo, setDebugInfo] = useState<string>("")
 
   const supabase = createClientComponentClient()
 
-  const loadInitialData = useCallback(async () => {
-    setIsLoadingNational(true)
-    setIsLoadingCharts(true)
-    setIsLoadingZonesData(true)
-    setError(null)
+  // Cargar datos iniciales
+  useEffect(() => {
+    async function loadData() {
+      setIsLoading(true)
+      setError(null)
 
-    try {
-      // Cargar zonas y distribuidores en paralelo
-      const [{ data: zonesData, error: zonesError }, { data: distributorsData, error: distributorsError }] =
-        await Promise.all([
-          supabase.from("zones").select("id, name").order("name"),
-          supabase.from("distributors").select("id, name, logo_url"),
-        ])
+      try {
+        // Cargar zonas
+        const { data: zonesData, error: zonesError } = await supabase.from("zones").select("*")
 
-      if (zonesError) throw new Error(`Error al cargar zonas: ${zonesError.message}`)
-      if (distributorsError) throw new Error(`Error al cargar distribuidores: ${distributorsError.message}`)
+        if (zonesError) throw new Error(`Error al cargar zonas: ${zonesError.message}`)
 
-      setZones(zonesData || [])
-      setDistributors(distributorsData || [])
+        // Cargar distribuidores
+        const { data: distributorsData, error: distributorsError } = await supabase.from("distributors").select("*")
 
-      // Establecer zona seleccionada por defecto si hay zonas y no hay una ya seleccionada
-      if (zonesData && zonesData.length > 0 && !selectedZone) {
-        setSelectedZone(zonesData[0].id)
-      }
-      setIsLoadingZonesData(false)
+        if (distributorsError) throw new Error(`Error al cargar distribuidores: ${distributorsError.message}`)
 
-      // Cargar ranking nacional
-      const rankingResult = await getTeamRankingByZone()
+        // Usar la función para obtener el ranking nacional
+        const rankingResult = await getTeamRankingByZone()
 
-      if (!rankingResult.success) {
-        throw new Error(rankingResult.error || "Error al cargar ranking nacional")
-      }
-
-      const teamsData = rankingResult.data || []
-      console.log("DEBUG: Teams data from getTeamRankingByZone (national):", teamsData)
-      setNationalRankingTeams(teamsData)
-      console.log("DEBUG: National ranking teams loaded:", teamsData)
-      setTop3Teams(teamsData.slice(0, 3)) // Obtener los 3 mejores equipos para el gráfico
-      console.log("DEBUG: Top 3 teams for chart:", teamsData.slice(0, 3))
-
-      // Calcular goles y puntos totales por zona para el ranking de zonas y el gráfico de zonas
-      const zoneMap = new Map<string, Zone>()
-      zonesData.forEach((zone) => {
-        zoneMap.set(zone.id, {
-          id: zone.id,
-          name: zone.name,
-          total_goals: 0, // Initialized to 0
-          total_points: 0, // Initialized to 0
-          teams_count: 0,
-        })
-      })
-
-      teamsData.forEach((team) => {
-        const zoneId = team.zone_id
-        if (zoneMap.has(zoneId)) {
-          const zone = zoneMap.get(zoneId)!
-          zone.total_goals += team.goals
-          zone.total_points += team.total_points
-          zone.teams_count += 1
-          zoneMap.set(zoneId, zone)
+        if (!rankingResult.success) {
+          throw new Error(rankingResult.error || "Error al cargar ranking")
         }
-      })
 
-      console.log("DEBUG: Zone map after aggregation:", zoneMap)
+        const teamsData = rankingResult.data || []
 
-      const processedZones = Array.from(zoneMap.values())
-      console.log("DEBUG: Processed zones before setting state:", processedZones)
-      setZones(processedZones) // Actualizar el estado de zonas con los totales calculados
+        console.log("DEBUG: Teams data for ranking page:", teamsData) // Log de depuración
 
-      // Encontrar zona ganadora y top 2 zonas para el gráfico
-      const sortedZones = [...processedZones].sort((a, b) => {
-        if (b.total_goals !== a.total_goals) return b.total_goals - a.total_goals
-        return b.total_points - a.total_points
-      })
+        // Inicializar zonas con contadores en cero
+        const zoneMap = new Map<string, Zone>()
 
-      const winner = sortedZones.length > 0 ? sortedZones[0] : null
-      console.log("DEBUG: Winning zone calculated:", winner)
+        zonesData.forEach((zone) => {
+          zoneMap.set(zone.id, {
+            id: zone.id,
+            name: zone.name,
+            total_goals: 0,
+            total_points: 0,
+            teams_count: 0,
+          })
+        })
 
-      setWinningZone(sortedZones.length > 0 ? sortedZones[0] : null)
-      setTop2Zones(sortedZones.slice(0, 2)) // Obtener las 2 mejores zonas para el gráfico
-      console.log("DEBUG: Top 2 zones for chart:", sortedZones.slice(0, 2))
-    } catch (err: any) {
-      console.error("Error cargando datos iniciales:", err)
-      setError(err.message)
-    } finally {
-      setIsLoadingNational(false)
-      setIsLoadingCharts(false)
-    }
-  }, [supabase, selectedZone])
+        // Calcular goles totales por zona
+        teamsData.forEach((team) => {
+          const zoneId = team.zone_id
+          if (zoneMap.has(zoneId)) {
+            const zone = zoneMap.get(zoneId)!
+            zone.total_goals += team.goals
+            zone.total_points += team.total_points
+            zone.teams_count += 1
+            zoneMap.set(zoneId, zone)
+          }
+        })
 
-  const loadZoneRanking = useCallback(async () => {
-    console.log("DEBUG: Loading zone ranking for zone ID:", selectedZone)
-    if (!selectedZone || selectedZone === "all") {
-      setZoneRankingTeams([])
-      setIsLoadingZone(false)
-      return
-    }
+        const processedZones = Array.from(zoneMap.values())
 
-    setIsLoadingZone(true)
-    setError(null)
-    try {
-      const rankingResult = await getTeamRankingByZone(selectedZone)
-      console.log("DEBUG: Zone ranking teams loaded:", rankingResult.data)
-      if (rankingResult.success) {
-        setZoneRankingTeams(rankingResult.data || [])
-        console.log("DEBUG: Zone ranking teams loaded:", rankingResult.data)
-      } else {
-        throw new Error(rankingResult.error || "Error al cargar ranking por zona")
+        // Debug info
+        let debug = "Zonas procesadas:\n"
+        processedZones.forEach((zone) => {
+          debug += `${zone.name}: ${zone.total_goals} goles, ${zone.teams_count} equipos, ${zone.total_points} puntos\n`
+        })
+        setDebugInfo(debug)
+
+        console.log("DEBUG: Processed zones for ranking page (after aggregation):", processedZones) // Log de depuración
+
+        // Encontrar zona ganadora - ordenar por goles totales
+        const sortedZones = [...processedZones].sort((a, b) => {
+          // Primero por goles
+          if (b.total_goals !== a.total_goals) return b.total_goals - a.total_goals
+          // Si hay empate en goles, por puntos
+          return b.total_points - a.total_points
+        })
+
+        console.log("DEBUG: Sorted zones for winning zone:", sortedZones) // Log de depuración
+
+        // Seleccionar la zona con más goles (si hay empate, la que tenga más puntos)
+        const winner = sortedZones.length > 0 ? sortedZones[0] : null
+        console.log("DEBUG: Winning zone selected:", winner) // Log de depuración
+
+        setTeams(teamsData)
+        setZones(processedZones)
+        setDistributors(distributorsData)
+        setWinningZone(winner)
+
+        // Establecer zona seleccionada por defecto si hay zonas
+        if (processedZones.length > 0 && !selectedZone) {
+          setSelectedZone(processedZones[0].id)
+        }
+      } catch (error: any) {
+        console.error("Error cargando datos:", error)
+        setError(error.message)
+      } finally {
+        setIsLoading(false)
       }
-    } catch (err: any) {
-      console.error("Error cargando ranking por zona:", err)
-      setError(err.message)
-    } finally {
-      setIsLoadingZone(false)
     }
+
+    loadData()
+  }, [supabase])
+
+  // Cargar equipos de zona específica cuando cambia selectedZone
+  useEffect(() => {
+    async function loadZoneTeams() {
+      if (!selectedZone) return
+
+      try {
+        const rankingResult = await getTeamRankingByZone(selectedZone)
+        if (rankingResult.success && rankingResult.data) {
+          setTeamsInZone(rankingResult.data)
+          console.log("DEBUG: Teams in selected zone:", rankingResult.data) // Log de depuración
+        }
+      } catch (error) {
+        console.error("Error cargando equipos de zona:", error)
+      }
+    }
+
+    loadZoneTeams()
   }, [selectedZone])
 
-  useEffect(() => {
-    loadInitialData()
-  }, [loadInitialData])
-
-  useEffect(() => {
-    if (activeTab === "zona") {
-      loadZoneRanking()
-    }
-  }, [activeTab, selectedZone, loadZoneRanking])
-
-  // Filtrar equipos para la tabla nacional
-  const filteredNationalTeams = nationalRankingTeams.filter((team) => {
+  // Filtrar equipos
+  const filteredTeams = teams.filter((team) => {
     const matchesSearch = team.team_name.toLowerCase().includes(searchTerm.toLowerCase())
     const matchesZone = zoneFilter === "all" || team.zone_id === zoneFilter
-    const matchesDistributor =
-      distributorFilter === "all" ||
-      team.distributor_name === distributors.find((d) => d.id === distributorFilter)?.name // Asumiendo que distributor_name es único o se puede mapear
+    const matchesDistributor = true // Implementar cuando tengamos la relación equipo-distribuidor
 
     return matchesSearch && matchesZone && matchesDistributor
   })
 
-  const exportToExcel = () => {
-    try {
-      let dataToExport: any[] = []
-      let fileName = ""
-
-      if (activeTab === "nacional") {
-        dataToExport = filteredNationalTeams.map((team) => ({
-          Posición: team.position,
-          Equipo: team.team_name,
-          Distribuidor: team.distributor_name,
-          Zona: team.zone_name,
-          Goles: team.goals,
-          "Puntos Totales": team.total_points,
-          Kilos: Math.round((team.total_points * 10) / 100), // Cálculo: puntos * 10 / 100
-        }))
-        fileName = "ranking_nacional"
-      } else if (activeTab === "zona") {
-        dataToExport = zoneRankingTeams.map((team) => ({
-          Posición: team.position,
-          Equipo: team.team_name,
-          Distribuidor: team.distributor_name,
-          Zona: team.zone_name,
-          Goles: team.goals,
-          "Puntos Totales": team.total_points,
-          Kilos: Math.round((team.total_points * 10) / 100), // Cálculo: puntos * 10 / 100
-        }))
-        fileName = `ranking_zona_${zones.find((z) => z.id === selectedZone)?.name || "seleccionada"}`
-      } else if (activeTab === "grafico") {
-        // Podríamos exportar los datos de los gráficos si es necesario
-        toast({
-          title: "Información",
-          description: "La exportación para gráficos no está implementada directamente. Exporta desde las tablas.",
-          variant: "default",
-        })
-        return
-      }
-
-      if (dataToExport.length === 0) {
-        toast({
-          title: "Error",
-          description: "No hay datos para exportar",
-          variant: "destructive",
-        })
-        return
-      }
-
-      const ws = XLSX.utils.json_to_sheet(dataToExport)
-      const wb = XLSX.utils.book_new()
-      XLSX.utils.book_append_sheet(wb, ws, "Ranking")
-
-      const wbout = XLSX.write(wb, { bookType: "xlsx", type: "array" })
-      const blob = new Blob([wbout], { type: "application/octet-stream" })
-
-      // Create a temporary URL and trigger download
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement("a")
-      a.href = url
-      a.download = `${fileName}_${new Date().toISOString().split("T")[0]}.xlsx`
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      URL.revokeObjectURL(url)
-
-      toast({
-        title: "Éxito",
-        description: "Ranking exportado correctamente",
-      })
-    } catch (err) {
-      console.error("Error exporting to Excel:", err)
-      toast({
-        title: "Error",
-        description: "Error al exportar el ranking",
-        variant: "destructive",
-      })
-    }
-  }
-
   // Renderizar estado vacío
-  const renderEmptyState = (title: string, description: string, actionLabel?: string, actionHref?: string) => (
+  const renderEmptyState = () => (
     <EmptyState
       icon={Trophy}
-      title={title}
-      description={description}
-      actionLabel={actionLabel}
-      actionHref={actionHref}
+      title="No hay equipos en el ranking"
+      description="No hay equipos registrados o no tienen ventas registradas."
+      actionLabel="Crear equipo"
+      actionHref="/admin/equipos/nuevo"
       iconClassName="bg-amber-100"
     />
   )
@@ -301,17 +196,105 @@ export default function RankingAdminPage() {
       </div>
       <h3 className="text-lg font-medium">Error al cargar datos</h3>
       <p className="text-sm text-muted-foreground mt-1 max-w-md">{error}</p>
-      <Button variant="outline" className="mt-4" onClick={loadInitialData}>
+      <Button variant="outline" className="mt-4" onClick={() => window.location.reload()}>
         Intentar nuevamente
       </Button>
     </div>
   )
 
-  const renderLoadingState = () => (
-    <div className="flex justify-center items-center py-8">
-      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-corteva-600"></div>
-    </div>
-  )
+  const exportToExcel = () => {
+    try {
+      if (filteredTeams.length === 0) {
+        toast({
+          title: "Error",
+          description: "No hay datos para exportar",
+          variant: "destructive",
+        })
+        return
+      }
+
+      // Preparar datos para Excel (solo datos filtrados)
+      const excelData = filteredTeams.map((team, index) => ({
+        Posición: index + 1,
+        Equipo: team.team_name,
+        Zona: team.zone_name,
+        Goles: team.goals,
+        "Puntos Totales": team.total_points,
+        Kilos: Math.round((team.total_points * 10) / 100), // Cálculo: puntos * 10 / 100
+      }))
+
+      // Crear workbook y worksheet
+      const wb = XLSX.utils.book_new()
+      const ws = XLSX.utils.json_to_sheet(excelData)
+
+      // Configurar anchos de columna
+      const colWidths = [
+        { wch: 10 }, // Posición
+        { wch: 30 }, // Equipo
+        { wch: 20 }, // Zona
+        { wch: 10 }, // Goles
+        { wch: 15 }, // Puntos Totales
+        { wch: 10 }, // Kilos
+      ]
+      ws["!cols"] = colWidths
+
+      // Agregar worksheet al workbook
+      XLSX.utils.book_append_sheet(wb, ws, "Ranking Nacional")
+
+      // Si hay zona ganadora, agregar hoja adicional
+      if (winningZone) {
+        const zoneData = [
+          {
+            "Zona Ganadora": winningZone.name,
+            "Goles Totales": winningZone.total_goals,
+            Equipos: winningZone.teams_count,
+            "Puntos Totales": winningZone.total_points,
+            "Kilos Totales": Math.round((winningZone.total_points * 10) / 100),
+          },
+        ]
+        const wsZone = XLSX.utils.json_to_sheet(zoneData)
+        XLSX.utils.book_append_sheet(wb, wsZone, "Zona Ganadora")
+      }
+
+      // Generar archivo en formato binario
+      const excelBuffer = XLSX.write(wb, { bookType: "xlsx", type: "array" })
+
+      // Convertir a Blob
+      const blob = new Blob([excelBuffer], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      })
+
+      // Crear URL para el blob
+      const url = URL.createObjectURL(blob)
+
+      // Crear elemento de enlace para descargar
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `ranking_nacional_${new Date().toISOString().split("T")[0]}.xlsx`
+
+      // Simular clic para iniciar descarga
+      document.body.appendChild(a)
+      a.click()
+
+      // Limpiar
+      setTimeout(() => {
+        document.body.removeChild(a)
+        URL.revokeObjectURL(url)
+      }, 0)
+
+      toast({
+        title: "Éxito",
+        description: "Ranking exportado correctamente",
+      })
+    } catch (error) {
+      console.error("Error exporting to Excel:", error)
+      toast({
+        title: "Error",
+        description: "Error al exportar el ranking",
+        variant: "destructive",
+      })
+    }
+  }
 
   return (
     <div className="flex-1 space-y-4">
@@ -321,23 +304,14 @@ export default function RankingAdminPage() {
           <p className="text-muted-foreground">Visualiza y gestiona el ranking de equipos</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            className="gap-2"
-            onClick={exportToExcel}
-            disabled={
-              (activeTab === "nacional" && filteredNationalTeams.length === 0) ||
-              (activeTab === "zona" && zoneRankingTeams.length === 0) ||
-              activeTab === "grafico"
-            }
-          >
+          <Button variant="outline" className="gap-2" onClick={exportToExcel} disabled={filteredTeams.length === 0}>
             <Download className="h-4 w-4" />
             Exportar Ranking
           </Button>
         </div>
       </div>
 
-      <Tabs defaultValue="nacional" value={activeTab} onValueChange={setActiveTab} className="space-y-4">
+      <Tabs defaultValue="nacional" className="space-y-4">
         <div className="flex flex-col items-center justify-between gap-4 md:flex-row">
           <TabsList className="h-10">
             <TabsTrigger value="nacional" className="text-sm">
@@ -363,7 +337,7 @@ export default function RankingAdminPage() {
               />
             </div>
 
-            <Select value={zoneFilter} onValueChange={setZoneFilter} disabled={isLoadingZonesData}>
+            <Select value={zoneFilter} onValueChange={setZoneFilter}>
               <SelectTrigger className="w-[180px]">
                 <SelectValue placeholder="Zona" />
               </SelectTrigger>
@@ -377,7 +351,7 @@ export default function RankingAdminPage() {
               </SelectContent>
             </Select>
 
-            <Select value={distributorFilter} onValueChange={setDistributorFilter} disabled={distributors.length === 0}>
+            <Select value={distributorFilter} onValueChange={setDistributorFilter}>
               <SelectTrigger className="w-[220px]">
                 <SelectValue placeholder="Distribuidor" />
               </SelectTrigger>
@@ -417,15 +391,14 @@ export default function RankingAdminPage() {
               <CardDescription>Clasificación general de todos los equipos</CardDescription>
             </CardHeader>
             <CardContent>
-              {isLoadingNational ? (
-                renderLoadingState()
+              {isLoading ? (
+                <div className="flex justify-center items-center py-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-corteva-600"></div>
+                </div>
               ) : error ? (
                 renderErrorState()
-              ) : filteredNationalTeams.length === 0 ? (
-                renderEmptyState(
-                  "No hay equipos en el ranking nacional",
-                  "No hay equipos registrados o no tienen ventas registradas.",
-                )
+              ) : teams.length === 0 ? (
+                renderEmptyState()
               ) : (
                 <Table>
                   <TableHeader>
@@ -438,7 +411,7 @@ export default function RankingAdminPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredNationalTeams.map((team) => (
+                    {filteredTeams.map((team) => (
                       <TableRow key={team.team_id}>
                         <TableCell className="font-medium">
                           <div className="flex items-center gap-2">
@@ -462,7 +435,7 @@ export default function RankingAdminPage() {
             </CardContent>
           </Card>
 
-          {winningZone && nationalRankingTeams.length > 0 && !error && (
+          {winningZone && teams.length > 0 && !error && (
             <div className="grid gap-6 md:grid-cols-3">
               <Card className="col-span-1 md:col-span-3">
                 <CardHeader className="pb-2">
@@ -506,7 +479,7 @@ export default function RankingAdminPage() {
             <Select
               value={selectedZone || ""}
               onValueChange={(value) => setSelectedZone(value)}
-              disabled={zones.length === 0 || isLoadingZonesData || !!error}
+              disabled={zones.length === 0 || isLoading || !!error}
             >
               <SelectTrigger className="w-full md:w-[200px]">
                 <SelectValue placeholder="Seleccionar zona" />
@@ -530,17 +503,21 @@ export default function RankingAdminPage() {
               <CardDescription>Clasificación de equipos en la zona seleccionada</CardDescription>
             </CardHeader>
             <CardContent>
-              {isLoadingZone ? (
-                renderLoadingState()
+              {isLoading ? (
+                <div className="flex justify-center items-center py-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-corteva-600"></div>
+                </div>
               ) : error ? (
                 renderErrorState()
-              ) : zoneRankingTeams.length === 0 ? (
-                renderEmptyState(
-                  "No hay equipos en esta zona",
-                  "No hay equipos registrados en esta zona o no tienen ventas registradas.",
-                  "Crear equipo",
-                  "/admin/equipos/nuevo",
-                )
+              ) : teamsInZone.length === 0 ? (
+                <EmptyState
+                  icon={Trophy}
+                  title="No hay equipos en esta zona"
+                  description="No hay equipos registrados en esta zona o no tienen ventas registradas."
+                  actionLabel="Crear equipo"
+                  actionHref="/admin/equipos/nuevo"
+                  iconClassName="bg-amber-100"
+                />
               ) : (
                 <Table>
                   <TableHeader>
@@ -552,7 +529,7 @@ export default function RankingAdminPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {zoneRankingTeams.map((team) => (
+                    {teamsInZone.map((team) => (
                       <TableRow key={team.team_id}>
                         <TableCell className="font-medium">
                           <div className="flex items-center gap-2">
@@ -580,60 +557,47 @@ export default function RankingAdminPage() {
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="flex items-center gap-2">
-                <BarChart3 className="h-5 w-5 text-blue-500" />
-                Top 3 Equipos por Goles
+                <Trophy className="h-5 w-5 text-yellow-500" />
+                Comparativa de Equipos
               </CardTitle>
-              <CardDescription>Visualización de los equipos con más goles a nivel nacional</CardDescription>
+              <CardDescription>Visualización gráfica del ranking nacional</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="h-[400px]">
-                {isLoadingCharts ? (
-                  renderLoadingState()
+              <div className="h-[500px]">
+                {isLoading ? (
+                  <div className="flex justify-center items-center h-full">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-corteva-600"></div>
+                  </div>
                 ) : error ? (
                   <div className="flex justify-center items-center h-full">{renderErrorState()}</div>
-                ) : top3Teams.length === 0 ? (
+                ) : teams.length === 0 ? (
                   <div className="flex justify-center items-center h-full">
-                    {renderEmptyState(
-                      "No hay datos para el gráfico de equipos",
-                      "Asegúrate de que haya equipos con goles registrados.",
-                    )}
+                    <EmptyState
+                      icon={Trophy}
+                      title="No hay datos para mostrar"
+                      description="No hay equipos con ventas registradas para mostrar en el gráfico."
+                      iconClassName="bg-amber-100"
+                    />
                   </div>
                 ) : (
-                  <AdminRankingChart teams={top3Teams} />
-                )}
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="flex items-center gap-2">
-                <BarChart3 className="h-5 w-5 text-orange-500" />
-                Top 2 Zonas por Goles
-              </CardTitle>
-              <CardDescription>Visualización de las zonas con más goles acumulados</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="h-[400px]">
-                {isLoadingCharts ? (
-                  renderLoadingState()
-                ) : error ? (
-                  <div className="flex justify-center items-center h-full">{renderErrorState()}</div>
-                ) : top2Zones.length === 0 ? (
-                  <div className="flex justify-center items-center h-full">
-                    {renderEmptyState(
-                      "No hay datos para el gráfico de zonas",
-                      "Asegúrate de que haya zonas con equipos y goles registrados.",
-                    )}
-                  </div>
-                ) : (
-                  <AdminZonesChart zonesData={top2Zones} />
+                  <AdminRankingChart teams={teams} />
                 )}
               </div>
             </CardContent>
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Debug info - solo visible en desarrollo */}
+      {process.env.NODE_ENV === "development" && (
+        <div className="mt-8 p-4 bg-gray-100 rounded-lg">
+          <h3 className="font-bold mb-2">Debug Info:</h3>
+          <pre className="text-xs whitespace-pre-wrap">{debugInfo}</pre>
+          <Button variant="outline" size="sm" className="mt-2" onClick={() => window.location.reload()}>
+            Recargar datos
+          </Button>
+        </div>
+      )}
     </div>
   )
 }

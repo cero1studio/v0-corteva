@@ -1,7 +1,6 @@
 "use client"
 
 import type React from "react"
-
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -10,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { toast } from "@/hooks/use-toast"
-import { createCompetitorClient } from "@/app/actions/competitor-clients"
+import { registerCompetitorClient } from "@/app/actions/competitor-clients"
 
 interface Zone {
   id: string
@@ -41,12 +40,13 @@ interface ClientFormProps {
 
 export function ClientForm({ open, setOpen, zones, teams, users, onSuccess }: ClientFormProps) {
   const [loading, setLoading] = useState(false)
-  const [selectedZone, setSelectedZone] = useState<string>("")
-  const [selectedTeam, setSelectedTeam] = useState<string>("")
+  const [selectedZoneId, setSelectedZoneId] = useState<string>("")
+  const [selectedTeamId, setSelectedTeamId] = useState<string>("")
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({})
 
   const [formData, setFormData] = useState({
     client_name: "",
-    client_name_competitora: "",
+    competitor_name: "",
     ganadero_name: "",
     razon_social: "",
     tipo_venta: "",
@@ -58,38 +58,101 @@ export function ClientForm({ open, setOpen, zones, teams, users, onSuccess }: Cl
     volumen_venta_estimado: "",
     points: "5", // Valor por defecto
     contact_info: "",
+    notes: "",
   })
 
-  const filteredTeams = selectedZone ? teams.filter((team) => team.zone_id === selectedZone) : teams
-  const capitanes = users.filter((user) => user.role === "capitan")
-  const teamCaptain = selectedTeam ? capitanes.find((cap) => cap.team_id === selectedTeam) : null
+  // Filtra los equipos basados en la zona seleccionada
+  const availableTeams = selectedZoneId ? teams.filter((team) => team.zone_id === selectedZoneId) : teams
+
+  // Encuentra el capitán del equipo seleccionado
+  const selectedTeam = teams.find((team) => team.id === selectedTeamId)
+  const teamCaptain = selectedTeamId
+    ? users.find((user) => user.role === "Capitan" && user.team_id === selectedTeamId)
+    : null
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const { id, value } = e.target
+    setFormData((prev) => ({ ...prev, [id]: value }))
+    setFormErrors((prev) => ({ ...prev, [id]: "" })) // Limpiar error al cambiar
+  }
+
+  const handleZoneChange = (value: string) => {
+    setSelectedZoneId(value)
+    setSelectedTeamId("") // Resetear equipo al cambiar la zona
+    setFormErrors((prev) => ({ ...prev, zone: "", team: "" })) // Limpiar errores de zona y equipo
+  }
+
+  const handleTeamChange = (value: string) => {
+    setSelectedTeamId(value)
+    setFormErrors((prev) => ({ ...prev, team: "" })) // Limpiar error de equipo
+  }
+
+  const handleTipoVentaChange = (value: string) => {
+    setFormData((prev) => ({ ...prev, tipo_venta: value }))
+    if (value !== "distribuidor") {
+      setFormData((prev) => ({ ...prev, nombre_almacen: "" }))
+      setFormErrors((prev) => ({ ...prev, nombre_almacen: "" }))
+    }
+  }
+
+  const validateForm = () => {
+    const newErrors: Record<string, string> = {}
+    let isValid = true
+
+    if (!formData.client_name.trim()) {
+      newErrors.client_name = "El nombre del cliente es requerido."
+      isValid = false
+    }
+    if (!selectedZoneId || selectedZoneId === "default") {
+      newErrors.zone = "La zona es requerida."
+      isValid = false
+    }
+    if (!selectedTeamId || selectedTeamId === "default") {
+      newErrors.team = "El equipo es requerido."
+      isValid = false
+    }
+    if (selectedTeamId && !teamCaptain) {
+      newErrors.team = "El equipo seleccionado no tiene un Capitán asignado."
+      isValid = false
+    }
+    if (formData.tipo_venta === "distribuidor" && !formData.nombre_almacen.trim()) {
+      newErrors.nombre_almacen = "El nombre del almacén es requerido para este tipo de venta."
+      isValid = false
+    }
+
+    setFormErrors(newErrors)
+    return isValid
+  }
+
+  const resetForm = () => {
+    setFormData({
+      client_name: "",
+      competitor_name: "",
+      ganadero_name: "",
+      razon_social: "",
+      tipo_venta: "",
+      nombre_almacen: "",
+      ubicacion_finca: "",
+      area_finca_hectareas: "",
+      producto_anterior: "",
+      producto_super_ganaderia: "",
+      volumen_venta_estimado: "",
+      points: "5",
+      contact_info: "",
+      notes: "",
+    })
+    setSelectedZoneId("")
+    setSelectedTeamId("")
+    setFormErrors({})
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    if (!formData.client_name || !selectedTeam) {
+    if (!validateForm()) {
       toast({
-        title: "Error",
-        description: "Por favor completa los campos requeridos",
-        variant: "destructive",
-      })
-      return
-    }
-
-    if (!teamCaptain) {
-      toast({
-        title: "Error",
-        description: "El equipo seleccionado no tiene un capitán asignado",
-        variant: "destructive",
-      })
-      return
-    }
-
-    // Validar que se ingrese nombre de almacén si el tipo de venta es por almacén
-    if (formData.tipo_venta === "distribuidor" && !formData.nombre_almacen) {
-      toast({
-        title: "Error",
-        description: "Por favor ingresa el nombre del almacén",
+        title: "Error de validación",
+        description: "Por favor, corrige los errores en el formulario.",
         variant: "destructive",
       })
       return
@@ -100,39 +163,22 @@ export function ClientForm({ open, setOpen, zones, teams, users, onSuccess }: Cl
     try {
       const form = new FormData()
       Object.entries(formData).forEach(([key, value]) => {
-        // Solo incluir nombre_almacen si el tipo de venta es por almacén
         if (key === "nombre_almacen" && formData.tipo_venta !== "distribuidor") {
           return
         }
         form.append(key, value)
       })
-      form.append("team_id", selectedTeam)
-      form.append("representative", teamCaptain.id)
+      form.append("team_id", selectedTeamId)
+      form.append("representative", teamCaptain!.id)
 
-      const result = await createCompetitorClient(form)
+      const result = await registerCompetitorClient(form)
 
       if (result.success) {
         toast({
           title: "Éxito",
           description: "Cliente registrado correctamente",
         })
-        setFormData({
-          client_name: "",
-          client_name_competitora: "",
-          ganadero_name: "",
-          razon_social: "",
-          tipo_venta: "",
-          nombre_almacen: "",
-          ubicacion_finca: "",
-          area_finca_hectareas: "",
-          producto_anterior: "",
-          producto_super_ganaderia: "",
-          volumen_venta_estimado: "",
-          points: "5",
-          contact_info: "",
-        })
-        setSelectedZone("")
-        setSelectedTeam("")
+        resetForm()
         setOpen(false)
         onSuccess?.()
       } else {
@@ -155,7 +201,15 @@ export function ClientForm({ open, setOpen, zones, teams, users, onSuccess }: Cl
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog
+      open={open}
+      onOpenChange={(isOpen) => {
+        if (!isOpen) {
+          resetForm() // Resetear formulario al cerrar el diálogo
+        }
+        setOpen(isOpen)
+      }}
+    >
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Registrar Nuevo Cliente</DialogTitle>
@@ -167,11 +221,14 @@ export function ClientForm({ open, setOpen, zones, teams, users, onSuccess }: Cl
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-muted/50 rounded-lg">
             <div>
               <Label htmlFor="zone">Zona *</Label>
-              <Select value={selectedZone} onValueChange={setSelectedZone}>
+              <Select value={selectedZoneId} onValueChange={handleZoneChange}>
                 <SelectTrigger>
                   <SelectValue placeholder="Seleccionar zona" />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="default" disabled>
+                    Seleccionar zona
+                  </SelectItem>
                   {zones.map((zone) => (
                     <SelectItem key={zone.id} value={zone.id}>
                       {zone.name}
@@ -179,25 +236,30 @@ export function ClientForm({ open, setOpen, zones, teams, users, onSuccess }: Cl
                   ))}
                 </SelectContent>
               </Select>
+              {formErrors.zone && <p className="text-red-500 text-sm mt-1">{formErrors.zone}</p>}
             </div>
 
             <div>
               <Label htmlFor="team">Equipo *</Label>
-              <Select value={selectedTeam} onValueChange={setSelectedTeam}>
+              <Select value={selectedTeamId} onValueChange={handleTeamChange}>
                 <SelectTrigger>
                   <SelectValue placeholder="Seleccionar equipo" />
                 </SelectTrigger>
                 <SelectContent>
-                  {filteredTeams.map((team) => (
+                  <SelectItem value="default" disabled>
+                    Seleccionar equipo
+                  </SelectItem>
+                  {availableTeams.map((team) => (
                     <SelectItem key={team.id} value={team.id}>
                       {team.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+              {formErrors.team && <p className="text-red-500 text-sm mt-1">{formErrors.team}</p>}
             </div>
 
-            {teamCaptain && (
+            {selectedTeamId && teamCaptain && (
               <div className="md:col-span-2">
                 <Label>Capitán del Equipo</Label>
                 <div className="p-2 bg-background rounded border">
@@ -217,10 +279,11 @@ export function ClientForm({ open, setOpen, zones, teams, users, onSuccess }: Cl
                 <Input
                   id="client_name"
                   value={formData.client_name}
-                  onChange={(e) => setFormData({ ...formData, client_name: e.target.value })}
+                  onChange={handleInputChange}
                   placeholder="Nombre del cliente"
                   required
                 />
+                {formErrors.client_name && <p className="text-red-500 text-sm mt-1">{formErrors.client_name}</p>}
               </div>
 
               <div>
@@ -228,7 +291,7 @@ export function ClientForm({ open, setOpen, zones, teams, users, onSuccess }: Cl
                 <Input
                   id="ganadero_name"
                   value={formData.ganadero_name}
-                  onChange={(e) => setFormData({ ...formData, ganadero_name: e.target.value })}
+                  onChange={handleInputChange}
                   placeholder="Nombre del ganadero"
                 />
               </div>
@@ -238,17 +301,17 @@ export function ClientForm({ open, setOpen, zones, teams, users, onSuccess }: Cl
                 <Input
                   id="razon_social"
                   value={formData.razon_social}
-                  onChange={(e) => setFormData({ ...formData, razon_social: e.target.value })}
+                  onChange={handleInputChange}
                   placeholder="Razón social"
                 />
               </div>
 
               <div>
-                <Label htmlFor="client_name_competitora">Cliente en Competidora</Label>
+                <Label htmlFor="competitor_name">Cliente en Competidora</Label>
                 <Input
-                  id="client_name_competitora"
-                  value={formData.client_name_competitora}
-                  onChange={(e) => setFormData({ ...formData, client_name_competitora: e.target.value })}
+                  id="competitor_name"
+                  value={formData.competitor_name}
+                  onChange={handleInputChange}
                   placeholder="Nombre en empresa competidora"
                 />
               </div>
@@ -258,7 +321,7 @@ export function ClientForm({ open, setOpen, zones, teams, users, onSuccess }: Cl
                 <Input
                   id="contact_info"
                   value={formData.contact_info}
-                  onChange={(e) => setFormData({ ...formData, contact_info: e.target.value })}
+                  onChange={handleInputChange}
                   placeholder="Número de celular del ganadero"
                 />
               </div>
@@ -269,7 +332,7 @@ export function ClientForm({ open, setOpen, zones, teams, users, onSuccess }: Cl
               <Textarea
                 id="ubicacion_finca"
                 value={formData.ubicacion_finca}
-                onChange={(e) => setFormData({ ...formData, ubicacion_finca: e.target.value })}
+                onChange={handleInputChange}
                 placeholder="Dirección o ubicación de la finca"
                 rows={2}
               />
@@ -283,10 +346,7 @@ export function ClientForm({ open, setOpen, zones, teams, users, onSuccess }: Cl
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <Label htmlFor="tipo_venta">Tipo de Venta</Label>
-                <Select
-                  value={formData.tipo_venta}
-                  onValueChange={(value) => setFormData({ ...formData, tipo_venta: value })}
-                >
+                <Select value={formData.tipo_venta} onValueChange={handleTipoVentaChange}>
                   <SelectTrigger>
                     <SelectValue placeholder="Seleccionar tipo de venta" />
                   </SelectTrigger>
@@ -305,10 +365,13 @@ export function ClientForm({ open, setOpen, zones, teams, users, onSuccess }: Cl
                   <Input
                     id="nombre_almacen"
                     value={formData.nombre_almacen}
-                    onChange={(e) => setFormData({ ...formData, nombre_almacen: e.target.value })}
+                    onChange={handleInputChange}
                     placeholder="Nombre del almacén"
                     required
                   />
+                  {formErrors.nombre_almacen && (
+                    <p className="text-red-500 text-sm mt-1">{formErrors.nombre_almacen}</p>
+                  )}
                 </div>
               )}
 
@@ -317,7 +380,7 @@ export function ClientForm({ open, setOpen, zones, teams, users, onSuccess }: Cl
                 <Input
                   id="volumen_venta_estimado"
                   value={formData.volumen_venta_estimado}
-                  onChange={(e) => setFormData({ ...formData, volumen_venta_estimado: e.target.value })}
+                  onChange={handleInputChange}
                   placeholder="Ej: 50 bultos, 2 toneladas"
                 />
               </div>
@@ -329,7 +392,7 @@ export function ClientForm({ open, setOpen, zones, teams, users, onSuccess }: Cl
                   type="number"
                   step="0.01"
                   value={formData.area_finca_hectareas}
-                  onChange={(e) => setFormData({ ...formData, area_finca_hectareas: e.target.value })}
+                  onChange={handleInputChange}
                   placeholder="Área en hectáreas"
                 />
               </div>
@@ -340,45 +403,30 @@ export function ClientForm({ open, setOpen, zones, teams, users, onSuccess }: Cl
                   id="points"
                   type="number"
                   value={formData.points}
-                  onChange={(e) => setFormData({ ...formData, points: e.target.value })}
+                  onChange={handleInputChange}
                   placeholder="Puntos asignados"
                 />
               </div>
             </div>
           </div>
 
-          {/* Información de Productos */}
-          <div className="space-y-4">
-            <h3 className="text-lg font-semibold">Información de Productos</h3>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="producto_anterior">Producto Anterior</Label>
-                <Input
-                  id="producto_anterior"
-                  value={formData.producto_anterior}
-                  onChange={(e) => setFormData({ ...formData, producto_anterior: e.target.value })}
-                  placeholder="Producto que usaba anteriormente"
-                />
-              </div>
-
-              <div>
-                <Label htmlFor="producto_super_ganaderia">Producto Súper Ganadería</Label>
-                <Input
-                  id="producto_super_ganaderia"
-                  value={formData.producto_super_ganaderia}
-                  onChange={(e) => setFormData({ ...formData, producto_super_ganaderia: e.target.value })}
-                  placeholder="Producto de Súper Ganadería"
-                />
-              </div>
-            </div>
+          {/* Notas */}
+          <div className="space-y-2">
+            <Label htmlFor="notes">Notas Adicionales</Label>
+            <Textarea
+              id="notes"
+              value={formData.notes}
+              onChange={handleInputChange}
+              placeholder="Cualquier nota relevante sobre el cliente"
+              rows={3}
+            />
           </div>
 
           <div className="flex justify-end space-x-2 pt-4">
             <Button type="button" variant="outline" onClick={() => setOpen(false)}>
               Cancelar
             </Button>
-            <Button type="submit" disabled={loading || !selectedTeam}>
+            <Button type="submit" disabled={loading}>
               {loading ? "Registrando..." : "Registrar Cliente"}
             </Button>
           </div>

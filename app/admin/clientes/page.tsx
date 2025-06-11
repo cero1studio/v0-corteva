@@ -24,12 +24,12 @@ import { getAllCompetitorClients, deleteCompetitorClient } from "@/app/actions/c
 import { getAllZones } from "@/app/actions/zones"
 import { getAllTeams } from "@/app/actions/teams"
 import { getAllUsers } from "@/app/actions/users"
-import * as XLSX from "xlsx"
+import * as XLSX from "xlsx" // Importar la librería XLSX
 
 interface CompetitorClient {
   id: string
   client_name: string
-  client_name_competitora: string | null
+  competitor_name: string | null
   ganadero_name: string | null
   razon_social: string | null
   tipo_venta: string | null
@@ -267,18 +267,37 @@ export default function AdminClientesPage() {
   const filteredClients = clients.filter((client) => {
     const ganaderoName = client.ganadero_name || ""
     const clientName = client.client_name || ""
+    const competitorName = client.competitor_name || ""
+    const razonSocial = client.razon_social || ""
+    const tipoVenta = client.tipo_venta || ""
+    const ubicacionFinca = client.ubicacion_finca || ""
+    const area_finca_hectareas: number | null = client.area_finca_hectareas
+    const productoAnterior = client.producto_anterior || ""
+    const productoSuperGanaderia = client.producto_super_ganaderia || ""
+    const volumenVentaEstimado = client.volumen_venta_estimado || ""
+    const contactInfo = client.contact_info || ""
+    const notes = client.notes || ""
+    const nombreAlmacen = client.nombre_almacen || ""
+    const captainName = client.representative_profile?.full_name || ""
     const teamName = client.team?.name || ""
     const zoneName = client.team?.zone?.name || ""
-    const volumenVentaEstimado = client.volumen_venta_estimado || ""
-    const captainName = client.representative_profile?.full_name || ""
 
     const matchesSearch =
       ganaderoName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       clientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      teamName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      zoneName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      competitorName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      razonSocial.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      tipoVenta.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      ubicacionFinca.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      productoAnterior.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      productoSuperGanaderia.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      volumenVentaEstimado.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      contactInfo.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      notes.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      nombreAlmacen.toLowerCase().includes(searchTerm.toLowerCase()) ||
       captainName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      volumenVentaEstimado.toLowerCase().includes(searchTerm.toLowerCase())
+      teamName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      zoneName.toLowerCase().includes(searchTerm.toLowerCase())
 
     const matchesZone = selectedZone === "all" || client.team?.zone?.id === selectedZone
     const matchesTeam = selectedTeam === "all" || client.team?.id === selectedTeam
@@ -308,7 +327,7 @@ export default function AdminClientesPage() {
         ID: client.id,
         "Nombre Cliente": client.client_name || "",
         "Nombre Ganadero": client.ganadero_name || "",
-        "Cliente Competidora": client.client_name_competitora || "",
+        "Cliente Competidora": client.competitor_name || "",
         "Razón Social": client.razon_social || "",
         "Tipo Venta": client.tipo_venta || "",
         "Ubicación Finca": client.ubicacion_finca || "",
@@ -330,6 +349,9 @@ export default function AdminClientesPage() {
         "Fecha Registro (ISO)": client.created_at,
         "Hora Registro": new Date(client.created_at).toLocaleTimeString(),
       }))
+
+      // Convertir el array de objetos a una hoja de cálculo
+      XLSX.utils.sheet_add_json(ws, excelData, { origin: "A1", skipHeader: false })
 
       // Configurar anchos de columna para todos los campos
       const colWidths = [

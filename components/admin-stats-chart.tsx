@@ -13,17 +13,11 @@ type WeeklyData = {
   [key: string]: any
 }
 
-type TeamWithColor = {
-  id: string
-  name: string
-  color: string
-}
-
 export function AdminStatsChart() {
   const [isMounted, setIsMounted] = useState(false)
   const [loading, setLoading] = useState(true)
   const [data, setData] = useState<WeeklyData[]>([])
-  const [teams, setTeams] = useState<TeamWithColor[]>([])
+  const [teams, setTeams] = useState<{ id: string; name: string; color: string }[]>([])
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -36,17 +30,31 @@ export function AdminStatsChart() {
       setLoading(true)
       setError(null)
 
-      // 1. Obtener equipos y puntos para gol en paralelo
-      const [teamsResponse, configResponse] = await Promise.all([
-        supabase.from("teams").select("id, name").order("name"),
-        supabase.from("system_config").select("value").eq("key", "puntos_para_gol").maybeSingle(),
-      ])
+      // 1. Obtener todos los datos necesarios en paralelo
+      const [teamsResult, profilesResult, salesResult, clientsResult, freeKicksResult, puntosConfigResult] =
+        await Promise.all([
+          supabase.from("teams").select("id, name").order("name"),
+          supabase.from("profiles").select("id, team_id"),
+          supabase.from("sales").select("points, representative_id, team_id, created_at"),
+          supabase.from("competitor_clients").select("id, points, representative_id, team_id, created_at"),
+          supabase.from("free_kick_goals").select("points, team_id, created_at"),
+          supabase.from("system_config").select("value").eq("key", "puntos_para_gol").maybeSingle(),
+        ])
 
-      const teamsData = teamsResponse.data
-      const teamsError = teamsResponse.error
-      const puntosConfig = configResponse.data
+      // Manejar errores de las llamadas en paralelo
+      if (teamsResult.error) throw teamsResult.error
+      if (profilesResult.error) throw profilesResult.error
+      if (salesResult.error) throw salesResult.error
+      if (clientsResult.error) throw clientsResult.error
+      if (freeKicksResult.error) throw freeKicksResult.error
+      if (puntosConfigResult.error) throw puntosConfigResult.error
 
-      if (teamsError) throw teamsError
+      const teamsData = teamsResult.data || []
+      const profiles = profilesResult.data || []
+      const sales = salesResult.data || []
+      const clients = clientsResult.data || []
+      const freeKicks = freeKicksResult.data || []
+      const puntosParaGol = puntosConfigResult.data?.value ? Number(puntosConfigResult.data.value) : 100
 
       if (!teamsData || teamsData.length === 0) {
         setData([])
@@ -60,110 +68,52 @@ export function AdminStatsChart() {
         ...team,
         color: colors[index % colors.length],
       }))
-
       setTeams(teamsWithColors)
 
-      const puntosParaGol = puntosConfig?.value ? Number(puntosConfig.value) : 100
+      // Crear mapas para búsquedas eficientes
+      const profileTeamMap = new Map(profiles.map((p) => [p.id, p.team_id]))
 
-      // 2. Obtener todos los datos necesarios en paralelo
-      const [profilesResponse, salesResponse, clientsResponse, freeKicksResponse] = await Promise.all([
-        supabase.from("profiles").select("id, team_id").not("team_id", "is", null),
-        supabase.from("sales").select("points, representative_id, team_id"),
-        supabase.from("competitor_clients").select("id, points, representative_id, team_id"),
-        supabase.from("free_kick_goals").select("points, team_id"),
-      ])
+      // Calcular puntos por equipo y por semana
+      const weeklyTeamPoints: Record<string, Record<string, number>> = {} // { week_name: { team_id: points } }
 
-      const profiles = profilesResponse.data || []
-      const sales = salesResponse.data || []
-      const clients = clientsResponse.data || []
-      const freeKicks = freeKicksResponse.data || []
+      const processEntry = (entry: any, type: "sales" | "clients" | "freeKicks") => {
+        const date = new Date(entry.created_at)
+        const weekName = `Semana ${getWeekNumber(date)}`
+        let teamId = entry.team_id
 
-      // Crear mapas para acceso rápido
-      const teamMembersMap = new Map<string, string[]>()
-      profiles.forEach((profile) => {
-        if (!teamMembersMap.has(profile.team_id)) {
-          teamMembersMap.set(profile.team_id, [])
+        if (!teamId && entry.representative_id) {
+          teamId = profileTeamMap.get(entry.representative_id)
         }
-        teamMembersMap.get(profile.team_id)!.push(profile.id)
+
+        if (teamId) {
+          if (!weeklyTeamPoints[weekName]) {
+            weeklyTeamPoints[weekName] = {}
+          }
+          const pointsToAdd = type === "clients" ? entry.points || 200 : entry.points || 0
+          weeklyTeamPoints[weekName][teamId] = (weeklyTeamPoints[weekName][teamId] || 0) + pointsToAdd
+        }
+      }
+
+      sales.forEach((s) => processEntry(s, "sales"))
+      clients.forEach((c) => processEntry(c, "clients"))
+      freeKicks.forEach((fk) => processEntry(fk, "freeKicks"))
+
+      // Generar datos para el gráfico
+      const chartData: WeeklyData[] = []
+      const sortedWeekNames = Object.keys(weeklyTeamPoints).sort((a, b) => {
+        const weekNumA = Number.parseInt(a.replace("Semana ", ""))
+        const weekNumB = Number.parseInt(b.replace("Semana ", ""))
+        return weekNumA - weekNumB
       })
 
-      // 3. Calcular goles totales actuales por equipo
-      const teamGoals: Record<string, number> = {}
-
-      for (const team of teamsData) {
-        const memberIds = teamMembersMap.get(team.id) || []
-
-        // Calcular puntos de ventas
-        let totalPointsFromSales = 0
-
-        // Ventas por representante
-        sales
-          .filter((sale) => memberIds.includes(sale.representative_id))
-          .forEach((sale) => (totalPointsFromSales += sale.points || 0))
-
-        // Ventas directas por equipo
-        sales.filter((sale) => sale.team_id === team.id).forEach((sale) => (totalPointsFromSales += sale.points || 0))
-
-        // Calcular puntos de clientes
-        let clientsPoints = 0
-        const countedClientIds = new Set<string>()
-
-        // Clientes por representante
-        clients
-          .filter((client) => memberIds.includes(client.representative_id))
-          .forEach((client) => {
-            if (!countedClientIds.has(client.id)) {
-              clientsPoints += client.points || 200
-              countedClientIds.add(client.id)
-            }
-          })
-
-        // Clientes directos por equipo
-        clients
-          .filter((client) => client.team_id === team.id)
-          .forEach((client) => {
-            if (!countedClientIds.has(client.id)) {
-              clientsPoints += client.points || 200
-              countedClientIds.add(client.id)
-            }
-          })
-
-        // Calcular puntos de tiros libres
-        let freeKickPoints = 0
-        freeKicks.filter((fk) => fk.team_id === team.id).forEach((fk) => (freeKickPoints += fk.points || 0))
-
-        // Calcular puntos totales y goles
-        const finalTotalPoints = totalPointsFromSales + clientsPoints + freeKickPoints
-        const goalsFromPoints = Math.floor(finalTotalPoints / puntosParaGol)
-
-        // Obtener tiros libres del equipo (goles directos)
-        const freeKickGoals = freeKicks
-          .filter((fk) => fk.team_id === team.id)
-          .reduce((sum, fk) => sum + (fk.goals || 0), 0)
-
-        const totalGoals = goalsFromPoints + freeKickGoals
-
-        teamGoals[team.id] = totalGoals
-      }
-
-      // 4. Crear datos para el gráfico (simulando evolución semanal)
-      const currentWeek = getCurrentWeek()
-      const chartData: WeeklyData[] = []
-
-      // Generar últimas 4 semanas con distribución progresiva
-      for (let i = 3; i >= 0; i--) {
-        const weekNumber = currentWeek - i
-        const weekData: WeeklyData = { name: `Semana ${weekNumber}` }
-
+      sortedWeekNames.forEach((weekName) => {
+        const weekData: WeeklyData = { name: weekName }
         teamsWithColors.forEach((team) => {
-          // Distribuir los goles progresivamente (simulación simple)
-          const totalGoals = teamGoals[team.id] || 0
-          const progressFactor = (4 - i) / 4 // 0.25, 0.5, 0.75, 1.0
-          weekData[team.id] = Math.floor(totalGoals * progressFactor)
+          const totalPointsForTeamInWeek = weeklyTeamPoints[weekName][team.id] || 0
+          weekData[team.id] = Math.floor(totalPointsForTeamInWeek / puntosParaGol) // Convert points to goals
         })
-
         chartData.push(weekData)
-      }
+      })
 
       setData(chartData)
     } catch (err: any) {
@@ -174,11 +124,12 @@ export function AdminStatsChart() {
     }
   }
 
-  const getCurrentWeek = () => {
-    const now = new Date()
-    const firstDayOfYear = new Date(now.getFullYear(), 0, 1)
-    const pastDaysOfYear = (now.getTime() - firstDayOfYear.getTime()) / 86400000
-    return Math.ceil((pastDaysOfYear + firstDayOfYear.getDay() + 1) / 7)
+  const getWeekNumber = (d: Date) => {
+    d = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()))
+    d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7))
+    const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1))
+    const weekNo = Math.ceil(((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7)
+    return weekNo
   }
 
   if (!isMounted) {
