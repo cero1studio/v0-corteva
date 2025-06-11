@@ -1,3 +1,5 @@
+"use client" // Mantener 'use client' si el layout usa hooks o componentes de cliente como DashboardNav o UserProfile
+
 import type React from "react"
 import { Suspense } from "react"
 import { DashboardNav } from "@/components/dashboard-nav"
