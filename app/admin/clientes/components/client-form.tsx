@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, useEffect } from "react" // Import useEffect
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -46,7 +46,7 @@ export function ClientForm({ open, setOpen, zones, teams, users, onSuccess }: Cl
 
   const [formData, setFormData] = useState({
     client_name: "",
-    competitor_name: "", // Changed from client_name_competitora to competitor_name
+    competitor_name: "",
     ganadero_name: "",
     razon_social: "",
     tipo_venta: "",
@@ -58,12 +58,22 @@ export function ClientForm({ open, setOpen, zones, teams, users, onSuccess }: Cl
     volumen_venta_estimado: "",
     points: "5", // Valor por defecto
     contact_info: "",
-    notes: "", // Added notes field
+    notes: "",
   })
 
+  const capitanes = users.filter((user) => user.role === "Capitan") // Corregido: "Capitan" con 'C' mayúscula
   const filteredTeams = selectedZone ? teams.filter((team) => team.zone_id === selectedZone) : teams
-  const capitanes = users.filter((user) => user.role === "capitan")
   const teamCaptain = selectedTeam ? capitanes.find((cap) => cap.team_id === selectedTeam) : null
+
+  // Efecto para resetear el equipo si la zona seleccionada cambia y el equipo ya no es válido
+  useEffect(() => {
+    if (selectedZone && selectedTeam) {
+      const currentTeamInFiltered = filteredTeams.some((team) => team.id === selectedTeam)
+      if (!currentTeamInFiltered) {
+        setSelectedTeam("") // Resetea el equipo si no pertenece a la nueva zona
+      }
+    }
+  }, [selectedZone, filteredTeams, selectedTeam])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -100,7 +110,7 @@ export function ClientForm({ open, setOpen, zones, teams, users, onSuccess }: Cl
         form.append(key, value)
       })
       form.append("team_id", selectedTeam)
-      form.append("representative", teamCaptain.id)
+      form.append("representative", teamCaptain.id) // teamCaptain ahora está garantizado por la validación
 
       const result = await registerCompetitorClient(form)
 
@@ -111,7 +121,7 @@ export function ClientForm({ open, setOpen, zones, teams, users, onSuccess }: Cl
         })
         setFormData({
           client_name: "",
-          competitor_name: "", // Changed here too
+          competitor_name: "",
           ganadero_name: "",
           razon_social: "",
           tipo_venta: "",
@@ -166,6 +176,7 @@ export function ClientForm({ open, setOpen, zones, teams, users, onSuccess }: Cl
                   <SelectValue placeholder="Seleccionar zona" />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="default">Seleccionar zona</SelectItem> {/* Opción por defecto */}
                   {zones.map((zone) => (
                     <SelectItem key={zone.id} value={zone.id}>
                       {zone.name}
@@ -182,6 +193,7 @@ export function ClientForm({ open, setOpen, zones, teams, users, onSuccess }: Cl
                   <SelectValue placeholder="Seleccionar equipo" />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="default">Seleccionar equipo</SelectItem> {/* Opción por defecto */}
                   {filteredTeams.map((team) => (
                     <SelectItem key={team.id} value={team.id}>
                       {team.name}
@@ -238,11 +250,11 @@ export function ClientForm({ open, setOpen, zones, teams, users, onSuccess }: Cl
               </div>
 
               <div>
-                <Label htmlFor="competitor_name">Cliente en Competidora</Label> {/* Changed id and htmlFor */}
+                <Label htmlFor="competitor_name">Cliente en Competidora</Label>
                 <Input
-                  id="competitor_name" // Changed id
-                  value={formData.competitor_name} // Changed value
-                  onChange={(e) => setFormData({ ...formData, competitor_name: e.target.value })} // Changed key in onChange
+                  id="competitor_name"
+                  value={formData.competitor_name}
+                  onChange={(e) => setFormData({ ...formData, competitor_name: e.target.value })}
                   placeholder="Nombre en empresa competidora"
                 />
               </div>
