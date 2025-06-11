@@ -70,8 +70,8 @@ interface Team {
 
 interface User {
   id: string
-  full_name: string
-  team_id: string
+  full_name: string | null
+  team_id: string | null
   role: string
 }
 
@@ -248,7 +248,7 @@ export default function AdminClientesPage() {
       }
 
       if (usersResult.data) {
-        setUsers(usersResult.data || [])
+        setUsers(usersResult.data.filter((user) => user.role === "capitan") || []) // Filter for captains
       } else {
         setUsers([])
       }

@@ -1,44 +1,47 @@
 "use server"
 
-import { createServerClient } from "@/lib/supabase/server" // Import from centralized server client
+import { createServerClient } from "@/lib/supabase/server"
 import { revalidatePath } from "next/cache"
 
 export async function registerCompetitorClient(formData: FormData) {
-  const supabase = createServerClient() // Use the centralized client
+  const supabase = createServerClient()
 
   const client_name = formData.get("client_name") as string
-  const competitor_name = formData.get("competitor_name") as string // Corrected column name
-  const ganadero_name = formData.get("ganadero_name") as string
-  const razon_social = formData.get("razon_social") as string
-  const tipo_venta = formData.get("tipo_venta") as string
-  const ubicacion_finca = formData.get("ubicacion_finca") as string
-  const area_finca_hectareas = Number.parseFloat(formData.get("area_finca_hectareas") as string)
-  const producto_anterior = formData.get("producto_anterior") as string
-  const producto_super_ganaderia = formData.get("producto_super_ganaderia") as string
-  const volumen_venta_estimado = formData.get("volumen_venta_estimado") as string
-  const contact_info = formData.get("contact_info") as string
-  const notes = formData.get("notes") as string
-  const nombre_almacen = formData.get("nombre_almacen") as string
-  const points = Number.parseInt(formData.get("points") as string)
+  const competitor_name = formData.get("competitor_name") as string | null
+  const ganadero_name = formData.get("ganadero_name") as string | null
+  const razon_social = formData.get("razon_social") as string | null
+  const tipo_venta = formData.get("tipo_venta") as string | null
+  const ubicacion_finca = formData.get("ubicacion_finca") as string | null
+  const area_finca_hectareas_str = formData.get("area_finca_hectareas") as string
+  const producto_anterior = formData.get("producto_anterior") as string | null
+  const producto_super_ganaderia = formData.get("producto_super_ganaderia") as string | null
+  const volumen_venta_estimado = formData.get("volumen_venta_estimado") as string | null
+  const contact_info = formData.get("contact_info") as string | null
+  const notes = formData.get("notes") as string | null
+  const nombre_almacen = formData.get("nombre_almacen") as string | null
+  const points_str = formData.get("points") as string
   const team_id = formData.get("team_id") as string
-  const representative_id = formData.get("representative") as string
+  const representative_id = formData.get("representative_id") as string // Corrected to representative_id
+
+  const area_finca_hectareas = area_finca_hectareas_str ? Number.parseFloat(area_finca_hectareas_str) : null
+  const points = points_str ? Number.parseInt(points_str) : 5 // Default to 5 as per schema
 
   try {
     const { error } = await supabase.from("competitor_clients").insert({
       client_name,
-      competitor_name, // Corrected column name
+      competitor_name,
       ganadero_name,
       razon_social,
       tipo_venta,
       ubicacion_finca,
-      area_finca_hectareas: isNaN(area_finca_hectareas) ? null : area_finca_hectareas,
+      area_finca_hectareas: isNaN(area_finca_hectareas as number) ? null : area_finca_hectareas,
       producto_anterior,
       producto_super_ganaderia,
       volumen_venta_estimado,
       contact_info,
       notes,
       nombre_almacen: tipo_venta === "distribuidor" ? nombre_almacen : null,
-      points: isNaN(points) ? 0 : points,
+      points: isNaN(points) ? 5 : points, // Ensure default is 5 if not a valid number
       team_id,
       representative_id,
     })
@@ -57,7 +60,7 @@ export async function registerCompetitorClient(formData: FormData) {
 }
 
 export async function getAllCompetitorClients() {
-  const supabase = createServerClient() // Use the centralized client
+  const supabase = createServerClient()
 
   const { data, error } = await supabase
     .from("competitor_clients")
@@ -104,7 +107,7 @@ export async function getAllCompetitorClients() {
 }
 
 export async function deleteCompetitorClient(clientId: string) {
-  const supabase = createServerClient() // Use the centralized client
+  const supabase = createServerClient()
 
   try {
     const { error } = await supabase.from("competitor_clients").delete().eq("id", clientId)
