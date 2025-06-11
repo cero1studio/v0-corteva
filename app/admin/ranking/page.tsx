@@ -203,7 +203,7 @@ export default function RankingAdminPage() {
 
   const exportToExcel = () => {
     try {
-      if (teams.length === 0) {
+      if (filteredTeams.length === 0) {
         toast({
           title: "Error",
           description: "No hay datos para exportar",
@@ -212,13 +212,14 @@ export default function RankingAdminPage() {
         return
       }
 
-      // Preparar datos para Excel
-      const excelData = teams.map((team, index) => ({
+      // Preparar datos para Excel (solo datos filtrados)
+      const excelData = filteredTeams.map((team, index) => ({
         Posición: index + 1,
         Equipo: team.team_name,
         Zona: team.zone_name,
         Goles: team.goals,
         "Puntos Totales": team.total_points,
+        Kilos: Math.round((team.total_points * 10) / 100), // Cálculo: puntos * 10 / 100
       }))
 
       // Crear workbook y worksheet
@@ -232,6 +233,7 @@ export default function RankingAdminPage() {
         { wch: 20 }, // Zona
         { wch: 10 }, // Goles
         { wch: 15 }, // Puntos Totales
+        { wch: 10 }, // Kilos
       ]
       ws["!cols"] = colWidths
 
@@ -246,6 +248,7 @@ export default function RankingAdminPage() {
             "Goles Totales": winningZone.total_goals,
             Equipos: winningZone.teams_count,
             "Puntos Totales": winningZone.total_points,
+            "Kilos Totales": Math.round((winningZone.total_points * 10) / 100),
           },
         ]
         const wsZone = XLSX.utils.json_to_sheet(zoneData)
@@ -300,7 +303,7 @@ export default function RankingAdminPage() {
           <p className="text-muted-foreground">Visualiza y gestiona el ranking de equipos</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" className="gap-2" onClick={exportToExcel} disabled={teams.length === 0}>
+          <Button variant="outline" className="gap-2" onClick={exportToExcel} disabled={filteredTeams.length === 0}>
             <Download className="h-4 w-4" />
             Exportar Ranking
           </Button>
@@ -403,6 +406,7 @@ export default function RankingAdminPage() {
                       <TableHead>Equipo</TableHead>
                       <TableHead>Zona</TableHead>
                       <TableHead className="text-right">Goles</TableHead>
+                      <TableHead className="text-right">Kilos</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -419,6 +423,9 @@ export default function RankingAdminPage() {
                         <TableCell>{team.team_name}</TableCell>
                         <TableCell>{team.zone_name}</TableCell>
                         <TableCell className="text-right font-bold text-corteva-600">{team.goals}</TableCell>
+                        <TableCell className="text-right font-bold text-green-600">
+                          {Math.round((team.total_points * 10) / 100)} kg
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -452,6 +459,12 @@ export default function RankingAdminPage() {
                     <div className="text-center">
                       <div className="text-4xl font-bold">{winningZone.teams_count}</div>
                       <p className="text-sm text-muted-foreground">Equipos</p>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-4xl font-bold text-green-600">
+                        {Math.round((winningZone.total_points * 10) / 100)}
+                      </div>
+                      <p className="text-sm text-muted-foreground">Kilos totales</p>
                     </div>
                   </div>
                 </CardContent>
@@ -511,6 +524,7 @@ export default function RankingAdminPage() {
                       <TableHead className="w-16">Pos.</TableHead>
                       <TableHead>Equipo</TableHead>
                       <TableHead className="text-right">Goles</TableHead>
+                      <TableHead className="text-right">Kilos</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -526,6 +540,9 @@ export default function RankingAdminPage() {
                         </TableCell>
                         <TableCell>{team.team_name}</TableCell>
                         <TableCell className="text-right font-bold text-corteva-600">{team.goals}</TableCell>
+                        <TableCell className="text-right font-bold text-green-600">
+                          {Math.round((team.total_points * 10) / 100)} kg
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>

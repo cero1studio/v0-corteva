@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useToast } from "@/components/ui/use-toast"
-import { PlusCircle, Edit, Trash2, Save, Users, AlertCircle } from "lucide-react"
+import { PlusCircle, Edit, Trash2, Save, Users, AlertCircle, Search, Filter } from "lucide-react"
 import {
   Dialog,
   DialogContent,
@@ -58,6 +58,11 @@ export default function EquiposPage() {
   const [isAddingTeam, setIsAddingTeam] = useState(false)
   const [editingTeam, setEditingTeam] = useState<Team | null>(null)
   const [error, setError] = useState<string | null>(null)
+
+  // Estados para filtros
+  const [searchTerm, setSearchTerm] = useState("")
+  const [selectedZone, setSelectedZone] = useState<string>("all")
+
   const { toast } = useToast()
 
   useEffect(() => {
@@ -280,6 +285,16 @@ export default function EquiposPage() {
     }
   }
 
+  // Filtrar equipos
+  const filteredTeams = teams.filter((team) => {
+    const matchesSearch =
+      team.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      team.distributor_name.toLowerCase().includes(searchTerm.toLowerCase())
+    const matchesZone = selectedZone === "all" || team.zone_id === selectedZone
+
+    return matchesSearch && matchesZone
+  })
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -368,10 +383,68 @@ export default function EquiposPage() {
         </Dialog>
       </div>
 
+      {/* Filtros */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Filter className="h-5 w-5" />
+            Filtros
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <Label htmlFor="search">Buscar</Label>
+              <div className="relative">
+                <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                <Input
+                  id="search"
+                  placeholder="Buscar por nombre o distribuidor..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+            </div>
+            <div>
+              <Label htmlFor="zone">Zona</Label>
+              <Select value={selectedZone} onValueChange={setSelectedZone}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Todas las zonas" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas las zonas</SelectItem>
+                  {zones.map((zone) => (
+                    <SelectItem key={zone.id} value={zone.id}>
+                      {zone.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex items-end">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setSearchTerm("")
+                  setSelectedZone("all")
+                }}
+                className="w-full"
+              >
+                Limpiar Filtros
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       <Card>
         <CardHeader>
           <CardTitle>Equipos</CardTitle>
-          <CardDescription>Administra los equipos para la competición</CardDescription>
+          <CardDescription>
+            {filteredTeams.length} equipo{filteredTeams.length !== 1 ? "s" : ""} encontrado
+            {filteredTeams.length !== 1 ? "s" : ""}
+          </CardDescription>
         </CardHeader>
         <CardContent>
           {loading ? (
@@ -391,12 +464,18 @@ export default function EquiposPage() {
                 }
               />
             </div>
-          ) : teams.length === 0 ? (
+          ) : filteredTeams.length === 0 ? (
             <div className="py-8">
               <EmptyState
                 icon={Users}
-                title="No hay equipos registrados"
-                description="Crea un nuevo equipo para comenzar la competición"
+                title={
+                  searchTerm || selectedZone !== "all" ? "No se encontraron equipos" : "No hay equipos registrados"
+                }
+                description={
+                  searchTerm || selectedZone !== "all"
+                    ? "No se encontraron equipos con los filtros aplicados"
+                    : "Crea un nuevo equipo para comenzar la competición"
+                }
                 action={
                   <Button onClick={() => setIsDialogOpen(true)}>
                     <PlusCircle className="mr-2 h-4 w-4" />
@@ -417,7 +496,7 @@ export default function EquiposPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {teams.map((team) => (
+                  {filteredTeams.map((team) => (
                     <TableRow key={team.id}>
                       <TableCell>
                         {editingTeam?.id === team.id ? (
