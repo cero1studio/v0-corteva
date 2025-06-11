@@ -128,6 +128,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Inicialización inmediata con caché para URLs directas
   useEffect(() => {
     let mounted = true
+    let timeoutId: NodeJS.Timeout
 
     const initializeAuth = async () => {
       try {
@@ -179,6 +180,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Para login y rutas públicas, o si no hay caché, verificar sesión normalmente
         console.log("AUTH: No cache or public route, checking session normally")
 
+        // Agregar timeout de seguridad para evitar loading infinito
+        timeoutId = setTimeout(() => {
+          if (mounted) {
+            console.log("AUTH: Timeout reached, forcing loading to false")
+            setIsLoading(false)
+            setIsInitialized(true)
+          }
+        }, 10000) // 10 segundos timeout
+
         const {
           data: { session },
           error,
@@ -206,6 +216,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             if (pathname === "/login") {
               handleRedirection(userProfile)
             }
+          }
+          // Si no se puede obtener el perfil, continuar sin él para evitar loading infinito
+          if (!userProfile && mounted) {
+            console.log("AUTH: Could not fetch profile, continuing without it")
+            setIsLoading(false)
+            setIsInitialized(true)
           }
         } else {
           console.log("AUTH: No session found")
@@ -236,6 +252,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     return () => {
       mounted = false
+      clearTimeout(timeoutId)
     }
   }, [fetchUserProfile, handleRedirection, pathname, router])
 

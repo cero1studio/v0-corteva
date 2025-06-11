@@ -60,7 +60,9 @@ export default function AdminDashboardPage() {
           await new Promise((resolve) => setTimeout(resolve, 2000))
           return checkSession(retry + 1)
         }
-        router.push("/login")
+        // En lugar de redirect inmediato, establecer error y permitir que el usuario reintente
+        setError("Error de conexión. Por favor, verifica tu conexión a internet.")
+        setLoading(false)
         return
       }
 
@@ -102,7 +104,9 @@ export default function AdminDashboardPage() {
           return verifyProfile(userId, retry + 1)
         }
 
+        // En lugar de solo establecer error, también detener loading
         setError("Error al verificar permisos. Por favor, inicia sesión nuevamente.")
+        setLoading(false)
         return
       }
 
