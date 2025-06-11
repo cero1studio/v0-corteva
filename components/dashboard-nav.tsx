@@ -28,7 +28,7 @@ interface NavProps {
 
 export function DashboardNav({ role, onMobileMenuClose }: NavProps) {
   const pathname = usePathname()
-  const { profile, signOut } = useAuth()
+  const { profile, signOut, isLoading } = useAuth()
 
   // Función para obtener las iniciales del nombre
   const getInitials = (name: string) => {
@@ -40,13 +40,15 @@ export function DashboardNav({ role, onMobileMenuClose }: NavProps) {
       .substring(0, 2)
   }
 
-  // Función para cerrar sesión
+  // Función para cerrar sesión mejorada
   const handleSignOut = async () => {
     try {
-      console.log("Cerrando sesión...")
+      console.log("Dashboard: Iniciando cierre de sesión...")
       await signOut()
     } catch (error) {
-      console.error("Error al cerrar sesión:", error)
+      console.error("Dashboard: Error al cerrar sesión:", error)
+      // Forzar redirección en caso de error
+      window.location.href = "/login"
     }
   }
 
@@ -194,10 +196,11 @@ export function DashboardNav({ role, onMobileMenuClose }: NavProps) {
 
         <button
           onClick={handleSignOut}
-          className="mt-4 flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
+          disabled={isLoading}
+          className="mt-4 flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 disabled:opacity-50"
         >
           <LogOut className="h-4 w-4" />
-          <span>Cerrar Sesión</span>
+          <span>{isLoading ? "Cerrando..." : "Cerrar Sesión"}</span>
         </button>
       </div>
     </div>

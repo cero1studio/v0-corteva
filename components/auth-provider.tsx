@@ -302,15 +302,50 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = async () => {
     try {
+      console.log("AUTH: Starting sign out process...")
       setIsLoading(true)
+
+      // Limpiar caché primero
       clearAllCache()
-      await supabase.auth.signOut()
-    } catch (err: any) {
-      console.error("AUTH: Error signing out:", err)
-    } finally {
+
+      // Limpiar estado local
+      setSession(null)
+      setUser(null)
+      setProfile(null)
+      setError(null)
+
+      // Cerrar sesión en Supabase
+      const { error } = await supabase.auth.signOut()
+      if (error) {
+        console.error("AUTH: Error signing out from Supabase:", error)
+      } else {
+        console.log("AUTH: Successfully signed out from Supabase")
+      }
+
+      // Resetear loading state
       setIsLoading(false)
+
+      // Usar router.push en lugar de window.location para evitar recarga completa
+      if (pathname !== "/login") {
+        router.push("/login")
+      }
+    } catch (err: any) {
+      console.error("AUTH: Error during sign out:", err)
+      // Resetear loading state incluso en error
+      setIsLoading(false)
+      // Usar router.push en lugar de window.location
+      if (pathname !== "/login") {
+        router.push("/login")
+      }
     }
   }
+
+  useEffect(() => {
+    // Resetear loading state cuando estamos en login
+    if (pathname === "/login") {
+      setIsLoading(false)
+    }
+  }, [pathname])
 
   const refreshProfile = useCallback(async () => {
     if (!user) return

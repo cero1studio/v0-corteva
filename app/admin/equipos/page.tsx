@@ -61,19 +61,11 @@ export default function EquiposPage() {
   const { toast } = useToast()
 
   useEffect(() => {
-    fetchZones()
-    fetchDistributors()
-    fetchTeams()
+    const loadData = async () => {
+      await Promise.all([fetchZones(), fetchDistributors(), fetchTeams()])
+    }
 
-    // Agregar un timeout para evitar carga infinita
-    const timeout = setTimeout(() => {
-      setLoading(false)
-      if (teams.length === 0 && !error) {
-        setError("Tiempo de espera agotado. Por favor, intenta recargar la página.")
-      }
-    }, 10000) // 10 segundos de timeout
-
-    return () => clearTimeout(timeout)
+    loadData()
   }, [])
 
   async function fetchZones() {
@@ -117,30 +109,36 @@ export default function EquiposPage() {
       const { data, error } = await supabase
         .from("teams")
         .select(`
-          id, 
-          name, 
-          distributor_id,
-          distributors(id, name, logo_url),
-          zone_id,
-          zones(id, name),
-          created_at
-        `)
+        id, 
+        name, 
+        distributor_id,
+        zone_id,
+        created_at
+      `)
         .order("name")
 
       if (error) throw error
 
-      const formattedData = data.map((item) => {
-        return {
-          id: item.id,
-          name: item.name,
-          distributor_id: item.distributor_id,
-          distributor_name: item.distributors?.name || "Sin distribuidor",
-          distributor_logo: item.distributors?.logo_url || null,
-          zone_id: item.zone_id,
-          zone_name: item.zones?.name || "Sin zona",
-          created_at: item.created_at,
-        }
-      })
+      // Obtener información adicional de distribuidores y zonas
+      const formattedData = await Promise.all(
+        (data || []).map(async (team) => {
+          const [distributorData, zoneData] = await Promise.all([
+            supabase.from("distributors").select("name, logo_url").eq("id", team.distributor_id).single(),
+            supabase.from("zones").select("name").eq("id", team.zone_id).single(),
+          ])
+
+          return {
+            id: team.id,
+            name: team.name,
+            distributor_id: team.distributor_id,
+            distributor_name: distributorData.data?.name || "Sin distribuidor",
+            distributor_logo: distributorData.data?.logo_url || null,
+            zone_id: team.zone_id,
+            zone_name: zoneData.data?.name || "Sin zona",
+            created_at: team.created_at,
+          }
+        }),
+      )
 
       setTeams(formattedData)
     } catch (error: any) {
@@ -175,30 +173,12 @@ export default function EquiposPage() {
           zone_id: newTeam.zone_id,
           distributor_id: newTeam.distributor_id,
         })
-        .select(`
-          id, 
-          name, 
-          distributor_id,
-          distributors(name, logo_url),
-          zone_id,
-          zones(name),
-          created_at
-        `)
+        .select()
 
       if (error) throw error
 
-      const newItem = {
-        id: data[0].id,
-        name: data[0].name,
-        distributor_id: data[0].distributor_id,
-        distributor_name: data[0].distributors?.name || "Sin distribuidor",
-        distributor_logo: data[0].distributors?.logo_url || null,
-        zone_id: data[0].zone_id,
-        zone_name: data[0].zones?.name || "Sin zona",
-        created_at: data[0].created_at,
-      }
-
-      setTeams([...teams, newItem])
+      // Recargar la lista completa
+      await fetchTeams()
       setNewTeam({ name: "", zone_id: "", distributor_id: "" })
 
       toast({

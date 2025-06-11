@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -17,6 +17,11 @@ export default function LoginPage() {
   const [localError, setLocalError] = useState<string | null>(null)
   const { signIn, isLoading, error: authError } = useAuth()
 
+  useEffect(() => {
+    // Resetear estados cuando se monta el componente (después de logout)
+    setLocalError(null)
+  }, [])
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLocalError(null)
@@ -28,7 +33,7 @@ export default function LoginPage() {
 
     try {
       const result = await signIn(email, password)
-      if (result.error) {
+      if (result?.error) {
         // Traducir mensajes de error comunes
         if (result.error.includes("Invalid login")) {
           setLocalError("Correo o contraseña incorrectos")
@@ -117,8 +122,8 @@ export default function LoginPage() {
               </button>
             </div>
             {displayError && <div className="text-red-500 text-sm">{displayError}</div>}
-            <Button type="submit" className="w-full bg-[#006BA6] hover:bg-[#005A8C]" disabled={isSubmitting}>
-              {isSubmitting ? (
+            <Button type="submit" className="w-full bg-[#006BA6] hover:bg-[#005A8C]" disabled={isLoading}>
+              {isLoading ? (
                 <span className="flex items-center">
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   Iniciando sesión...
