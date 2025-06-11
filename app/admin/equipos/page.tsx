@@ -288,12 +288,14 @@ export default function EquiposPage() {
   // Filtrar equipos
   const filteredTeams = teams.filter((team) => {
     const matchesSearch =
+      !searchTerm ||
       team.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       team.distributor_name.toLowerCase().includes(searchTerm.toLowerCase())
     const matchesZone = selectedZone === "all" || team.zone_id === selectedZone
 
     return matchesSearch && matchesZone
   })
+  console.log("Teams:", teams.length, "Filtered:", filteredTeams.length, "Search:", searchTerm, "Zone:", selectedZone)
 
   return (
     <div className="space-y-6">
@@ -460,6 +462,24 @@ export default function EquiposPage() {
                 action={
                   <Button onClick={fetchTeams} variant="default">
                     Reintentar
+                  </Button>
+                }
+              />
+            </div>
+          ) : filteredTeams.length === 0 && teams.length > 0 ? (
+            <div className="py-8">
+              <EmptyState
+                icon={Users}
+                title="No se encontraron equipos"
+                description="No se encontraron equipos con los filtros aplicados"
+                action={
+                  <Button
+                    onClick={() => {
+                      setSearchTerm("")
+                      setSelectedZone("all")
+                    }}
+                  >
+                    Limpiar Filtros
                   </Button>
                 }
               />
