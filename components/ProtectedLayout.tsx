@@ -10,29 +10,53 @@ type Props = {
   children: React.ReactNode
 }
 
-
 export function ProtectedLayout({ allowedRoles, children }: Props) {
-  const { isLoading, profile } = useAuth()
+  const { isLoading, profile, isInitialized } = useAuth()
   const router = useRouter()
 
   useEffect(() => {
-    if (!isLoading) {
-      if (!profile) {
-        router.replace("/login")
-      } else if (!allowedRoles.includes(profile.role)) {
-        router.replace(getDashboardRoute(profile.role, !!profile.team_id))
-      }
-    }
-  }, [isLoading, profile, router, allowedRoles])
+    // Solo proceder cuando esté inicializado
+    if (!isInitialized) return
 
-  if (isLoading || !profile || !allowedRoles.includes(profile.role)) {
-    return null // O puedes usar un <Loader />
+    if (!profile) {
+      console.log("PROTECTED: No profile, redirecting to login")
+      router.replace("/login")
+      return
+    }
+
+    if (!allowedRoles.includes(profile.role)) {
+      console.log("PROTECTED: Role not allowed, redirecting to dashboard")
+      const dashboardRoute = getDashboardRoute(profile.role, profile.team_id)
+      router.replace(dashboardRoute)
+      return
+    }
+
+    console.log("PROTECTED: Access granted for role:", profile.role)
+  }, [isInitialized, profile, router, allowedRoles])
+
+  // Mostrar loading mientras se inicializa
+  if (!isInitialized || isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600"></div>
+      </div>
+    )
+  }
+
+  // Si no hay perfil, no mostrar nada (se está redirigiendo)
+  if (!profile) {
+    return null
+  }
+
+  // Si el rol no está permitido, no mostrar nada (se está redirigiendo)
+  if (!allowedRoles.includes(profile.role)) {
+    return null
   }
 
   return <>{children}</>
 }
 
-function getDashboardRoute(role: string, hasTeam: boolean) {
+function getDashboardRoute(role: string, hasTeam: boolean | string | null) {
   switch (role) {
     case "admin":
       return "/admin/dashboard"
