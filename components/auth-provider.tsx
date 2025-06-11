@@ -338,20 +338,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(session.user)
         setError(null)
 
-        const userProfile = await fetchUserProfile(session.user.id, session.user.email, 2)
-        if (userProfile) {
-          setProfile(userProfile)
-          cacheSession(session, session.user)
-          cacheProfile(userProfile)
-
-          if (pathname === "/login") {
-            handleRedirection(userProfile)
-          }
-        }
-
-        // Asegurar que loading se ponga en false después del login
+        // Terminar loading inmediatamente para el login
         setIsLoading(false)
         setIsInitialized(true)
+
+        // Obtener perfil en segundo plano
+        fetchUserProfile(session.user.id, session.user.email, 1)
+          .then((userProfile) => {
+            if (userProfile) {
+              setProfile(userProfile)
+              cacheSession(session, session.user)
+              cacheProfile(userProfile)
+
+              if (pathname === "/login") {
+                handleRedirection(userProfile)
+              }
+            } else {
+              // Si no se puede obtener el perfil, redirigir basado en el email
+              console.log("AUTH: Could not fetch profile, using fallback redirection")
+              if (pathname === "/login") {
+                // Redirección por defecto
+                router.push("/admin/dashboard")
+              }
+            }
+          })
+          .catch((err) => {
+            console.error("AUTH: Profile fetch failed, continuing anyway:", err)
+            if (pathname === "/login") {
+              router.push("/admin/dashboard")
+            }
+          })
       } else if (event === "SIGNED_OUT") {
         console.log("AUTH: User signed out")
         setSession(null)
@@ -380,7 +396,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setIsLoading(true)
       setError(null)
 
-      const { error: signInError } = await supabase.auth.signInWithPassword({ email, password })
+      // Timeout para el login
+      const loginPromise = supabase.auth.signInWithPassword({ email, password })
+      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Login timeout")), 10000))
+
+      const { error: signInError } = (await Promise.race([loginPromise, timeoutPromise])) as any
 
       if (signInError) {
         console.error("AUTH: Sign in error:", signInError)
@@ -389,13 +409,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       console.log("AUTH: Sign in successful")
+
+      // Forzar el fin del loading después de 2 segundos si no se completa
+      setTimeout(() => {
+        console.log("AUTH: Forcing login loading to end")
+        setIsLoading(false)
+      }, 2000)
+
       return { error: null }
     } catch (err: any) {
       console.error("AUTH: Sign in exception:", err)
       setError(err.message)
       return { error: err.message }
     } finally {
-      setIsLoading(false)
+      // Asegurar que loading termine después de 3 segundos máximo
+      setTimeout(() => {
+        setIsLoading(false)
+      }, 3000)
     }
   }
 

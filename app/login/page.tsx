@@ -39,9 +39,14 @@ export default function LoginPage() {
           setLocalError("Correo o contraseña incorrectos")
         } else if (result.error.includes("too many requests")) {
           setLocalError("Demasiados intentos fallidos. Intenta más tarde.")
+        } else if (result.error.includes("timeout")) {
+          setLocalError("La conexión está tardando mucho. Intenta nuevamente.")
         } else {
           setLocalError(result.error)
         }
+      } else {
+        // Login exitoso, mostrar mensaje de éxito brevemente
+        console.log("Login successful, redirecting...")
       }
     } catch (error: any) {
       console.error("Error en inicio de sesión:", error)
@@ -126,7 +131,7 @@ export default function LoginPage() {
               {isLoading ? (
                 <span className="flex items-center">
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Iniciando sesión...
+                  {isLoading ? "Verificando..." : "Iniciando sesión..."}
                 </span>
               ) : (
                 "Iniciar sesión"
