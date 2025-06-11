@@ -46,7 +46,7 @@ export function ClientForm({ open, setOpen, zones, teams, users, onSuccess }: Cl
 
   const [formData, setFormData] = useState({
     client_name: "",
-    competitor_name: "",
+    competitor_name: "", // Changed from client_name_competitora to competitor_name
     ganadero_name: "",
     razon_social: "",
     tipo_venta: "",
@@ -58,20 +58,12 @@ export function ClientForm({ open, setOpen, zones, teams, users, onSuccess }: Cl
     volumen_venta_estimado: "",
     points: "5", // Valor por defecto
     contact_info: "",
-    notes: "",
+    notes: "", // Added notes field
   })
 
-  // Filter teams based on selected zone
   const filteredTeams = selectedZone ? teams.filter((team) => team.zone_id === selectedZone) : teams
-  // Filter users to get only "Capitan" role, ensuring correct capitalization
-  const capitanes = users.filter((user) => user.role === "Capitan") // Corrected: "Capitan" with capital C
-  // Find the captain for the selected team
+  const capitanes = users.filter((user) => user.role === "capitan")
   const teamCaptain = selectedTeam ? capitanes.find((cap) => cap.team_id === selectedTeam) : null
-
-  const handleZoneChange = (value: string) => {
-    setSelectedZone(value)
-    setSelectedTeam("") // Reset selected team when zone changes
-  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -119,7 +111,7 @@ export function ClientForm({ open, setOpen, zones, teams, users, onSuccess }: Cl
         })
         setFormData({
           client_name: "",
-          competitor_name: "",
+          competitor_name: "", // Changed here too
           ganadero_name: "",
           razon_social: "",
           tipo_venta: "",
@@ -169,14 +161,11 @@ export function ClientForm({ open, setOpen, zones, teams, users, onSuccess }: Cl
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-muted/50 rounded-lg">
             <div>
               <Label htmlFor="zone">Zona *</Label>
-              <Select value={selectedZone} onValueChange={handleZoneChange}>
-                {" "}
-                {/* Changed onValueChange */}
+              <Select value={selectedZone} onValueChange={setSelectedZone}>
                 <SelectTrigger>
                   <SelectValue placeholder="Seleccionar zona" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="default">Seleccionar zona</SelectItem>
                   {zones.map((zone) => (
                     <SelectItem key={zone.id} value={zone.id}>
                       {zone.name}
@@ -193,7 +182,6 @@ export function ClientForm({ open, setOpen, zones, teams, users, onSuccess }: Cl
                   <SelectValue placeholder="Seleccionar equipo" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="default">Seleccionar equipo</SelectItem>
                   {filteredTeams.map((team) => (
                     <SelectItem key={team.id} value={team.id}>
                       {team.name}
@@ -250,11 +238,11 @@ export function ClientForm({ open, setOpen, zones, teams, users, onSuccess }: Cl
               </div>
 
               <div>
-                <Label htmlFor="competitor_name">Cliente en Competidora</Label>
+                <Label htmlFor="competitor_name">Cliente en Competidora</Label> {/* Changed id and htmlFor */}
                 <Input
-                  id="competitor_name"
-                  value={formData.competitor_name}
-                  onChange={(e) => setFormData({ ...formData, competitor_name: e.target.value })}
+                  id="competitor_name" // Changed id
+                  value={formData.competitor_name} // Changed value
+                  onChange={(e) => setFormData({ ...formData, competitor_name: e.target.value })} // Changed key in onChange
                   placeholder="Nombre en empresa competidora"
                 />
               </div>
