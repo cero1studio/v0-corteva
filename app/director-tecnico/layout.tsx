@@ -1,73 +1,52 @@
-"use client" // Mantener 'use client' si el layout usa hooks o componentes de cliente como DashboardNav o UserProfile
+"use client"
 
 import type React from "react"
-import { Suspense } from "react"
 import { DashboardNav } from "@/components/dashboard-nav"
-import { UserProfile } from "@/components/user-profile"
-import { AuthGuard } from "@/components/auth-guard"
-import { Loader2 } from "lucide-react" // Importa el icono de carga
+import { Button } from "@/components/ui/button"
+import { Menu, X } from "lucide-react"
+import { useState } from "react"
+import { useAuth } from "@/components/auth-provider"
 
 export default function DirectorTecnicoLayout({ children }: { children: React.ReactNode }) {
-  const navItems = [
-    {
-      title: "Dashboard",
-      href: "/director-tecnico/dashboard",
-      icon: "layoutDashboard",
-    },
-    {
-      title: "Equipos",
-      href: "/director-tecnico/equipos",
-      icon: "users",
-    },
-    {
-      title: "Ranking",
-      href: "/director-tecnico/ranking",
-      icon: "trophy",
-    },
-    {
-      title: "Reportes",
-      href: "/director-tecnico/reportes",
-      icon: "barChart",
-    },
-    {
-      title: "Perfil",
-      href: "/perfil",
-      icon: "user",
-    },
-  ]
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const { user } = useAuth()
+
+  // Determinar el rol correcto basado en el usuario autenticado
+  const userRole = user?.role === "arbitro" ? "arbitro" : "director-tecnico"
 
   return (
-    <AuthGuard allowedRoles={["Director Tecnico"]}>
-      <div className="flex min-h-screen w-full flex-col bg-muted/40">
-        <aside className="fixed inset-y-0 left-0 z-10 hidden w-64 flex-col border-r bg-background sm:flex">
-          <nav className="flex flex-col items-center gap-4 px-2 py-4 lg:gap-6">
-            <img src="/super-ganaderia-logo.png" alt="Super Ganadería Logo" className="h-16 w-auto" />
-          </nav>
-          <div className="flex-1 overflow-auto py-2">
-            <DashboardNav items={navItems} />
-          </div>
-          <div className="mt-auto p-4">
-            <UserProfile />
-          </div>
-        </aside>
-        <div className="flex flex-col sm:gap-4 sm:py-4 sm:pl-64">
-          <header className="sticky top-0 z-30 flex h-14 items-center gap-4 border-b bg-background px-4 sm:static sm:h-auto sm:border-0 sm:bg-transparent sm:px-6">
-            <h1 className="text-2xl font-semibold">Panel de Director Técnico</h1>
-          </header>
-          <main className="grid flex-1 items-start gap-4 p-4 sm:px-6 sm:py-0 md:gap-8">
-            {/* Suspense boundary para el contenido de la página */}
-            <Suspense
-              fallback={
-                <div className="flex justify-center items-center h-[calc(100vh-100px)]">
-                  <Loader2 className="h-12 w-12 animate-spin text-corteva-600" />
-                </div>
-              }
-            >
-              {children}
-            </Suspense>
-          </main>
-        </div>
+    <div className="flex min-h-screen">
+      {/* Botón de menú móvil */}
+      <Button
+        variant="outline"
+        size="icon"
+        className="fixed top-4 right-4 z-50 lg:hidden"
+        onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+      >
+        {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+      </Button>
+
+      {/* Sidebar para desktop */}
+      <div className="fixed left-0 top-0 z-30 h-screen w-64 border-r bg-white lg:block hidden">
+        <DashboardNav role={userRole} />
       </div>
-    </AuthGuard>
+
+      {/* Sidebar móvil */}
+      {mobileMenuOpen && (
+        <div className="fixed inset-0 z-40 lg:hidden">
+          <div className="fixed inset-0 bg-black/50" onClick={() => setMobileMenuOpen(false)} />
+          <div className="fixed inset-y-0 left-0 w-64 bg-white shadow-lg">
+            <DashboardNav role={userRole} onMobileMenuClose={() => setMobileMenuOpen(false)} />
+          </div>
+        </div>
+      )}
+
+      <main className="flex-1 lg:ml-64">
+        <header className="flex h-16 shrink-0 items-center border-b px-6">
+          <h2 className="text-lg font-semibold">Panel de Director Técnico</h2>
+        </header>
+        <div className="p-6">{children}</div>
+      </main>
+    </div>
   )
 }
