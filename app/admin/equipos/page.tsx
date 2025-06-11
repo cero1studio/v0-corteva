@@ -67,6 +67,7 @@ export default function EquiposPage() {
 
   useEffect(() => {
     const loadData = async () => {
+      console.log("🔄 Iniciando carga de datos...")
       await Promise.all([fetchZones(), fetchDistributors(), fetchTeams()])
     }
 
@@ -75,10 +76,15 @@ export default function EquiposPage() {
 
   async function fetchZones() {
     try {
+      console.log("📍 Cargando zonas...")
       const { data, error } = await supabase.from("zones").select("id, name").order("name")
 
-      if (error) throw error
+      if (error) {
+        console.error("❌ Error al cargar zonas:", error)
+        throw error
+      }
 
+      console.log("✅ Zonas cargadas:", data?.length || 0)
       setZones(data || [])
     } catch (error) {
       console.error("Error al cargar zonas:", error)
@@ -92,10 +98,15 @@ export default function EquiposPage() {
 
   async function fetchDistributors() {
     try {
+      console.log("🏢 Cargando distribuidores...")
       const { data, error } = await supabase.from("distributors").select("id, name, logo_url").order("name")
 
-      if (error) throw error
+      if (error) {
+        console.error("❌ Error al cargar distribuidores:", error)
+        throw error
+      }
 
+      console.log("✅ Distribuidores cargados:", data?.length || 0)
       setDistributors(data || [])
     } catch (error) {
       console.error("Error al cargar distribuidores:", error)
@@ -111,43 +122,60 @@ export default function EquiposPage() {
     setLoading(true)
     setError(null)
     try {
+      console.log("👥 Cargando equipos...")
+
+      // Primero, hacer una consulta simple para ver si hay equipos
+      const { data: simpleTeams, error: simpleError } = await supabase.from("teams").select("id, name").limit(5)
+
+      console.log("🔍 Consulta simple de equipos:", simpleTeams?.length || 0, simpleError)
+
+      // Ahora hacer la consulta completa
       const { data, error } = await supabase
         .from("teams")
         .select(`
-        id, 
-        name, 
-        distributor_id,
-        zone_id,
-        created_at
-      `)
+          id, 
+          name, 
+          distributor_id,
+          zone_id,
+          created_at,
+          zones (
+            id,
+            name
+          ),
+          distributors (
+            id,
+            name,
+            logo_url
+          )
+        `)
         .order("name")
 
-      if (error) throw error
+      if (error) {
+        console.error("❌ Error al cargar equipos:", error)
+        throw error
+      }
 
-      // Obtener información adicional de distribuidores y zonas
-      const formattedData = await Promise.all(
-        (data || []).map(async (team) => {
-          const [distributorData, zoneData] = await Promise.all([
-            supabase.from("distributors").select("name, logo_url").eq("id", team.distributor_id).single(),
-            supabase.from("zones").select("name").eq("id", team.zone_id).single(),
-          ])
+      console.log("✅ Equipos cargados (raw):", data?.length || 0)
+      console.log("📊 Primer equipo:", data?.[0])
 
-          return {
-            id: team.id,
-            name: team.name,
-            distributor_id: team.distributor_id,
-            distributor_name: distributorData.data?.name || "Sin distribuidor",
-            distributor_logo: distributorData.data?.logo_url || null,
-            zone_id: team.zone_id,
-            zone_name: zoneData.data?.name || "Sin zona",
-            created_at: team.created_at,
-          }
-        }),
-      )
+      // Formatear datos
+      const formattedData = (data || []).map((team: any) => ({
+        id: team.id,
+        name: team.name,
+        distributor_id: team.distributor_id,
+        distributor_name: team.distributors?.name || "Sin distribuidor",
+        distributor_logo: team.distributors?.logo_url || null,
+        zone_id: team.zone_id,
+        zone_name: team.zones?.name || "Sin zona",
+        created_at: team.created_at,
+      }))
+
+      console.log("✅ Equipos formateados:", formattedData.length)
+      console.log("📊 Primer equipo formateado:", formattedData[0])
 
       setTeams(formattedData)
     } catch (error: any) {
-      console.error("Error al cargar equipos:", error)
+      console.error("❌ Error al cargar equipos:", error)
       setError(error.message || "Error al cargar equipos")
       toast({
         title: "Error",
@@ -295,7 +323,15 @@ export default function EquiposPage() {
 
     return matchesSearch && matchesZone
   })
-  console.log("Teams:", teams.length, "Filtered:", filteredTeams.length, "Search:", searchTerm, "Zone:", selectedZone)
+
+  console.log("📊 Estado actual:", {
+    totalTeams: teams.length,
+    filteredTeams: filteredTeams.length,
+    loading,
+    error,
+    searchTerm,
+    selectedZone,
+  })
 
   return (
     <div className="space-y-6">
@@ -384,6 +420,21 @@ export default function EquiposPage() {
           </DialogContent>
         </Dialog>
       </div>
+
+      {/* Debug Info */}
+      <Card className="bg-yellow-50 border-yellow-200">
+        <CardHeader>
+          <CardTitle className="text-sm text-yellow-800">Debug Info</CardTitle>
+        </CardHeader>
+        <CardContent className="text-sm text-yellow-700">
+          <div>Total equipos: {teams.length}</div>
+          <div>Equipos filtrados: {filteredTeams.length}</div>
+          <div>Loading: {loading ? "Sí" : "No"}</div>
+          <div>Error: {error || "Ninguno"}</div>
+          <div>Zonas: {zones.length}</div>
+          <div>Distribuidores: {distributors.length}</div>
+        </CardContent>
+      </Card>
 
       {/* Filtros */}
       <Card>
@@ -488,14 +539,8 @@ export default function EquiposPage() {
             <div className="py-8">
               <EmptyState
                 icon={Users}
-                title={
-                  searchTerm || selectedZone !== "all" ? "No se encontraron equipos" : "No hay equipos registrados"
-                }
-                description={
-                  searchTerm || selectedZone !== "all"
-                    ? "No se encontraron equipos con los filtros aplicados"
-                    : "Crea un nuevo equipo para comenzar la competición"
-                }
+                title="No hay equipos registrados"
+                description="Crea un nuevo equipo para comenzar la competición"
                 action={
                   <Button onClick={() => setIsDialogOpen(true)}>
                     <PlusCircle className="mr-2 h-4 w-4" />
