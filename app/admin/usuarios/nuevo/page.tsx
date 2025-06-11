@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast"
 import { createUser } from "@/app/actions/users"
 import { supabase } from "@/lib/supabase/client"
-import { ArrowLeft, Loader2 } from "lucide-react"
+import { ArrowLeft, Loader2, Eye, EyeOff } from "lucide-react"
 import Link from "next/link"
 
 export default function NuevoUsuario() {
@@ -23,6 +23,7 @@ export default function NuevoUsuario() {
   const [zones, setZones] = useState<any[]>([])
   const [distributors, setDistributors] = useState<any[]>([])
   const [teams, setTeams] = useState<any[]>([])
+  const [showPassword, setShowPassword] = useState(false)
 
   const [formData, setFormData] = useState({
     email: "",
@@ -234,14 +235,24 @@ export default function NuevoUsuario() {
 
               <div className="space-y-2">
                 <Label htmlFor="password">Contraseña</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  value={formData.password}
-                  onChange={(e) => handleInputChange("password", e.target.value)}
-                  required
-                  minLength={6}
-                />
+                <div className="relative">
+                  <Input
+                    id="password"
+                    type={showPassword ? "text" : "password"}
+                    value={formData.password}
+                    onChange={(e) => handleInputChange("password", e.target.value)}
+                    required
+                    minLength={6}
+                    className="pr-10"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((prev) => !prev)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 focus:outline-none"
+                  >
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
               </div>
 
               <div className="space-y-2">
@@ -253,19 +264,13 @@ export default function NuevoUsuario() {
                   <SelectContent>
                     <SelectItem value="admin">Administrador</SelectItem>
                     <SelectItem value="capitan">Capitán</SelectItem>
-                    <SelectItem value="representante">Representante</SelectItem>
-                    <SelectItem value="supervisor">Supervisor</SelectItem>
                     <SelectItem value="director_tecnico">Director Técnico</SelectItem>
                     <SelectItem value="arbitro">Árbitro</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
-              {(formData.role === "capitan" ||
-                formData.role === "representante" ||
-                formData.role === "supervisor" ||
-                formData.role === "director_tecnico" ||
-                formData.role === "arbitro") && (
+              {(formData.role === "capitan" || formData.role === "director_tecnico" || formData.role === "arbitro") && (
                 <div className="space-y-2">
                   <Label htmlFor="zone_id">Zona</Label>
                   <Select value={formData.zone_id} onValueChange={(value) => handleInputChange("zone_id", value)}>
@@ -283,7 +288,7 @@ export default function NuevoUsuario() {
                 </div>
               )}
 
-              {(formData.role === "capitan" || formData.role === "representante") && (
+              {formData.role === "capitan" && (
                 <div className="space-y-2">
                   <Label htmlFor="distributor_id">Distribuidor</Label>
                   <Select
@@ -304,7 +309,7 @@ export default function NuevoUsuario() {
                 </div>
               )}
 
-              {(formData.role === "capitan" || formData.role === "representante") && formData.zone_id && (
+              {formData.role === "capitan" && formData.zone_id && (
                 <div className="space-y-2">
                   <Label htmlFor="team_id">Equipo</Label>
                   <Select value={formData.team_id} onValueChange={(value) => handleInputChange("team_id", value)}>
