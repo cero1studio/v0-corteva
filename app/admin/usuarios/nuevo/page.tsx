@@ -37,10 +37,12 @@ export default function NuevoUsuario() {
 
   useEffect(() => {
     let isMounted = true
+    let timeoutId: NodeJS.Timeout
 
     const loadInitialData = async () => {
       try {
         setLoadingData(true)
+        console.log("Iniciando carga de datos para nuevo usuario...")
 
         // Reset form data
         setFormData({
@@ -53,48 +55,85 @@ export default function NuevoUsuario() {
           team_id: "",
         })
 
-        // Cargar zonas
-        const { data: zonesData, error: zonesError } = await supabase.from("zones").select("*").order("name")
+        // Timeout de seguridad
+        timeoutId = setTimeout(() => {
+          if (isMounted) {
+            console.warn("Timeout en carga de datos, continuando sin datos completos")
+            setLoadingData(false)
+          }
+        }, 10000) // 10 segundos
 
-        if (zonesError) throw zonesError
-
-        // Cargar distribuidores
-        const { data: distributorsData, error: distributorsError } = await supabase
-          .from("distributors")
-          .select("*")
-          .order("name")
-
-        if (distributorsError) throw distributorsError
-
-        // Cargar equipos
-        const { data: teamsData, error: teamsError } = await supabase
-          .from("teams")
-          .select(`
-            *,
-            zones:zone_id(name),
-            distributors:distributor_id(name)
-          `)
-          .order("name")
-
-        if (teamsError) throw teamsError
+        // Cargar datos en paralelo con manejo individual de errores
+        const [zonesResult, distributorsResult, teamsResult] = await Promise.allSettled([
+          supabase.from("zones").select("*").order("name"),
+          supabase.from("distributors").select("*").order("name"),
+          supabase
+            .from("teams")
+            .select(`
+          *,
+          zones:zone_id(name),
+          distributors:distributor_id(name)
+        `)
+            .order("name"),
+        ])
 
         if (isMounted) {
-          setZones(zonesData || [])
-          setDistributors(distributorsData || [])
-          setTeams(teamsData || [])
+          // Procesar zonas
+          if (zonesResult.status === "fulfilled" && !zonesResult.value.error) {
+            setZones(zonesResult.value.data || [])
+            console.log("Zonas cargadas:", zonesResult.value.data?.length || 0)
+          } else {
+            console.error(
+              "Error cargando zonas:",
+              zonesResult.status === "fulfilled" ? zonesResult.value.error : zonesResult.reason,
+            )
+            setZones([])
+          }
+
+          // Procesar distribuidores
+          if (distributorsResult.status === "fulfilled" && !distributorsResult.value.error) {
+            setDistributors(distributorsResult.value.data || [])
+            console.log("Distribuidores cargados:", distributorsResult.value.data?.length || 0)
+          } else {
+            console.error(
+              "Error cargando distribuidores:",
+              distributorsResult.status === "fulfilled" ? distributorsResult.value.error : distributorsResult.reason,
+            )
+            setDistributors([])
+          }
+
+          // Procesar equipos
+          if (teamsResult.status === "fulfilled" && !teamsResult.value.error) {
+            setTeams(teamsResult.value.data || [])
+            console.log("Equipos cargados:", teamsResult.value.data?.length || 0)
+          } else {
+            console.error(
+              "Error cargando equipos:",
+              teamsResult.status === "fulfilled" ? teamsResult.value.error : teamsResult.reason,
+            )
+            setTeams([])
+          }
+
+          clearTimeout(timeoutId)
         }
       } catch (error: any) {
-        console.error("Error cargando datos:", error)
+        console.error("Error general cargando datos:", error)
         if (isMounted) {
+          // Continuar con arrays vacíos en caso de error
+          setZones([])
+          setDistributors([])
+          setTeams([])
+
           toast({
-            title: "Error",
-            description: "No se pudieron cargar los datos necesarios",
+            title: "Advertencia",
+            description: "Algunos datos no se pudieron cargar, pero puedes continuar creando el usuario",
             variant: "destructive",
           })
         }
       } finally {
         if (isMounted) {
           setLoadingData(false)
+          console.log("Carga de datos completada")
         }
       }
     }
@@ -103,6 +142,9 @@ export default function NuevoUsuario() {
 
     return () => {
       isMounted = false
+      if (timeoutId) {
+        clearTimeout(timeoutId)
+      }
     }
   }, [toast])
 
