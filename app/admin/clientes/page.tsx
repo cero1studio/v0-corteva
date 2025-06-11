@@ -29,7 +29,7 @@ import * as XLSX from "xlsx"
 interface CompetitorClient {
   id: string
   client_name: string
-  client_name_competitora: string | null
+  competitor_name: string | null // Changed from client_name_competitora
   ganadero_name: string | null
   razon_social: string | null
   tipo_venta: string | null
@@ -267,7 +267,7 @@ export default function AdminClientesPage() {
   const filteredClients = clients.filter((client) => {
     const ganaderoName = client.ganadero_name || ""
     const clientName = client.client_name || ""
-    const clientNameCompetitora = client.client_name_competitora || ""
+    const competitorName = client.competitor_name || "" // Changed from client_name_competitora
     const razonSocial = client.razon_social || ""
     const tipoVenta = client.tipo_venta || ""
     const ubicacionFinca = client.ubicacion_finca || ""
@@ -285,7 +285,7 @@ export default function AdminClientesPage() {
     const matchesSearch =
       ganaderoName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       clientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      clientNameCompetitora.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      competitorName.toLowerCase().includes(searchTerm.toLowerCase()) || // Changed
       razonSocial.toLowerCase().includes(searchTerm.toLowerCase()) ||
       tipoVenta.toLowerCase().includes(searchTerm.toLowerCase()) ||
       ubicacionFinca.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -327,7 +327,7 @@ export default function AdminClientesPage() {
         ID: client.id,
         "Nombre Cliente": client.client_name || "",
         "Nombre Ganadero": client.ganadero_name || "",
-        "Cliente Competidora": client.client_name_competitora || "",
+        "Cliente Competidora": client.competitor_name || "", // Changed
         "Razón Social": client.razon_social || "",
         "Tipo Venta": client.tipo_venta || "",
         "Ubicación Finca": client.ubicacion_finca || "",

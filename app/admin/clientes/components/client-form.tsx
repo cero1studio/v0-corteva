@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { toast } from "@/hooks/use-toast"
-import { registerCompetitorClient } from "@/app/actions/competitor-clients" // Changed to registerCompetitorClient
+import { registerCompetitorClient } from "@/app/actions/competitor-clients"
 
 interface Zone {
   id: string
@@ -46,7 +46,7 @@ export function ClientForm({ open, setOpen, zones, teams, users, onSuccess }: Cl
 
   const [formData, setFormData] = useState({
     client_name: "",
-    client_name_competitora: "",
+    competitor_name: "", // Changed from client_name_competitora to competitor_name
     ganadero_name: "",
     razon_social: "",
     tipo_venta: "",
@@ -102,7 +102,7 @@ export function ClientForm({ open, setOpen, zones, teams, users, onSuccess }: Cl
       form.append("team_id", selectedTeam)
       form.append("representative", teamCaptain.id)
 
-      const result = await registerCompetitorClient(form) // Changed to registerCompetitorClient
+      const result = await registerCompetitorClient(form)
 
       if (result.success) {
         toast({
@@ -111,7 +111,7 @@ export function ClientForm({ open, setOpen, zones, teams, users, onSuccess }: Cl
         })
         setFormData({
           client_name: "",
-          client_name_competitora: "",
+          competitor_name: "", // Changed here too
           ganadero_name: "",
           razon_social: "",
           tipo_venta: "",
@@ -238,11 +238,11 @@ export function ClientForm({ open, setOpen, zones, teams, users, onSuccess }: Cl
               </div>
 
               <div>
-                <Label htmlFor="client_name_competitora">Cliente en Competidora</Label>
+                <Label htmlFor="competitor_name">Cliente en Competidora</Label> {/* Changed id and htmlFor */}
                 <Input
-                  id="client_name_competitora"
-                  value={formData.client_name_competitora}
-                  onChange={(e) => setFormData({ ...formData, client_name_competitora: e.target.value })}
+                  id="competitor_name" // Changed id
+                  value={formData.competitor_name} // Changed value
+                  onChange={(e) => setFormData({ ...formData, competitor_name: e.target.value })} // Changed key in onChange
                   placeholder="Nombre en empresa competidora"
                 />
               </div>
@@ -336,33 +336,6 @@ export function ClientForm({ open, setOpen, zones, teams, users, onSuccess }: Cl
                   value={formData.points}
                   onChange={(e) => setFormData({ ...formData, points: e.target.value })}
                   placeholder="Puntos asignados"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Información de Productos */}
-          <div className="space-y-4">
-            <h3 className="text-lg font-semibold">Información de Productos</h3>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="producto_anterior">Producto Anterior</Label>
-                <Input
-                  id="producto_anterior"
-                  value={formData.producto_anterior}
-                  onChange={(e) => setFormData({ ...formData, producto_anterior: e.target.value })}
-                  placeholder="Producto que usaba anteriormente"
-                />
-              </div>
-
-              <div>
-                <Label htmlFor="producto_super_ganaderia">Producto Súper Ganadería</Label>
-                <Input
-                  id="producto_super_ganaderia"
-                  value={formData.producto_super_ganaderia}
-                  onChange={(e) => setFormData({ ...formData, producto_super_ganaderia: e.target.value })}
-                  placeholder="Producto de Súper Ganadería"
                 />
               </div>
             </div>
