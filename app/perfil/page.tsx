@@ -84,7 +84,7 @@ export default function PerfilPage() {
   }
 
   return (
-    <div className="container mx-auto px-4 py-8 max-w-2xl">
+    <div className="max-w-2xl mx-auto">
       <div className="space-y-6">
         {/* Información del perfil */}
         <Card>
