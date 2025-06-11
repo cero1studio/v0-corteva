@@ -155,7 +155,7 @@ export default function AdminDashboardPage() {
       // Continuar con el resto de las consultas
       fetchStats()
       fetchTopTeams()
-      fetchZoneStats()
+      fetchZoneStats() // Llamada a la función optimizada
       fetchProductStats()
     } catch (error: any) {
       console.error("Error al obtener estructura:", error)
@@ -351,126 +351,137 @@ export default function AdminDashboardPage() {
     }
   }
 
+  // Refactorización de fetchZoneStats para optimizar consultas
   async function fetchZoneStats() {
     try {
-      // Obtener configuración de puntos para gol
-      const { data: puntosConfig } = await supabase
-        .from("system_config")
-        .select("value")
-        .eq("key", "puntos_para_gol")
-        .maybeSingle()
+      console.log("🔄 Fetching zone stats (optimized)...")
+      setLoading(true) // Mantener loading true para todo el proceso
 
-      const pointsPerGoal = puntosConfig?.value ? Number(puntosConfig.value) : 100
+      // 1. Obtener todos los datos necesarios en una sola llamada (o pocas llamadas en paralelo)
+      const [
+        zonesResult,
+        teamsResult,
+        profilesResult,
+        salesResult,
+        clientsResult,
+        freeKicksResult,
+        puntosConfigResult,
+      ] = await Promise.all([
+        supabase.from("zones").select("id, name"),
+        supabase.from("teams").select("id, name, zone_id"),
+        supabase.from("profiles").select("id, team_id"),
+        supabase
+          .from("sales")
+          .select("points, representative_id, team_id"), // Obtener ambos IDs
+        supabase
+          .from("competitor_clients")
+          .select("id, points, representative_id, team_id"), // Obtener ambos IDs
+        supabase.from("free_kick_goals").select("points, team_id"),
+        supabase.from("system_config").select("value").eq("key", "puntos_para_gol").maybeSingle(),
+      ])
 
-      // Obtener zonas
-      const { data: zones, error: zonesError } = await supabase.from("zones").select("id, name")
+      // Manejar errores de las llamadas en paralelo
+      if (zonesResult.error) throw zonesResult.error
+      if (teamsResult.error) throw teamsResult.error
+      if (profilesResult.error) throw profilesResult.error
+      if (salesResult.error) throw salesResult.error
+      if (clientsResult.error) throw clientsResult.error
+      if (freeKicksResult.error) throw freeKicksResult.error
+      if (puntosConfigResult.error) throw puntosConfigResult.error
 
-      if (zonesError) throw zonesError
+      const zones = zonesResult.data || []
+      const teams = teamsResult.data || []
+      const profiles = profilesResult.data || []
+      const sales = salesResult.data || []
+      const clients = clientsResult.data || []
+      const freeKicks = freeKicksResult.data || []
+      const puntosParaGol = puntosConfigResult.data?.value ? Number(puntosConfigResult.data.value) : 100
 
-      if (!zones || zones.length === 0) {
-        setZoneStats([])
-        return
-      }
+      console.log("DEBUG: Puntos para gol (dashboard):", puntosParaGol)
 
-      // Para cada zona, obtener equipos y calcular puntos totales
-      const zoneStatsData = await Promise.all(
-        zones.map(async (zone) => {
-          // Contar equipos en la zona
-          const { count: teamCount, error: teamError } = await supabase
-            .from("teams")
-            .select("*", { count: "exact", head: true })
-            .eq("zone_id", zone.id)
+      // Crear mapas para búsquedas eficientes en memoria
+      const teamMembersMap = new Map<string, string[]>() // team_id -> [profile_id]
+      profiles.forEach((p) => {
+        if (p.team_id) {
+          if (!teamMembersMap.has(p.team_id)) teamMembersMap.set(p.team_id, [])
+          teamMembersMap.get(p.team_id)!.push(p.id)
+        }
+      })
 
-          if (teamError) throw teamError
+      const teamSalesPointsMap = new Map<string, number>() // team_id -> total_sales_points
+      sales.forEach((s) => {
+        let teamId = s.team_id
+        if (!teamId && s.representative_id) {
+          // Si la venta está ligada a un representante, buscar su equipo
+          const profile = profiles.find((p) => p.id === s.representative_id)
+          teamId = profile?.team_id || null
+        }
+        if (teamId) {
+          teamSalesPointsMap.set(teamId, (teamSalesPointsMap.get(teamId) || 0) + (s.points || 0))
+        }
+      })
 
-          // Obtener equipos de la zona
-          const { data: teamIds, error: teamIdsError } = await supabase
-            .from("teams")
-            .select("id")
-            .eq("zone_id", zone.id)
+      const teamClientsPointsMap = new Map<string, number>() // team_id -> total_clients_points
+      const countedClientIds = new Set<string>() // Para evitar contar clientes duplicados
+      clients.forEach((c) => {
+        let teamId = c.team_id
+        if (!teamId && c.representative_id) {
+          // Si el cliente está ligado a un representante, buscar su equipo
+          const profile = profiles.find((p) => p.id === c.representative_id)
+          teamId = profile?.team_id || null
+        }
+        if (teamId && !countedClientIds.has(c.id)) {
+          teamClientsPointsMap.set(teamId, (teamClientsPointsMap.get(teamId) || 0) + (c.points || 200))
+          countedClientIds.add(c.id)
+        }
+      })
 
-          if (teamIdsError) throw teamIdsError
+      const teamFreeKicksPointsMap = new Map<string, number>() // team_id -> total_free_kick_points
+      freeKicks.forEach((fk) => {
+        if (fk.team_id) {
+          teamFreeKicksPointsMap.set(fk.team_id, (teamFreeKicksPointsMap.get(fk.team_id) || 0) + (fk.points || 0))
+        }
+      })
 
-          let totalPoints = 0
-          let totalGoals = 0
+      // Agregación de puntos por zona
+      const zoneStatsData = zones.map((zone) => {
+        let totalZonePoints = 0
+        let totalZoneTeamsCount = 0
 
-          if (teamIds && teamIds.length > 0) {
-            for (const team of teamIds) {
-              // Obtener miembros del equipo
-              const { data: teamMembers } = await supabase.from("profiles").select("id").eq("team_id", team.id)
-              const memberIds = teamMembers?.map((member) => member.id) || []
+        const teamsInZone = teams.filter((t) => t.zone_id === zone.id)
+        totalZoneTeamsCount = teamsInZone.length
 
-              // 1. PUNTOS DE VENTAS
-              let salesPoints = 0
+        teamsInZone.forEach((team) => {
+          const teamTotalPoints =
+            (teamSalesPointsMap.get(team.id) || 0) +
+            (teamClientsPointsMap.get(team.id) || 0) +
+            (teamFreeKicksPointsMap.get(team.id) || 0)
+          totalZonePoints += teamTotalPoints
+        })
 
-              // Buscar ventas por representative_id
-              if (memberIds.length > 0) {
-                const { data: salesByRep } = await supabase
-                  .from("sales")
-                  .select("points")
-                  .in("representative_id", memberIds)
-                if (salesByRep) {
-                  salesPoints += salesByRep.reduce((sum, sale) => sum + (sale.points || 0), 0)
-                }
-              }
+        const totalZoneGoals = Math.floor(totalZonePoints / puntosParaGol)
 
-              // Buscar ventas directas por team_id
-              const { data: salesByTeam } = await supabase.from("sales").select("points").eq("team_id", team.id)
-              if (salesByTeam) {
-                salesPoints += salesByTeam.reduce((sum, sale) => sum + (sale.points || 0), 0)
-              }
+        console.log(
+          `DEBUG: Zone ${zone.name} - Total Points: ${totalZonePoints}, Total Goals: ${totalZoneGoals}, Teams: ${totalZoneTeamsCount}`,
+        )
 
-              // 2. PUNTOS DE CLIENTES DE COMPETENCIA
-              let clientsPoints = 0
-
-              // Buscar clientes por representative_id
-              if (memberIds.length > 0) {
-                const { data: clientsByRep } = await supabase
-                  .from("competitor_clients")
-                  .select("points")
-                  .in("representative_id", memberIds)
-                if (clientsByRep) {
-                  clientsPoints += clientsByRep.reduce((sum, client) => sum + (client.points || 200), 0)
-                }
-              }
-
-              // Buscar clientes directos por team_id
-              const { data: clientsByTeam } = await supabase
-                .from("competitor_clients")
-                .select("points")
-                .eq("team_id", team.id)
-              if (clientsByTeam) {
-                clientsPoints += clientsByTeam.reduce((sum, client) => sum + (client.points || 200), 0)
-              }
-
-              // 3. PUNTOS DE TIROS LIBRES
-              const { data: freeKicksData } = await supabase
-                .from("free_kick_goals")
-                .select("points")
-                .eq("team_id", team.id)
-              const freeKicksPoints = freeKicksData?.reduce((sum, freeKick) => sum + (freeKick.points || 0), 0) || 0
-
-              // SUMAR TODOS LOS PUNTOS
-              const teamTotalPoints = salesPoints + clientsPoints + freeKicksPoints
-              totalPoints += teamTotalPoints
-            }
-
-            totalGoals = Math.floor(totalPoints / pointsPerGoal)
-          }
-
-          return {
-            id: zone.id,
-            name: zone.name,
-            teams: teamCount || 0,
-            points: totalGoals, // Mostrar goles en lugar de puntos
-          }
-        }),
-      )
+        return {
+          id: zone.id,
+          name: zone.name,
+          teams: totalZoneTeamsCount,
+          points: totalZoneGoals, // Usado por AdminZonesChart como 'goles'
+          total_goals: totalZoneGoals, // Para consistencia y claridad
+          total_points: totalZonePoints, // Para consistencia y claridad
+        }
+      })
 
       setZoneStats(zoneStatsData)
-    } catch (error) {
-      console.error("Error al cargar estadísticas de zonas:", error)
-      // No establecemos error global para no bloquear todo el dashboard
+      console.log("DEBUG: Final zoneStatsData for dashboard:", zoneStatsData)
+    } catch (err: any) {
+      console.error("❌ Error al cargar datos del gráfico de zonas (optimized):", err)
+      setError(`Error al cargar datos de zonas: ${err.message || "Desconocido"}`)
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -707,7 +718,8 @@ export default function AdminDashboardPage() {
             </CardHeader>
             <CardContent>
               <div className="h-[400px]">
-                <AdminZonesChart />
+                {/* Pasar las top 2 zonas ordenadas por goles */}
+                <AdminZonesChart zonesData={zoneStats.sort((a, b) => b.total_goals - a.total_goals).slice(0, 2)} />
               </div>
             </CardContent>
           </Card>
@@ -736,7 +748,7 @@ export default function AdminDashboardPage() {
                     <CardTitle className="text-sm">{zone.name}</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold text-green-600">{zone.points}</div>
+                    <div className="text-2xl font-bold text-green-600">{zone.total_goals}</div>
                     <p className="text-xs text-muted-foreground">{zone.teams} equipos</p>
                   </CardContent>
                 </Card>

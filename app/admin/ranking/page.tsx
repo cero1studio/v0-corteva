@@ -76,7 +76,7 @@ export default function RankingAdminPage() {
 
         const teamsData = rankingResult.data || []
 
-        console.log("Teams data:", teamsData)
+        console.log("DEBUG: Teams data for ranking page:", teamsData) // Log de depuración
 
         // Inicializar zonas con contadores en cero
         const zoneMap = new Map<string, Zone>()
@@ -108,11 +108,11 @@ export default function RankingAdminPage() {
         // Debug info
         let debug = "Zonas procesadas:\n"
         processedZones.forEach((zone) => {
-          debug += `${zone.name}: ${zone.total_goals} goles, ${zone.teams_count} equipos\n`
+          debug += `${zone.name}: ${zone.total_goals} goles, ${zone.teams_count} equipos, ${zone.total_points} puntos\n`
         })
         setDebugInfo(debug)
 
-        console.log("Processed zones:", processedZones)
+        console.log("DEBUG: Processed zones for ranking page (after aggregation):", processedZones) // Log de depuración
 
         // Encontrar zona ganadora - ordenar por goles totales
         const sortedZones = [...processedZones].sort((a, b) => {
@@ -122,11 +122,11 @@ export default function RankingAdminPage() {
           return b.total_points - a.total_points
         })
 
-        console.log("Sorted zones:", sortedZones)
+        console.log("DEBUG: Sorted zones for winning zone:", sortedZones) // Log de depuración
 
         // Seleccionar la zona con más goles (si hay empate, la que tenga más puntos)
         const winner = sortedZones.length > 0 ? sortedZones[0] : null
-        console.log("Winning zone:", winner)
+        console.log("DEBUG: Winning zone selected:", winner) // Log de depuración
 
         setTeams(teamsData)
         setZones(processedZones)
@@ -157,6 +157,7 @@ export default function RankingAdminPage() {
         const rankingResult = await getTeamRankingByZone(selectedZone)
         if (rankingResult.success && rankingResult.data) {
           setTeamsInZone(rankingResult.data)
+          console.log("DEBUG: Teams in selected zone:", rankingResult.data) // Log de depuración
         }
       } catch (error) {
         console.error("Error cargando equipos de zona:", error)

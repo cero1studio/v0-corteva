@@ -56,14 +56,15 @@ export async function getTeamRankingByZone(zoneId?: string) {
       .maybeSingle()
 
     const puntosParaGol = puntosConfig?.value ? Number(puntosConfig.value) : 100
+    console.log("DEBUG: Puntos para gol (getTeamRankingByZone):", puntosParaGol) // Log de depuración
 
     // Obtener equipos con sus zonas y distribuidores
     let teamsQuery = supabase.from("teams").select(`
         id,
         name,
         zone_id,
-        zones!inner(id, name),
-        distributors!inner(id, name, logo_url)
+        zones!left(id, name), // Usar LEFT JOIN
+        distributors!left(id, name, logo_url) // Usar LEFT JOIN
       `)
 
     if (zoneId) {
@@ -76,6 +77,7 @@ export async function getTeamRankingByZone(zoneId?: string) {
       console.error("Error fetching teams for ranking:", teamsError)
       return { success: false, error: teamsError.message }
     }
+    console.log("DEBUG: Teams fetched (raw):", teams?.length, teams?.[0]) // Log de depuración
 
     // Obtener todos los IDs de equipos para hacer consultas batch
     const teamIds = teams?.map((team) => team.id) || []
@@ -88,16 +90,20 @@ export async function getTeamRankingByZone(zoneId?: string) {
 
       if (allMembers) {
         allMembers.forEach((member) => {
-          if (!teamMemberMap.has(member.team_id)) {
-            teamMemberMap.set(member.team_id, [])
+          if (member.team_id) {
+            // Asegurar que team_id no sea null
+            if (!teamMemberMap.has(member.team_id)) {
+              teamMemberMap.set(member.team_id, [])
+            }
+            teamMemberMap.get(member.team_id)!.push(member.id)
+            allMemberIds.push(member.id)
           }
-          teamMemberMap.get(member.team_id)!.push(member.id)
-          allMemberIds.push(member.id)
         })
       }
     }
+    console.log("DEBUG: All member IDs:", allMemberIds.length) // Log de depuración
 
-    // Obtener todas las ventas en consultas batch
+    // Obtener todas las ventas, clientes y tiros libres en consultas batch
     const [salesByRep, salesByTeam, clientsByRep, clientsByTeam, allFreeKicks] = await Promise.allSettled([
       // Ventas por representante
       allMemberIds.length > 0
@@ -135,28 +141,28 @@ export async function getTeamRankingByZone(zoneId?: string) {
     const clientsTeamData = clientsByTeam.status === "fulfilled" ? clientsByTeam.value.data || [] : []
     const freeKicksData = allFreeKicks.status === "fulfilled" ? allFreeKicks.value.data || [] : []
 
+    console.log("DEBUG: Sales Rep Data:", salesRepData.length)
+    console.log("DEBUG: Sales Team Data:", salesTeamData.length)
+    console.log("DEBUG: Clients Rep Data:", clientsRepData.length)
+    console.log("DEBUG: Clients Team Data:", clientsTeamData.length)
+    console.log("DEBUG: Free Kicks Data:", freeKicksData.length)
+
     // Crear mapas para acceso rápido
     const salesByRepMap = new Map<string, number>()
-    const salesByTeamMap = new Map<string, number>()
-    const clientsByRepMap = new Map<string, Set<string>>()
-    const clientsByTeamMap = new Map<string, Set<string>>()
-    const freeKicksByTeamMap = new Map<string, number>()
-
-    // Procesar ventas por representante
     salesRepData.forEach((sale) => {
       if (sale.representative_id) {
         salesByRepMap.set(sale.representative_id, (salesByRepMap.get(sale.representative_id) || 0) + (sale.points || 0))
       }
     })
 
-    // Procesar ventas por equipo
+    const salesByTeamMap = new Map<string, number>()
     salesTeamData.forEach((sale) => {
       if (sale.team_id) {
         salesByTeamMap.set(sale.team_id, (salesByTeamMap.get(sale.team_id) || 0) + (sale.points || 0))
       }
     })
 
-    // Procesar clientes por representante
+    const clientsByRepMap = new Map<string, Set<string>>() // Usar Set para IDs de clientes únicos
     clientsRepData.forEach((client) => {
       if (client.representative_id) {
         if (!clientsByRepMap.has(client.representative_id)) {
@@ -166,7 +172,7 @@ export async function getTeamRankingByZone(zoneId?: string) {
       }
     })
 
-    // Procesar clientes por equipo
+    const clientsByTeamMap = new Map<string, Set<string>>() // Usar Set para IDs de clientes únicos
     clientsTeamData.forEach((client) => {
       if (client.team_id) {
         if (!clientsByTeamMap.has(client.team_id)) {
@@ -176,7 +182,7 @@ export async function getTeamRankingByZone(zoneId?: string) {
       }
     })
 
-    // Procesar tiros libres
+    const freeKicksByTeamMap = new Map<string, number>()
     freeKicksData.forEach((freeKick) => {
       if (freeKick.team_id) {
         freeKicksByTeamMap.set(
@@ -190,72 +196,75 @@ export async function getTeamRankingByZone(zoneId?: string) {
     const ranking: TeamRanking[] = []
 
     for (const team of teams || []) {
-      console.log(`Calculando puntos para equipo: ${team.name}`)
+      console.log(`DEBUG: Calculando puntos para equipo: ${team.name} (ID: ${team.id})`)
 
       const memberIds = teamMemberMap.get(team.id) || []
+      console.log(`DEBUG: Team ${team.name} - Member IDs:`, memberIds)
 
       // 1. CALCULAR PUNTOS DE VENTAS
       let totalSalesPoints = 0
 
       // Sumar ventas por representantes del equipo
       memberIds.forEach((memberId) => {
-        totalSalesPoints += salesByRepMap.get(memberId) || 0
+        const points = salesByRepMap.get(memberId) || 0
+        totalSalesPoints += points
+        console.log(`DEBUG: Team ${team.name} - Sales points from rep ${memberId}:`, points)
       })
 
       // Sumar ventas directas por team_id
-      totalSalesPoints += salesByTeamMap.get(team.id) || 0
-
-      console.log(`Puntos de ventas para ${team.name}:`, totalSalesPoints)
+      const directTeamSalesPoints = salesByTeamMap.get(team.id) || 0
+      totalSalesPoints += directTeamSalesPoints
+      console.log(`DEBUG: Team ${team.name} - Sales points from team direct:`, directTeamSalesPoints)
+      console.log(`DEBUG: Team ${team.name} - Total Sales Points:`, totalSalesPoints)
 
       // 2. CALCULAR PUNTOS DE CLIENTES
       let totalClientsPoints = 0
-      const countedClientIds = new Set<string>()
+      const teamClientUniqueIds = new Set<string>() // Para asegurar unicidad de clientes por equipo
 
       // Clientes por representantes
       memberIds.forEach((memberId) => {
         const clientIds = clientsByRepMap.get(memberId)
         if (clientIds) {
           clientIds.forEach((clientId) => {
-            if (!countedClientIds.has(clientId)) {
+            if (!teamClientUniqueIds.has(clientId)) {
               totalClientsPoints += 200 // Puntos por cliente
-              countedClientIds.add(clientId)
+              teamClientUniqueIds.add(clientId)
             }
           })
         }
       })
 
       // Clientes directos por equipo
-      const teamClientIds = clientsByTeamMap.get(team.id)
-      if (teamClientIds) {
-        teamClientIds.forEach((clientId) => {
-          if (!countedClientIds.has(clientId)) {
+      const directTeamClientIds = clientsByTeamMap.get(team.id)
+      if (directTeamClientIds) {
+        directTeamClientIds.forEach((clientId) => {
+          if (!teamClientUniqueIds.has(clientId)) {
             totalClientsPoints += 200
-            countedClientIds.add(clientId)
+            teamClientUniqueIds.add(clientId)
           }
         })
       }
-
-      console.log(`Puntos de clientes para ${team.name}:`, totalClientsPoints)
+      console.log(`DEBUG: Team ${team.name} - Total Clients Points:`, totalClientsPoints)
 
       // 3. CALCULAR PUNTOS DE TIROS LIBRES
       const totalFreeKickPoints = freeKicksByTeamMap.get(team.id) || 0
-      console.log(`Puntos de tiros libres para ${team.name}:`, totalFreeKickPoints)
+      console.log(`DEBUG: Team ${team.name} - Total Free Kick Points:`, totalFreeKickPoints)
 
       // 4. SUMAR TODOS LOS PUNTOS Y CALCULAR GOLES
       const finalTotalPoints = totalSalesPoints + totalClientsPoints + totalFreeKickPoints
       const goals = Math.floor(finalTotalPoints / puntosParaGol)
 
-      console.log(`Total puntos para ${team.name}:`, finalTotalPoints, `Goles:`, goals)
+      console.log(`DEBUG: Team ${team.name} - Final Total Points: ${finalTotalPoints}, Goals: ${goals}`)
 
       ranking.push({
         position: 0, // Se asignará después del ordenamiento
         team_id: team.id,
         team_name: team.name,
-        distributor_name: team.distributors.name,
-        distributor_logo: team.distributors.logo_url,
+        distributor_name: team.distributors?.name || "Sin distribuidor", // Manejar null
+        distributor_logo: team.distributors?.logo_url || null, // Manejar null
         goals: goals,
         total_points: finalTotalPoints,
-        zone_name: team.zones.name,
+        zone_name: team.zones?.name || "Sin zona", // Manejar null
       })
     }
 
@@ -267,6 +276,7 @@ export async function getTeamRankingByZone(zoneId?: string) {
         position: index + 1,
       }))
 
+    console.log("DEBUG: Final sorted ranking data:", sortedRanking) // Log de depuración
     return { success: true, data: sortedRanking }
   } catch (error) {
     console.error("Error in getTeamRankingByZone:", error)
@@ -282,8 +292,8 @@ export async function getSalesRankingByZone(zoneId?: string) {
     let teamsQuery = supabase.from("teams").select(`
         id,
         name,
-        zones!inner(id, name),
-        distributors!inner(id, name, logo_url)
+        zones!left(id, name), // Usar LEFT JOIN
+        distributors!left(id, name, logo_url) // Usar LEFT JOIN
       `)
 
     if (zoneId) {
@@ -305,28 +315,34 @@ export async function getSalesRankingByZone(zoneId?: string) {
 
       const memberIds = teamMembers?.map((member) => member.id) || []
 
-      // Obtener ventas del equipo a través de los miembros
-      const { data: sales, error: salesError } = await supabase
-        .from("sales")
-        .select("points")
-        .in("representative_id", memberIds.length > 0 ? memberIds : ["no-members"])
+      // Obtener ventas del equipo a través de los miembros y ventas directas del equipo
+      const [salesByRepResult, salesByTeamResult] = await Promise.allSettled([
+        memberIds.length > 0
+          ? supabase.from("sales").select("points").in("representative_id", memberIds)
+          : Promise.resolve({ data: [], error: null }),
+        supabase.from("sales").select("points").eq("team_id", team.id),
+      ])
+
+      const salesByRep = salesByRepResult.status === "fulfilled" ? salesByRepResult.value.data || [] : []
+      const salesByTeam = salesByTeamResult.status === "fulfilled" ? salesByTeamResult.value.data || [] : []
 
       let totalSales = 0
       let totalPoints = 0
 
-      if (!salesError && sales) {
-        totalSales = sales.length
-        totalPoints = sales.reduce((sum, sale) => sum + (sale.points || 0), 0)
-      }
+      totalSales += salesByRep.length
+      totalPoints += salesByRep.reduce((sum, sale) => sum + (sale.points || 0), 0)
+
+      totalSales += salesByTeam.length
+      totalPoints += salesByTeam.reduce((sum, sale) => sum + (sale.points || 0), 0)
 
       ranking.push({
         position: 0, // Se asignará después del ordenamiento
         team_id: team.id,
         team_name: team.name,
-        distributor_name: team.distributors.name,
+        distributor_name: team.distributors?.name || "Sin distribuidor",
         total_sales: totalSales,
         total_points: totalPoints,
-        zone_name: team.zones.name,
+        zone_name: team.zones?.name || "Sin zona",
       })
     }
 
@@ -353,8 +369,8 @@ export async function getClientsRankingByZone(zoneId?: string) {
     let teamsQuery = supabase.from("teams").select(`
         id,
         name,
-        zones!inner(id, name),
-        distributors!inner(id, name, logo_url)
+        zones!left(id, name), // Usar LEFT JOIN
+        distributors!left(id, name, logo_url) // Usar LEFT JOIN
       `)
 
     if (zoneId) {
@@ -421,10 +437,10 @@ export async function getClientsRankingByZone(zoneId?: string) {
         position: 0, // Se asignará después del ordenamiento
         team_id: team.id,
         team_name: team.name,
-        distributor_name: team.distributors.name,
+        distributor_name: team.distributors?.name || "Sin distribuidor",
         total_clients: totalClients,
         total_points_from_clients: totalPointsFromClients,
-        zone_name: team.zones.name,
+        zone_name: team.zones?.name || "Sin zona",
       })
     }
 
@@ -469,7 +485,7 @@ export async function getUserTeamInfo(
         id,
         name,
         zone_id,
-        zones!inner(name)
+        zones!left(name) // Usar LEFT JOIN
       `)
       .eq("id", profile.team_id)
       .single()
@@ -579,7 +595,7 @@ export async function getUserTeamInfo(
       team_id: team.id,
       team_name: team.name,
       zone_id: team.zone_id,
-      zone_name: team.zones.name,
+      zone_name: team.zones?.name || "Sin zona",
       position: position,
       goals: goals,
       total_points: totalPoints,
