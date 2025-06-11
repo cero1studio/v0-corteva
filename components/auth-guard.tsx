@@ -1,104 +1,148 @@
 "use client"
 
 import type React from "react"
+import { usePathname, useRouter } from "next/navigation"
 import { useEffect, useState } from "react"
-import { useRouter, usePathname } from "next/navigation"
 import { useAuth } from "@/components/auth-provider"
 import { Loader2 } from "lucide-react"
+import { getCachedSessionForced, getCachedProfileForced } from "@/lib/session-cache"
+
+// Rutas públicas que no requieren autenticación
+const publicRoutes = ["/login", "/primer-acceso", "/ranking-publico"]
 
 export function AuthGuard({ children }: { children: React.ReactNode }) {
-  const { session, profile, isLoading, isInitialized } = useAuth()
-  const router = useRouter()
+  const { user, profile, isInitialized, isLoading } = useAuth()
   const pathname = usePathname()
-  const [hasChecked, setHasChecked] = useState(false)
+  const router = useRouter()
+  const [isAuthorized, setIsAuthorized] = useState(false)
+  const [showFallback, setShowFallback] = useState(false)
+  const [quickResolved, setQuickResolved] = useState(false)
 
-  const publicRoutes = ["/register", "/forgot-password", "/reset-password", "/primer-acceso", "/ranking-publico"]
-
+  // Resolución inmediata para URLs directas usando caché
   useEffect(() => {
-    // Solo verificar una vez cuando esté inicializado
-    if (!isInitialized || hasChecked) return
+    const isPublicRoute = publicRoutes.some((route) => pathname?.startsWith(route))
 
-    const isPublicRoute = publicRoutes.some((route) => pathname.startsWith(route))
-
-    console.log("AUTH-GUARD: Single check for route:", pathname, "Is public:", isPublicRoute)
-
-    setHasChecked(true)
-
-    // Para rutas públicas (excepto login), permitir acceso
     if (isPublicRoute) {
-      console.log("AUTH-GUARD: Public route authorized")
+      console.log("AUTH-GUARD: Public route, authorizing immediately")
+      setIsAuthorized(true)
+      setQuickResolved(true)
       return
     }
 
-    // Si estamos en login y hay sesión, redirigir
-    if (pathname === "/login" && session && profile) {
-      console.log("AUTH-GUARD: Redirecting from login to dashboard")
-      const dashboardRoute = getDashboardRoute(profile.role, profile.team_id)
-      router.replace(dashboardRoute)
+    // Para rutas privadas, verificar caché inmediatamente
+    const { session: cachedSession } = getCachedSessionForced()
+    const cachedProfile = getCachedProfileForced()
+
+    if (cachedSession && cachedProfile) {
+      console.log("AUTH-GUARD: Found cache, authorizing immediately")
+      setIsAuthorized(true)
+      setQuickResolved(true)
       return
     }
 
-    // Si estamos en login sin sesión, permitir
-    if (pathname === "/login") {
-      console.log("AUTH-GUARD: Login page authorized")
-      return
+    // Si no hay caché y no es ruta pública, esperar un poco antes de decidir
+    const quickTimeout = setTimeout(() => {
+      if (!isInitialized && !isAuthorized) {
+        console.log("AUTH-GUARD: No cache and not initialized, redirecting to login")
+        router.push("/login")
+      }
+    }, 2000) // Solo 2 segundos para URLs directas sin caché
+
+    return () => clearTimeout(quickTimeout)
+  }, [pathname, router, isInitialized, isAuthorized])
+
+  // Timeout para mostrar fallback solo si no se resolvió rápido
+  useEffect(() => {
+    if (quickResolved) return
+
+    const timer = setTimeout(() => {
+      if (!isInitialized && !isAuthorized) {
+        setShowFallback(true)
+      }
+    }, 3000)
+
+    return () => clearTimeout(timer)
+  }, [isInitialized, isAuthorized, quickResolved])
+
+  // Lógica normal de autorización cuando el auth provider esté listo
+  useEffect(() => {
+    if (!isInitialized) return
+
+    const isPublicRoute = publicRoutes.some((route) => pathname?.startsWith(route))
+
+    if (isPublicRoute) {
+      setIsAuthorized(true)
+    } else if (!user || !profile) {
+      // Verificar caché una vez más
+      const { session: cachedSession } = getCachedSessionForced()
+      const cachedProfile = getCachedProfileForced()
+
+      if (cachedSession && cachedProfile) {
+        console.log("AUTH-GUARD: Using cache after auth provider ready")
+        setIsAuthorized(true)
+      } else {
+        console.log("AUTH-GUARD: No valid session, redirecting to login")
+        router.push("/login")
+      }
+    } else {
+      setIsAuthorized(true)
     }
+  }, [user, profile, pathname, router, isInitialized])
 
-    // Para rutas protegidas sin sesión, redirigir a login
-    if (!session || !profile) {
-      console.log("AUTH-GUARD: No auth, redirecting to login")
-      router.replace("/login")
-      return
-    }
+  // Si ya se resolvió rápido, mostrar contenido inmediatamente
+  if (quickResolved && isAuthorized) {
+    return <>{children}</>
+  }
 
-    console.log("AUTH-GUARD: Protected route authorized")
-  }, [isInitialized, hasChecked, session, profile, pathname, router])
+  // Si está inicializado y autorizado, mostrar contenido
+  if (isInitialized && isAuthorized) {
+    return <>{children}</>
+  }
 
-  // Mostrar loading solo mientras se inicializa
-  if (!isInitialized || isLoading) {
+  // Mostrar loading solo si no se ha resuelto rápido
+  if (!quickResolved && ((!isInitialized && !isAuthorized) || (isLoading && !isAuthorized))) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50">
         <div className="w-full max-w-md p-8 space-y-6 bg-white rounded-lg shadow-lg">
           <div className="flex flex-col items-center space-y-4">
             <Loader2 className="h-12 w-12 animate-spin text-[#006BA6]" />
             <h2 className="text-xl font-semibold text-gray-800">Cargando...</h2>
             <p className="text-center text-gray-600 text-sm">Verificando acceso...</p>
+
+            {showFallback && (
+              <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <p className="text-blue-800 text-sm mb-3">¿La página no carga?</p>
+                <div className="flex flex-col space-y-2">
+                  <button
+                    onClick={() => {
+                      const { session: cachedSession } = getCachedSessionForced()
+                      const cachedProfile = getCachedProfileForced()
+
+                      if (cachedSession && cachedProfile) {
+                        setIsAuthorized(true)
+                        setQuickResolved(true)
+                      } else {
+                        router.push("/login")
+                      }
+                    }}
+                    className="px-4 py-2 bg-[#006BA6] text-white rounded-md hover:bg-[#005a8b] text-sm font-medium"
+                  >
+                    Continuar
+                  </button>
+                  <button
+                    onClick={() => router.push("/login")}
+                    className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 text-sm font-medium"
+                  >
+                    Ir al inicio de sesión
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
     )
   }
 
-  const isPublicRoute = publicRoutes.some((route) => pathname.startsWith(route))
-
-  // Para rutas públicas, mostrar siempre
-  if (isPublicRoute || pathname === "/login") {
-    return <>{children}</>
-  }
-
-  // Para rutas protegidas, verificar autenticación
-  if (!session || !profile) {
-    return null // Se está redirigiendo
-  }
-
-  return <>{children}</>
-}
-
-function getDashboardRoute(role: string, teamId: string | null) {
-  switch (role) {
-    case "admin":
-      return "/admin/dashboard"
-    case "capitan":
-      return teamId ? "/capitan/dashboard" : "/capitan/crear-equipo"
-    case "director_tecnico":
-      return "/director-tecnico/dashboard"
-    case "supervisor":
-      return "/supervisor/dashboard"
-    case "representante":
-      return "/representante/dashboard"
-    case "arbitro":
-      return "/arbitro/dashboard"
-    default:
-      return "/login"
-  }
+  return null
 }

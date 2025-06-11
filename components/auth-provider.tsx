@@ -50,105 +50,93 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     "/ranking-publico",
   ]
 
-  const fetchUserProfile = useCallback(
-    async (userId: string, userEmail?: string, retries = 2): Promise<UserProfile | null> => {
-      for (let attempt = 0; attempt < retries; attempt++) {
-        try {
-          console.log(`AUTH: Fetching profile for user: ${userId} (attempt ${attempt + 1}/${retries})`)
+  const getDashboardRoute = useCallback((role: string, teamId?: string | null) => {
+    switch (role) {
+      case "admin":
+        return "/admin/dashboard"
+      case "capitan":
+        return teamId ? "/capitan/dashboard" : "/capitan/crear-equipo"
+      case "director_tecnico":
+        return "/director-tecnico/dashboard"
+      case "supervisor":
+        return "/supervisor/dashboard"
+      case "representante":
+        return "/representante/dashboard"
+      case "arbitro":
+        return "/arbitro/dashboard"
+      default:
+        return "/login"
+    }
+  }, [])
 
-          const { data, error: profileError } = await supabase
-            .from("profiles")
-            .select("id, full_name, role, team_id, zone_id, distributor_id")
-            .eq("id", userId)
-            .single()
+  const fetchUserProfile = useCallback(async (userId: string, userEmail?: string): Promise<UserProfile | null> => {
+    try {
+      const { data, error: profileError } = await supabase
+        .from("profiles")
+        .select("id, full_name, role, team_id, zone_id, distributor_id")
+        .eq("id", userId)
+        .single()
 
-          if (profileError) {
-            console.error(`AUTH: Profile error (attempt ${attempt + 1}):`, profileError)
-            if (attempt === retries - 1) {
-              setError(profileError?.message || "Perfil no encontrado")
-              return null
-            }
-            await new Promise((resolve) => setTimeout(resolve, 1000))
-            continue
-          }
-
-          if (!data) {
-            console.error("AUTH: No profile data returned")
-            setError("Perfil no encontrado")
-            return null
-          }
-
-          console.log("AUTH: Profile fetched successfully:", data)
-
-          // Intentar obtener el nombre del equipo solo si es capitán y tiene team_id
-          let teamName = null
-          if (data.role === "capitan" && data.team_id) {
-            try {
-              const { data: teamData } = await supabase.from("teams").select("name").eq("id", data.team_id).single()
-              if (teamData) teamName = teamData.name
-            } catch (teamError) {
-              console.log("AUTH: Could not fetch team name (non-critical):", teamError)
-            }
-          }
-
-          const userProfile = {
-            id: data.id,
-            email: userEmail,
-            role: data.role,
-            full_name: data.full_name,
-            team_id: data.team_id,
-            team_name: teamName,
-            zone_id: data.zone_id,
-            distributor_id: data.distributor_id,
-          }
-
-          console.log("AUTH: Final profile:", userProfile)
-          return userProfile
-        } catch (err: any) {
-          console.error(`AUTH: Error fetching profile (attempt ${attempt + 1}):`, err)
-          if (attempt === retries - 1) {
-            setError(err.message)
-            return null
-          }
-          await new Promise((resolve) => setTimeout(resolve, 1000))
-        }
+      if (profileError || !data) {
+        setError(profileError?.message || "Perfil no encontrado")
+        return null
       }
+
+      let teamName = null
+      if (data.role === "capitan" && data.team_id) {
+        try {
+          const { data: teamData } = await supabase.from("teams").select("name").eq("id", data.team_id).single()
+          if (teamData) teamName = teamData.name
+        } catch {}
+      }
+
+      return {
+        id: data.id,
+        email: userEmail,
+        role: data.role,
+        full_name: data.full_name,
+        team_id: data.team_id,
+        team_name: teamName,
+        zone_id: data.zone_id,
+        distributor_id: data.distributor_id,
+      }
+    } catch (err: any) {
+      setError(err.message)
       return null
+    }
+  }, [])
+
+  const handleRedirection = useCallback(
+    (userProfile: UserProfile) => {
+      const currentPath = pathname || "/"
+      const dashboardRoute = getDashboardRoute(userProfile.role, userProfile.team_id)
+
+      console.log("AUTH: Current path:", currentPath, "Dashboard route:", dashboardRoute)
+
+      // Solo redirigir desde login
+      if (currentPath === "/login") {
+        console.log("AUTH: Redirecting from login to dashboard")
+        router.push(dashboardRoute)
+      } else if (userProfile.role === "capitan" && !userProfile.team_id && currentPath !== "/capitan/crear-equipo") {
+        console.log("AUTH: Captain without team, redirecting to create team")
+        router.push("/capitan/crear-equipo")
+      }
     },
-    [],
+    [pathname, getDashboardRoute, router],
   )
 
-  // Inicialización simplificada - solo maneja autenticación, no redirecciones
+  // Inicialización inmediata con caché para URLs directas
   useEffect(() => {
     let mounted = true
-    let timeoutId: NodeJS.Timeout
 
     const initializeAuth = async () => {
       try {
-        console.log("AUTH: Initializing authentication for path:", pathname)
+        console.log("AUTH: Initializing authentication...")
 
         const isPublicRoute = publicRoutes.some((route) => pathname?.startsWith(route))
-        console.log("AUTH: Is public route:", isPublicRoute)
-
-        // Timeout de seguridad
-        timeoutId = setTimeout(() => {
-          if (mounted) {
-            console.log("AUTH: TIMEOUT - Forcing loading to false after 3 seconds")
-            setIsLoading(false)
-            setIsInitialized(true)
-          }
-        }, 3000)
-
-        // Para rutas públicas, terminar loading inmediatamente
-        if (isPublicRoute) {
-          console.log("AUTH: Public route, ending loading immediately")
-          setIsLoading(false)
-          setIsInitialized(true)
-          return
-        }
 
         // Para URLs directas no públicas, usar caché inmediatamente
-        if (pathname !== "/login") {
+        if (!isPublicRoute && pathname !== "/login") {
           const { session: cachedSession, user: cachedUser } = getCachedSessionForced()
           const cachedProfile = getCachedProfileForced()
 
@@ -160,12 +148,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setIsLoading(false)
             setIsInitialized(true)
             refreshCacheTimestamp()
+
+            // Verificar sesión real en segundo plano sin bloquear
+            setTimeout(async () => {
+              try {
+                const { data, error } = await supabase.auth.getSession()
+                if (!error && data.session && mounted) {
+                  console.log("AUTH: Background session verification successful")
+                  setSession(data.session)
+                  setUser(data.session.user)
+                  cacheSession(data.session, data.session.user)
+
+                  const userProfile = await fetchUserProfile(data.session.user.id, data.session.user.email)
+                  if (userProfile && mounted) {
+                    setProfile(userProfile)
+                    cacheProfile(userProfile)
+                  }
+                } else if (error) {
+                  console.log("AUTH: Background session verification failed, keeping cache")
+                }
+              } catch (err) {
+                console.log("AUTH: Background verification error, keeping cache")
+              }
+            }, 100) // Verificar muy rápido en segundo plano
+
             return
           }
         }
 
-        // Verificar sesión
-        console.log("AUTH: Checking session")
+        // Para login y rutas públicas, o si no hay caché, verificar sesión normalmente
+        console.log("AUTH: No cache or public route, checking session normally")
+
         const {
           data: { session },
           error,
@@ -178,31 +191,41 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setSession(null)
           setUser(null)
           setProfile(null)
-          setError(error.message)
+          if (isPublicRoute) clearAllCache()
         } else if (session) {
-          console.log("AUTH: Session found for user:", session.user.email)
+          console.log("AUTH: Session found")
           setSession(session)
           setUser(session.user)
           cacheSession(session, session.user)
 
-          // Obtener perfil
           const userProfile = await fetchUserProfile(session.user.id, session.user.email)
           if (mounted && userProfile) {
             setProfile(userProfile)
             cacheProfile(userProfile)
+
+            if (pathname === "/login") {
+              handleRedirection(userProfile)
+            }
           }
         } else {
           console.log("AUTH: No session found")
           setSession(null)
           setUser(null)
           setProfile(null)
+
+          if (isPublicRoute || pathname === "/login") {
+            clearAllCache()
+          }
+
+          if (!isPublicRoute && pathname !== "/login") {
+            console.log("AUTH: Redirecting to login")
+            router.push("/login")
+          }
         }
-      } catch (err: any) {
+      } catch (err) {
         console.error("AUTH Init Error:", err)
-        setError(err.message)
       } finally {
         if (mounted) {
-          console.log("AUTH: Initialization complete")
           setIsLoading(false)
           setIsInitialized(true)
         }
@@ -213,9 +236,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     return () => {
       mounted = false
-      clearTimeout(timeoutId)
     }
-  }, [fetchUserProfile, pathname])
+  }, [fetchUserProfile, handleRedirection, pathname, router])
 
   useEffect(() => {
     const {
@@ -224,27 +246,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.log("AUTH: State change event:", event)
 
       if (event === "SIGNED_IN" && session) {
-        console.log("AUTH: User signed in:", session.user.email)
         setSession(session)
         setUser(session.user)
         setError(null)
-        setIsLoading(false)
-        setIsInitialized(true)
 
-        // Obtener perfil
-        const userProfile = await fetchUserProfile(session.user.id, session.user.email, 1)
+        const userProfile = await fetchUserProfile(session.user.id, session.user.email)
         if (userProfile) {
           setProfile(userProfile)
           cacheSession(session, session.user)
           cacheProfile(userProfile)
+
+          if (pathname === "/login") {
+            handleRedirection(userProfile)
+          }
         }
       } else if (event === "SIGNED_OUT") {
-        console.log("AUTH: User signed out")
+        console.log("AUTH: SIGNED_OUT event received")
         setSession(null)
         setUser(null)
         setProfile(null)
         setError(null)
         clearAllCache()
+
+        if (pathname !== "/login") {
+          console.log("AUTH: Signed out, redirecting to login")
+          router.push("/login")
+        }
       } else if (event === "TOKEN_REFRESHED" && session) {
         console.log("AUTH: Token refreshed")
         setSession(session)
@@ -254,30 +281,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     })
 
     return () => subscription.unsubscribe()
-  }, [fetchUserProfile])
+  }, [fetchUserProfile, handleRedirection, pathname, router])
 
   const signIn = async (email: string, password: string) => {
     try {
-      console.log("AUTH: Attempting sign in for:", email)
       setIsLoading(true)
       setError(null)
-
       const { error: signInError } = await supabase.auth.signInWithPassword({ email, password })
-
       if (signInError) {
-        console.error("AUTH: Sign in error:", signInError)
         setError(signInError.message)
-        setIsLoading(false)
         return { error: signInError.message }
       }
-
-      console.log("AUTH: Sign in successful")
       return { error: null }
     } catch (err: any) {
-      console.error("AUTH: Sign in exception:", err)
       setError(err.message)
-      setIsLoading(false)
       return { error: err.message }
+    } finally {
+      setIsLoading(false)
     }
   }
 
@@ -286,36 +306,54 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.log("AUTH: Starting sign out process...")
       setIsLoading(true)
 
+      // Limpiar caché y estado local ANTES de llamar a Supabase
       clearAllCache()
       setSession(null)
       setUser(null)
       setProfile(null)
       setError(null)
 
+      // Cerrar sesión en Supabase
       const { error } = await supabase.auth.signOut()
       if (error) {
-        console.error("AUTH: Error signing out:", error)
+        console.error("AUTH: Error signing out from Supabase:", error)
+        // Aún así continuar con la redirección
+      } else {
+        console.log("AUTH: Successfully signed out from Supabase")
       }
 
       setIsLoading(false)
 
-      if (pathname !== "/login") {
+      // Forzar redirección a login
+      if (typeof window !== "undefined") {
+        window.location.href = "/login"
+      } else {
         router.push("/login")
       }
     } catch (err: any) {
       console.error("AUTH: Error during sign out:", err)
       setIsLoading(false)
-      if (pathname !== "/login") {
+
+      // En caso de error, forzar redirección de todas formas
+      if (typeof window !== "undefined") {
+        window.location.href = "/login"
+      } else {
         router.push("/login")
       }
     }
   }
 
+  useEffect(() => {
+    // Resetear loading state cuando estamos en login
+    if (pathname === "/login") {
+      setIsLoading(false)
+    }
+  }, [pathname])
+
   const refreshProfile = useCallback(async () => {
     if (!user) return
-    console.log("AUTH: Refreshing profile")
     setIsLoading(true)
-    const userProfile = await fetchUserProfile(user.id, user.email, 2)
+    const userProfile = await fetchUserProfile(user.id, user.email)
     if (userProfile) {
       setProfile(userProfile)
       cacheProfile(userProfile)
