@@ -69,53 +69,82 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [])
 
-  const fetchUserProfile = useCallback(async (userId: string, userEmail?: string): Promise<UserProfile | null> => {
-    try {
-      console.log("AUTH: Fetching profile for user:", userId)
-
-      const { data, error: profileError } = await supabase
-        .from("profiles")
-        .select("id, full_name, role, team_id, zone_id, distributor_id")
-        .eq("id", userId)
-        .single()
-
-      if (profileError || !data) {
-        console.error("AUTH: Profile error:", profileError)
-        setError(profileError?.message || "Perfil no encontrado")
-        return null
-      }
-
-      console.log("AUTH: Profile fetched:", data)
-
-      let teamName = null
-      if (data.role === "capitan" && data.team_id) {
+  const fetchUserProfile = useCallback(
+    async (userId: string, userEmail?: string, retries = 3): Promise<UserProfile | null> => {
+      for (let attempt = 0; attempt < retries; attempt++) {
         try {
-          const { data: teamData } = await supabase.from("teams").select("name").eq("id", data.team_id).single()
-          if (teamData) teamName = teamData.name
-        } catch (teamError) {
-          console.log("AUTH: Could not fetch team name:", teamError)
+          console.log(`AUTH: Fetching profile for user: ${userId} (attempt ${attempt + 1}/${retries})`)
+
+          const { data, error: profileError } = await supabase
+            .from("profiles")
+            .select("id, full_name, role, team_id, zone_id, distributor_id")
+            .eq("id", userId)
+            .single()
+
+          if (profileError) {
+            console.error(`AUTH: Profile error (attempt ${attempt + 1}):`, profileError)
+
+            // Si es el último intento o no es un error de red, fallar
+            if (attempt === retries - 1 || !profileError.message?.includes("Failed to fetch")) {
+              setError(profileError?.message || "Perfil no encontrado")
+              return null
+            }
+
+            // Esperar antes del siguiente intento
+            await new Promise((resolve) => setTimeout(resolve, 1000 * (attempt + 1)))
+            continue
+          }
+
+          if (!data) {
+            console.error("AUTH: No profile data returned")
+            setError("Perfil no encontrado")
+            return null
+          }
+
+          console.log("AUTH: Profile fetched successfully:", data)
+
+          // Intentar obtener el nombre del equipo solo si es capitán y tiene team_id
+          let teamName = null
+          if (data.role === "capitan" && data.team_id) {
+            try {
+              const { data: teamData } = await supabase.from("teams").select("name").eq("id", data.team_id).single()
+              if (teamData) teamName = teamData.name
+            } catch (teamError) {
+              console.log("AUTH: Could not fetch team name (non-critical):", teamError)
+            }
+          }
+
+          const userProfile = {
+            id: data.id,
+            email: userEmail,
+            role: data.role,
+            full_name: data.full_name,
+            team_id: data.team_id,
+            team_name: teamName,
+            zone_id: data.zone_id,
+            distributor_id: data.distributor_id,
+          }
+
+          console.log("AUTH: Final profile:", userProfile)
+          return userProfile
+        } catch (err: any) {
+          console.error(`AUTH: Error fetching profile (attempt ${attempt + 1}):`, err)
+
+          // Si es el último intento, fallar
+          if (attempt === retries - 1) {
+            setError(err.message)
+            return null
+          }
+
+          // Esperar antes del siguiente intento
+          await new Promise((resolve) => setTimeout(resolve, 1000 * (attempt + 1)))
         }
       }
 
-      const userProfile = {
-        id: data.id,
-        email: userEmail,
-        role: data.role,
-        full_name: data.full_name,
-        team_id: data.team_id,
-        team_name: teamName,
-        zone_id: data.zone_id,
-        distributor_id: data.distributor_id,
-      }
-
-      console.log("AUTH: Final profile:", userProfile)
-      return userProfile
-    } catch (err: any) {
-      console.error("AUTH: Error fetching profile:", err)
-      setError(err.message)
       return null
-    }
-  }, [])
+    },
+    [],
+  )
 
   const handleRedirection = useCallback(
     (userProfile: UserProfile) => {
@@ -155,17 +184,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const isPublicRoute = publicRoutes.some((route) => pathname?.startsWith(route))
         console.log("AUTH: Is public route:", isPublicRoute)
 
-        // Timeout de seguridad más corto para evitar loading infinito
+        // Timeout de seguridad más agresivo para producción
         timeoutId = setTimeout(() => {
           if (mounted) {
-            console.log("AUTH: Timeout reached, forcing loading to false")
+            console.log("AUTH: TIMEOUT - Forcing loading to false after 3 seconds")
             setIsLoading(false)
             setIsInitialized(true)
+
+            // Si no estamos en una ruta pública y no tenemos sesión, ir a login
+            if (!isPublicRoute && !session) {
+              console.log("AUTH: TIMEOUT - Redirecting to login")
+              router.push("/login")
+            }
           }
-        }, 5000) // 5 segundos timeout
+        }, 3000) // 3 segundos timeout más agresivo
+
+        // Para rutas públicas, terminar loading inmediatamente
+        if (isPublicRoute) {
+          console.log("AUTH: Public route, ending loading immediately")
+          setIsLoading(false)
+          setIsInitialized(true)
+          return
+        }
 
         // Para URLs directas no públicas, usar caché inmediatamente
-        if (!isPublicRoute && pathname !== "/login") {
+        if (pathname !== "/login") {
           const { session: cachedSession, user: cachedUser } = getCachedSessionForced()
           const cachedProfile = getCachedProfileForced()
 
@@ -178,20 +221,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setIsInitialized(true)
             refreshCacheTimestamp()
 
-            // Verificar sesión real en segundo plano
+            // Verificar sesión real en segundo plano (sin bloquear)
             setTimeout(async () => {
               try {
                 const { data, error } = await supabase.auth.getSession()
                 if (!error && data.session && mounted) {
                   console.log("AUTH: Background session verification successful")
-                  const userProfile = await fetchUserProfile(data.session.user.id, data.session.user.email)
+                  const userProfile = await fetchUserProfile(data.session.user.id, data.session.user.email, 1)
                   if (userProfile && mounted) {
                     setProfile(userProfile)
                     cacheProfile(userProfile)
                   }
                 }
               } catch (err) {
-                console.log("AUTH: Background verification error, keeping cache")
+                console.log("AUTH: Background verification error (non-critical):", err)
               }
             }, 100)
 
@@ -199,13 +242,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           }
         }
 
-        // Verificar sesión normalmente
-        console.log("AUTH: Checking session normally")
+        // Verificar sesión con timeout
+        console.log("AUTH: Checking session with timeout")
+
+        const sessionPromise = supabase.auth.getSession()
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error("Session check timeout")), 5000),
+        )
 
         const {
           data: { session },
           error,
-        } = await supabase.auth.getSession()
+        } = (await Promise.race([sessionPromise, timeoutPromise])) as any
 
         if (!mounted) return
 
@@ -215,14 +263,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setUser(null)
           setProfile(null)
           setError(error.message)
-          if (isPublicRoute) clearAllCache()
+
+          if (!isPublicRoute && pathname !== "/login") {
+            console.log("AUTH: Session error, redirecting to login")
+            router.push("/login")
+          }
         } else if (session) {
           console.log("AUTH: Session found for user:", session.user.email)
           setSession(session)
           setUser(session.user)
           cacheSession(session, session.user)
 
-          const userProfile = await fetchUserProfile(session.user.id, session.user.email)
+          // Intentar obtener perfil con reintentos
+          const userProfile = await fetchUserProfile(session.user.id, session.user.email, 2)
           if (mounted) {
             if (userProfile) {
               setProfile(userProfile)
@@ -233,8 +286,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 handleRedirection(userProfile)
               }
             } else {
-              console.log("AUTH: Could not fetch profile, but continuing")
-              setError("No se pudo cargar el perfil del usuario")
+              console.log("AUTH: Could not fetch profile, but continuing with session")
+              // Continuar con la sesión aunque no tengamos perfil completo
             }
           }
         } else {
@@ -243,16 +296,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setUser(null)
           setProfile(null)
 
-          if (isPublicRoute || pathname === "/login") {
-            clearAllCache()
-          } else {
-            console.log("AUTH: Redirecting to login from protected route")
+          if (!isPublicRoute && pathname !== "/login") {
+            console.log("AUTH: No session, redirecting to login")
             router.push("/login")
           }
         }
       } catch (err: any) {
         console.error("AUTH Init Error:", err)
         setError(err.message)
+
+        // En caso de error, si no estamos en ruta pública, ir a login
+        if (!publicRoutes.some((route) => pathname?.startsWith(route)) && pathname !== "/login") {
+          router.push("/login")
+        }
       } finally {
         if (mounted) {
           console.log("AUTH: Initialization complete")
@@ -282,7 +338,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(session.user)
         setError(null)
 
-        const userProfile = await fetchUserProfile(session.user.id, session.user.email)
+        const userProfile = await fetchUserProfile(session.user.id, session.user.email, 2)
         if (userProfile) {
           setProfile(userProfile)
           cacheSession(session, session.user)
@@ -385,7 +441,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!user) return
     console.log("AUTH: Refreshing profile")
     setIsLoading(true)
-    const userProfile = await fetchUserProfile(user.id, user.email)
+    const userProfile = await fetchUserProfile(user.id, user.email, 2)
     if (userProfile) {
       setProfile(userProfile)
       cacheProfile(userProfile)
