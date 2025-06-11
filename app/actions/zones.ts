@@ -1,10 +1,28 @@
 "use server"
 
-import { createServerClient } from "@/lib/supabase/server" // Import from centralized server client
+import { createServerClient } from "@supabase/ssr"
+import { cookies } from "next/headers"
 import { revalidatePath } from "next/cache"
 
 export async function createZone(formData: FormData) {
-  const supabase = createServerClient() // Use the centralized client
+  const cookieStore = cookies()
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        get(name: string) {
+          return cookieStore.get(name)?.value
+        },
+        set(name: string, value: string, options: any) {
+          cookieStore.set({ name, value, ...options })
+        },
+        remove(name: string, options: any) {
+          cookieStore.set({ name, value: "", ...options })
+        },
+      },
+    },
+  )
 
   // Obtener datos del formulario
   const name = formData.get("name") as string
@@ -28,7 +46,24 @@ export async function createZone(formData: FormData) {
 }
 
 export async function getZones() {
-  const supabase = createServerClient() // Use the centralized client
+  const cookieStore = cookies()
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        get(name: string) {
+          return cookieStore.get(name)?.value
+        },
+        set(name: string, value: string, options: any) {
+          cookieStore.set({ name, value, ...options })
+        },
+        remove(name: string, options: any) {
+          cookieStore.set({ name, value: "", ...options })
+        },
+      },
+    },
+  )
 
   const { data, error } = await supabase.from("zones").select("*").order("name", { ascending: true })
 
@@ -41,7 +76,24 @@ export async function getZones() {
 }
 
 export async function deleteZone(zoneId: string) {
-  const supabase = createServerClient() // Use the centralized client
+  const cookieStore = cookies()
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        get(name: string) {
+          return cookieStore.get(name)?.value
+        },
+        set(name: string, value: string, options: any) {
+          cookieStore.set({ name, value, ...options })
+        },
+        remove(name: string, options: any) {
+          cookieStore.set({ name, value: "", ...options })
+        },
+      },
+    },
+  )
 
   try {
     // Verificar si hay equipos asociados a esta zona
