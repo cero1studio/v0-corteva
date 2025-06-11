@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react" // Added useCallback
+import { useState, useEffect, useCallback } from "react"
 import {
   type ColumnDef,
   flexRender,
@@ -17,14 +17,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { PlusIcon, Search, Filter, MoreHorizontal, Edit, Trash2, Users, Download } from "lucide-react"
-import { ClientForm } from "./components/client-form"
 import { toast } from "@/hooks/use-toast"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { getAllCompetitorClients, deleteCompetitorClient } from "@/app/actions/competitor-clients"
 import { getAllZones } from "@/app/actions/zones"
 import { getAllTeams } from "@/app/actions/teams"
-import { getAllUsers } from "@/app/actions/users" // Assuming this fetches all users, we'll filter it.
+import { getAllUsers } from "@/app/actions/users"
 import * as XLSX from "xlsx"
+import Link from "next/link" // Import Link
 
 interface CompetitorClient {
   id: string
@@ -145,6 +145,34 @@ const columns: ColumnDef<CompetitorClient>[] = [
     cell: ({ row }) => {
       const client = row.original
 
+      const handleDeleteClient = async (clientId: string) => {
+        if (!confirm("¿Estás seguro de que quieres eliminar este cliente?")) return
+
+        try {
+          const result = await deleteCompetitorClient(clientId)
+          if (result.success) {
+            toast({
+              title: "Éxito",
+              description: "Cliente eliminado correctamente",
+            })
+            setClients((prevClients) => prevClients.filter((client) => client.id !== clientId))
+          } else {
+            toast({
+              title: "Error",
+              description: result.error || "Error al eliminar cliente",
+              variant: "destructive",
+            })
+          }
+        } catch (error) {
+          console.error("Error deleting client:", error)
+          toast({
+            title: "Error",
+            description: "Error al eliminar cliente",
+            variant: "destructive",
+          })
+        }
+      }
+
       return (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -173,15 +201,13 @@ export default function AdminClientesPage() {
   const [clients, setClients] = useState<CompetitorClient[]>([])
   const [zones, setZones] = useState<Zone[]>([])
   const [teams, setTeams] = useState<Team[]>([])
-  const [captains, setCaptains] = useState<User[]>([]) // Renamed to captains
+  const [captains, setCaptains] = useState<User[]>([])
   const [loading, setLoading] = useState(true)
-  const [open, setOpen] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedZone, setSelectedZone] = useState<string>("all")
   const [selectedTeam, setSelectedTeam] = useState<string>("all")
 
   const loadData = useCallback(async () => {
-    // Wrapped in useCallback
     try {
       setLoading(true)
 
@@ -189,7 +215,7 @@ export default function AdminClientesPage() {
         getAllCompetitorClients(),
         getAllZones(),
         getAllTeams(),
-        getAllUsers(), // Fetch all users
+        getAllUsers(),
       ])
 
       if (clientsResult.success) {
@@ -216,7 +242,6 @@ export default function AdminClientesPage() {
       }
 
       if (usersResult.data) {
-        // Filter users to only include 'capitan' role
         setCaptains(usersResult.data.filter((user) => user.role === "capitan") || [])
       } else {
         setCaptains([])
@@ -231,40 +256,11 @@ export default function AdminClientesPage() {
     } finally {
       setLoading(false)
     }
-  }, []) // Empty dependency array as it only depends on external actions
+  }, [])
 
   useEffect(() => {
     loadData()
-  }, [loadData]) // Depend on loadData
-
-  const handleDeleteClient = async (clientId: string) => {
-    if (!confirm("¿Estás seguro de que quieres eliminar este cliente?")) return
-
-    try {
-      const result = await deleteCompetitorClient(clientId)
-      if (result.success) {
-        toast({
-          title: "Éxito",
-          description: "Cliente eliminado correctamente",
-        })
-        // Update state directly instead of reloading
-        setClients((prevClients) => prevClients.filter((client) => client.id !== clientId))
-      } else {
-        toast({
-          title: "Error",
-          description: result.error || "Error al eliminar cliente",
-          variant: "destructive",
-        })
-      }
-    } catch (error) {
-      console.error("Error deleting client:", error)
-      toast({
-        title: "Error",
-        description: "Error al eliminar cliente",
-        variant: "destructive",
-      })
-    }
-  }
+  }, [loadData])
 
   const filteredClients = clients.filter((client) => {
     const ganaderoName = client.ganadero_name || ""
@@ -319,11 +315,9 @@ export default function AdminClientesPage() {
         return
       }
 
-      // Crear un nuevo workbook
       const wb = XLSX.utils.book_new()
       const ws = XLSX.utils.aoa_to_sheet([[]])
 
-      // Preparar datos completos para Excel (solo datos filtrados) - TODOS los campos
       const excelData = filteredClients.map((client) => ({
         ID: client.id,
         "Nombre Cliente": client.client_name || "",
@@ -351,62 +345,53 @@ export default function AdminClientesPage() {
         "Hora Registro": new Date(client.created_at).toLocaleTimeString(),
       }))
 
-      // Convertir el array de objetos a una hoja de cálculo
       XLSX.utils.sheet_add_json(ws, excelData, { origin: "A1", skipHeader: false })
 
-      // Configurar anchos de columna para todos los campos
       const colWidths = [
-        { wch: 10 }, // ID
-        { wch: 25 }, // Nombre Cliente
-        { wch: 25 }, // Nombre Ganadero
-        { wch: 25 }, // Cliente Competidora
-        { wch: 30 }, // Razón Social
-        { wch: 15 }, // Tipo Venta
-        { wch: 35 }, // Ubicación Finca
-        { wch: 15 }, // Área Finca
-        { wch: 25 }, // Producto Anterior
-        { wch: 25 }, // Producto Súper Ganadería
-        { wch: 20 }, // Volumen Venta Estimado
-        { wch: 30 }, // Información Contacto
-        { wch: 40 }, // Notas
-        { wch: 25 }, // Nombre Almacén
-        { wch: 10 }, // Puntos
-        { wch: 20 }, // Capitán
-        { wch: 15 }, // ID Capitán
-        { wch: 20 }, // Equipo
-        { wch: 15 }, // ID Equipo
-        { wch: 15 }, // Zona
-        { wch: 15 }, // ID Zona
-        { wch: 15 }, // Fecha Registro
-        { wch: 20 }, // Fecha Registro ISO
-        { wch: 15 }, // Hora Registro
+        { wch: 10 },
+        { wch: 25 },
+        { wch: 25 },
+        { wch: 25 },
+        { wch: 30 },
+        { wch: 15 },
+        { wch: 35 },
+        { wch: 15 },
+        { wch: 25 },
+        { wch: 25 },
+        { wch: 20 },
+        { wch: 30 },
+        { wch: 40 },
+        { wch: 25 },
+        { wch: 10 },
+        { wch: 20 },
+        { wch: 15 },
+        { wch: 20 },
+        { wch: 15 },
+        { wch: 15 },
+        { wch: 15 },
+        { wch: 15 },
+        { wch: 20 },
+        { wch: 15 },
       ]
       ws["!cols"] = colWidths
 
-      // Agregar worksheet al workbook
       XLSX.utils.book_append_sheet(wb, ws, "Clientes")
 
-      // Generar archivo en formato binario
       const excelBuffer = XLSX.write(wb, { bookType: "xlsx", type: "array" })
 
-      // Convertir a Blob
       const blob = new Blob([excelBuffer], {
         type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       })
 
-      // Crear URL para el blob
       const url = URL.createObjectURL(blob)
 
-      // Crear elemento de enlace para descargar
       const a = document.createElement("a")
       a.href = url
       a.download = `clientes_${new Date().toISOString().split("T")[0]}.xlsx`
 
-      // Simular clic para iniciar descarga
       document.body.appendChild(a)
       a.click()
 
-      // Limpiar
       setTimeout(() => {
         document.body.removeChild(a)
         URL.revokeObjectURL(url)
@@ -457,15 +442,16 @@ export default function AdminClientesPage() {
             <Download className="mr-2 h-4 w-4" />
             Descargar Excel
           </Button>
-          <Button onClick={() => setOpen(true)}>
-            <PlusIcon className="mr-2 h-4 w-4" />
-            Agregar Cliente
+          <Button asChild>
+            {" "}
+            {/* Use asChild to render Link inside Button */}
+            <Link href="/admin/clientes/nuevo">
+              <PlusIcon className="mr-2 h-4 w-4" />
+              Agregar Cliente
+            </Link>
           </Button>
         </div>
       </div>
-
-      {/* Pass the filtered captains to the form */}
-      <ClientForm open={open} setOpen={setOpen} zones={zones} teams={teams} users={captains} onSuccess={loadData} />
 
       {/* Filtros */}
       <Card>

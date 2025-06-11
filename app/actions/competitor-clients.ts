@@ -2,6 +2,7 @@
 
 import { createServerClient } from "@/lib/supabase/server"
 import { revalidatePath } from "next/cache"
+import { redirect } from "next/navigation" // Import redirect
 
 export async function registerCompetitorClient(formData: FormData) {
   const supabase = createServerClient()
@@ -21,10 +22,10 @@ export async function registerCompetitorClient(formData: FormData) {
   const nombre_almacen = formData.get("nombre_almacen") as string | null
   const points_str = formData.get("points") as string
   const team_id = formData.get("team_id") as string
-  const representative_id = formData.get("representative_id") as string // Corrected to representative_id
+  const representative_id = formData.get("representative_id") as string
 
   const area_finca_hectareas = area_finca_hectareas_str ? Number.parseFloat(area_finca_hectareas_str) : null
-  const points = points_str ? Number.parseInt(points_str) : 5 // Default to 5 as per schema
+  const points = points_str ? Number.parseInt(points_str) : 5
 
   try {
     const { error } = await supabase.from("competitor_clients").insert({
@@ -41,7 +42,7 @@ export async function registerCompetitorClient(formData: FormData) {
       contact_info,
       notes,
       nombre_almacen: tipo_venta === "distribuidor" ? nombre_almacen : null,
-      points: isNaN(points) ? 5 : points, // Ensure default is 5 if not a valid number
+      points: isNaN(points) ? 5 : points,
       team_id,
       representative_id,
     })
@@ -52,7 +53,8 @@ export async function registerCompetitorClient(formData: FormData) {
     }
 
     revalidatePath("/admin/clientes")
-    return { success: true, message: "Cliente de la competencia registrado exitosamente" }
+    // Redirect to the clients list page after successful registration
+    redirect("/admin/clientes")
   } catch (error: any) {
     console.error("Error inesperado al registrar cliente de la competencia:", error)
     return { success: false, error: error.message || "Error inesperado al registrar cliente" }
