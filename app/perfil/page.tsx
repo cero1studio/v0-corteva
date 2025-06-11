@@ -46,7 +46,8 @@ export default function PerfilPage() {
       })
 
       if (error) {
-        setMessage({ type: "error", text: error.message })
+        console.error("Error al cambiar contraseña:", error)
+        setMessage({ type: "error", text: "Error al actualizar la contraseña: " + error.message })
       } else {
         setMessage({ type: "success", text: "Contraseña actualizada exitosamente" })
         setCurrentPassword("")
@@ -54,7 +55,8 @@ export default function PerfilPage() {
         setConfirmPassword("")
       }
     } catch (error: any) {
-      setMessage({ type: "error", text: "Error al actualizar la contraseña" })
+      console.error("Error inesperado:", error)
+      setMessage({ type: "error", text: "Error inesperado al actualizar la contraseña" })
     } finally {
       setIsLoading(false)
     }
