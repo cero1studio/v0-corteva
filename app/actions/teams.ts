@@ -39,7 +39,7 @@ export async function getAllTeams() {
       name,
       captain_id,
       zone_id,
-      profiles!captain_id ( id, full_name ), // Especifica la relación a través de captain_id
+      profiles!captain_id ( id, full_name ),
       zones ( id, name )
     `,
     )
@@ -64,7 +64,7 @@ export async function getTeamById(teamId: string) {
       name,
       captain_id,
       zone_id,
-      profiles!captain_id ( id, full_name ), // Especifica la relación a través de captain_id
+      profiles!captain_id ( id, full_name ),
       zones ( id, name )
     `,
     )
