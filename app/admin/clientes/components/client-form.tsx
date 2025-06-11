@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { toast } from "@/hooks/use-toast"
-import { createCompetitorClient } from "@/app/actions/competitor-clients"
+import { registerCompetitorClient } from "@/app/actions/competitor-clients" // Changed to registerCompetitorClient
 
 interface Zone {
   id: string
@@ -58,6 +58,7 @@ export function ClientForm({ open, setOpen, zones, teams, users, onSuccess }: Cl
     volumen_venta_estimado: "",
     points: "5", // Valor por defecto
     contact_info: "",
+    notes: "", // Added notes field
   })
 
   const filteredTeams = selectedZone ? teams.filter((team) => team.zone_id === selectedZone) : teams
@@ -67,19 +68,11 @@ export function ClientForm({ open, setOpen, zones, teams, users, onSuccess }: Cl
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    if (!formData.client_name || !selectedTeam) {
+    if (!formData.client_name || !selectedTeam || !teamCaptain) {
       toast({
         title: "Error",
-        description: "Por favor completa los campos requeridos",
-        variant: "destructive",
-      })
-      return
-    }
-
-    if (!teamCaptain) {
-      toast({
-        title: "Error",
-        description: "El equipo seleccionado no tiene un capitán asignado",
+        description:
+          "Por favor completa los campos requeridos (Nombre Cliente, Equipo, y asegúrate que el equipo tenga un Capitán).",
         variant: "destructive",
       })
       return
@@ -109,7 +102,7 @@ export function ClientForm({ open, setOpen, zones, teams, users, onSuccess }: Cl
       form.append("team_id", selectedTeam)
       form.append("representative", teamCaptain.id)
 
-      const result = await createCompetitorClient(form)
+      const result = await registerCompetitorClient(form) // Changed to registerCompetitorClient
 
       if (result.success) {
         toast({
@@ -130,6 +123,7 @@ export function ClientForm({ open, setOpen, zones, teams, users, onSuccess }: Cl
           volumen_venta_estimado: "",
           points: "5",
           contact_info: "",
+          notes: "",
         })
         setSelectedZone("")
         setSelectedTeam("")
@@ -374,11 +368,23 @@ export function ClientForm({ open, setOpen, zones, teams, users, onSuccess }: Cl
             </div>
           </div>
 
+          {/* Notas */}
+          <div className="space-y-2">
+            <Label htmlFor="notes">Notas Adicionales</Label>
+            <Textarea
+              id="notes"
+              value={formData.notes}
+              onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+              placeholder="Cualquier nota relevante sobre el cliente"
+              rows={3}
+            />
+          </div>
+
           <div className="flex justify-end space-x-2 pt-4">
             <Button type="button" variant="outline" onClick={() => setOpen(false)}>
               Cancelar
             </Button>
-            <Button type="submit" disabled={loading || !selectedTeam}>
+            <Button type="submit" disabled={loading || !selectedTeam || !teamCaptain}>
               {loading ? "Registrando..." : "Registrar Cliente"}
             </Button>
           </div>
