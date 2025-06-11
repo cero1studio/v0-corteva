@@ -1,10 +1,15 @@
+// ESTE console.log DEBE APARECER SI EL MÓDULO SE CARGA
+console.log("--- app/director-tecnico/ranking/page.tsx MODULE LOADED ---")
+
 import { createServerClient } from "@/lib/supabase/server"
 import { AuthGuard } from "@/components/auth-guard"
 import { getTeamRankingByZone, type TeamRanking } from "@/app/actions/ranking"
 import { RankingDisplay } from "./components/ranking-display"
 
 export default async function DirectorTecnicoRankingPage() {
+  // ESTE console.log DEBE APARECER SI LA FUNCIÓN DEL COMPONENTE SE EJECUTA
   console.log("DirectorTecnicoRankingPage: INICIO de ejecución del Server Component.")
+
   const supabase = createServerClient()
 
   let zoneTeams: TeamRanking[] = []
@@ -21,8 +26,6 @@ export default async function DirectorTecnicoRankingPage() {
 
     if (!authUser) {
       console.log("DirectorTecnicoRankingPage: No hay usuario autenticado. Devolviendo AuthGuard con spinner.")
-      // Si no hay usuario, AuthGuard se encargará de la redirección.
-      // El spinner aquí es para el breve momento antes de que AuthGuard actúe.
       return (
         <AuthGuard allowedRoles={["Director Tecnico", "arbitro"]}>
           <div className="flex justify-center items-center h-full">
@@ -73,7 +76,6 @@ export default async function DirectorTecnicoRankingPage() {
       } else {
         console.error("DirectorTecnicoRankingPage: ERROR al obtener ranking nacional:", nationalRankingResult.error)
         if (!errorMessage) {
-          // Solo establecer si no hay un error previo
           errorMessage = nationalRankingResult.error || "No se pudo cargar el ranking nacional."
         }
       }

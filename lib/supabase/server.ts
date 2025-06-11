@@ -1,3 +1,6 @@
+// ESTE console.log DEBE APARECER SI EL MÓDULO SE CARGA
+console.log("--- lib/supabase/server.ts MODULE LOADED ---")
+
 import { createServerComponentClient } from "@supabase/auth-helpers-nextjs"
 import { createClient } from "@supabase/supabase-js"
 import { cookies } from "next/headers"
