@@ -252,9 +252,31 @@ export default function RankingAdminPage() {
         XLSX.utils.book_append_sheet(wb, wsZone, "Zona Ganadora")
       }
 
-      // Generar y descargar archivo
-      const fileName = `ranking_nacional_${new Date().toISOString().split("T")[0]}.xlsx`
-      XLSX.writeFile(wb, fileName)
+      // Generar archivo en formato binario
+      const excelBuffer = XLSX.write(wb, { bookType: "xlsx", type: "array" })
+
+      // Convertir a Blob
+      const blob = new Blob([excelBuffer], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      })
+
+      // Crear URL para el blob
+      const url = URL.createObjectURL(blob)
+
+      // Crear elemento de enlace para descargar
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `ranking_nacional_${new Date().toISOString().split("T")[0]}.xlsx`
+
+      // Simular clic para iniciar descarga
+      document.body.appendChild(a)
+      a.click()
+
+      // Limpiar
+      setTimeout(() => {
+        document.body.removeChild(a)
+        URL.revokeObjectURL(url)
+      }, 0)
 
       toast({
         title: "Éxito",
