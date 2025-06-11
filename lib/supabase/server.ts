@@ -16,7 +16,17 @@ export const createServerSupabaseClient = () => {
 }
 
 // Cliente de Supabase con rol de administrador para operaciones privilegiadas
-export const adminSupabase = createClient<Database>(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-)
+// Ahora es una función para asegurar que las variables de entorno estén cargadas
+export const getAdminSupabase = () => {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+  if (!supabaseUrl) {
+    throw new Error("Missing environment variable: NEXT_PUBLIC_SUPABASE_URL")
+  }
+  if (!serviceRoleKey) {
+    throw new Error("Missing environment variable: SUPABASE_SERVICE_ROLE_KEY")
+  }
+
+  return createClient<Database>(supabaseUrl, serviceRoleKey)
+}
