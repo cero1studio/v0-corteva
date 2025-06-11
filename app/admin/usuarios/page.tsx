@@ -4,6 +4,8 @@ import { useState, useEffect } from "react"
 import { getUsers, deleteUser, getZones } from "@/app/actions/users"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import {
   AlertDialog,
@@ -16,7 +18,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { useToast } from "@/components/ui/use-toast"
-import { Edit, Trash2, Plus, UserCheck, AlertCircle } from "lucide-react"
+import { Edit, Trash2, Plus, UserCheck, AlertCircle, Search, Filter } from "lucide-react"
 import Link from "next/link"
 import { Badge } from "@/components/ui/badge"
 import { EmptyState } from "@/components/empty-state"
@@ -31,6 +33,7 @@ export default function UsuariosPage() {
   const { toast } = useToast()
   const [zones, setZones] = useState<any[]>([])
   const [selectedZone, setSelectedZone] = useState<string>("all")
+  const [searchTerm, setSearchTerm] = useState("")
 
   useEffect(() => {
     fetchUsers()
@@ -162,6 +165,17 @@ export default function UsuariosPage() {
     }
   }
 
+  // Filtrar usuarios
+  const filteredUsers = users.filter((user) => {
+    const matchesSearch =
+      user.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      user.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      user.team_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      user.zone_name?.toLowerCase().includes(searchTerm.toLowerCase())
+
+    return matchesSearch
+  })
+
   return (
     <div className="space-y-6">
       <div className="space-y-4">
@@ -175,40 +189,85 @@ export default function UsuariosPage() {
           </Button>
         </div>
 
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2">
-            <label htmlFor="zone-filter" className="text-sm font-medium">
-              Filtrar por zona:
-            </label>
-            <Select value={selectedZone} onValueChange={setSelectedZone}>
-              <SelectTrigger className="w-[200px]">
-                <SelectValue placeholder="Seleccionar zona" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todas las zonas</SelectItem>
-                {zones.map((zone) => (
-                  <SelectItem key={zone.id} value={zone.id}>
-                    {zone.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
+        {/* Filtros */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Filter className="h-5 w-5" />
+              Filtros
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <Label htmlFor="search">Buscar</Label>
+                <div className="relative">
+                  <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    id="search"
+                    placeholder="Buscar por nombre, email, equipo..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="pl-10"
+                  />
+                </div>
+              </div>
+              <div>
+                <Label htmlFor="zone-filter">Zona</Label>
+                <Select value={selectedZone} onValueChange={setSelectedZone}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Seleccionar zona" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todas las zonas</SelectItem>
+                    {zones.map((zone) => (
+                      <SelectItem key={zone.id} value={zone.id}>
+                        {zone.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex items-end">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setSearchTerm("")
+                    setSelectedZone("all")
+                  }}
+                  className="w-full"
+                >
+                  Limpiar Filtros
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       <Card>
         <CardHeader>
           <CardTitle>Gestión de Usuarios</CardTitle>
-          <CardDescription>Administra los usuarios del sistema</CardDescription>
+          <CardDescription>
+            {filteredUsers.length} usuario{filteredUsers.length !== 1 ? "s" : ""} encontrado
+            {filteredUsers.length !== 1 ? "s" : ""}
+          </CardDescription>
         </CardHeader>
         <CardContent>
           {loading ? (
             <div className="flex justify-center py-8">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-corteva-600"></div>
             </div>
-          ) : users.length === 0 ? (
-            <EmptyState title="No hay usuarios" description="No se encontraron usuarios en el sistema" icon="users" />
+          ) : filteredUsers.length === 0 ? (
+            <EmptyState
+              title={searchTerm || selectedZone !== "all" ? "No se encontraron usuarios" : "No hay usuarios"}
+              description={
+                searchTerm || selectedZone !== "all"
+                  ? "No se encontraron usuarios con los filtros aplicados"
+                  : "No se encontraron usuarios en el sistema"
+              }
+              icon="users"
+            />
           ) : (
             <div className="rounded-md border overflow-x-auto">
               <Table>
@@ -224,7 +283,7 @@ export default function UsuariosPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {users.map((user) => (
+                  {filteredUsers.map((user) => (
                     <TableRow key={user.id}>
                       <TableCell className="font-medium">{user.full_name || "Sin nombre"}</TableCell>
                       <TableCell>{getRoleBadge(user.role)}</TableCell>

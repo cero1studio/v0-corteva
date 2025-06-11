@@ -10,7 +10,6 @@ type Props = {
   children: React.ReactNode
 }
 
-
 export function ProtectedLayout({ allowedRoles, children }: Props) {
   const { isLoading, profile } = useAuth()
   const router = useRouter()

@@ -200,6 +200,14 @@ export default function RegistrarVentaPage() {
       title: "Venta registrada",
       description: "La venta ha sido registrada correctamente",
     })
+
+    // Resetear todos los estados
+    setSelectedProduct("")
+    setQuantity(1)
+    setDate(new Date())
+    setSelectedProductData(null)
+    setLoading(false) // Asegurar que loading esté en false
+
     router.push("/capitan/dashboard")
   }
 

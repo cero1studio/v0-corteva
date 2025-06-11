@@ -47,12 +47,43 @@ function CapitanDashboardContent() {
   const [showCelebration, setShowCelebration] = useState(false)
 
   useEffect(() => {
-    checkUserAndTeam()
-    loadSystemConfig()
+    let mounted = true
+    let timeoutId: NodeJS.Timeout
+
+    // Timeout de seguridad para evitar loading infinito
+    timeoutId = setTimeout(() => {
+      if (mounted) {
+        console.log("CAPITAN DASHBOARD: Timeout reached, forcing loading to false")
+        setLoading(false)
+      }
+    }, 10000)
+
+    const initializeDashboard = async () => {
+      try {
+        console.log("CAPITAN DASHBOARD: Initializing dashboard")
+        await checkUserAndTeam()
+        await loadSystemConfig()
+      } catch (error) {
+        console.error("CAPITAN DASHBOARD: Error initializing:", error)
+      } finally {
+        if (mounted) {
+          setLoading(false)
+        }
+      }
+    }
+
+    initializeDashboard()
+
+    return () => {
+      mounted = false
+      clearTimeout(timeoutId)
+    }
   }, [])
 
   async function loadSystemConfig() {
     try {
+      console.log("CAPITAN DASHBOARD: Loading system config")
+
       // Obtener configuración del sistema
       const { data: configData, error: configError } = await supabase
         .from("system_config")
@@ -87,13 +118,13 @@ function CapitanDashboardContent() {
         setRetoActivo(activoData.value === "true" || activoData.value === true)
       }
     } catch (error) {
-      console.error("Error al cargar configuración:", error)
+      console.error("CAPITAN DASHBOARD: Error loading system config:", error)
     }
   }
 
   async function checkUserAndTeam() {
     try {
-      setLoading(true)
+      console.log("CAPITAN DASHBOARD: Checking user and team")
 
       // Obtener el usuario actual
       const {
@@ -101,9 +132,12 @@ function CapitanDashboardContent() {
       } = await supabase.auth.getUser()
 
       if (!authUser) {
+        console.log("CAPITAN DASHBOARD: No auth user, redirecting to login")
         router.push("/login")
         return
       }
+
+      console.log("CAPITAN DASHBOARD: Auth user found:", authUser.email)
 
       // Obtener el perfil del usuario con información detallada
       const { data: profileData, error: profileError } = await supabase
@@ -119,7 +153,12 @@ function CapitanDashboardContent() {
         .eq("id", authUser.id)
         .single()
 
-      if (profileError) throw profileError
+      if (profileError) {
+        console.error("CAPITAN DASHBOARD: Profile error:", profileError)
+        throw profileError
+      }
+
+      console.log("CAPITAN DASHBOARD: Profile data:", profileData)
 
       setUser(profileData)
       setUserData(profileData)
@@ -131,13 +170,16 @@ function CapitanDashboardContent() {
 
       // Verificar si el usuario tiene un equipo
       if (!profileData.team_id) {
+        console.log("CAPITAN DASHBOARD: No team found, checking if captain")
         // Si no tiene equipo, verificar si es capitán
         if (profileData.role === "capitan") {
+          console.log("CAPITAN DASHBOARD: Captain without team, redirecting to create team")
           // Redirigir a la página de creación de equipo
           router.push("/capitan/crear-equipo")
           return
         }
       } else {
+        console.log("CAPITAN DASHBOARD: Team found, loading team data")
         // Si tiene equipo, obtener los datos del equipo con información detallada
         const { data: teamData, error: teamError } = await supabase
           .from("teams")
@@ -149,7 +191,12 @@ function CapitanDashboardContent() {
           .eq("id", profileData.team_id)
           .single()
 
-        if (teamError) throw teamError
+        if (teamError) {
+          console.error("CAPITAN DASHBOARD: Team error:", teamError)
+          throw teamError
+        }
+
+        console.log("CAPITAN DASHBOARD: Team data:", teamData)
 
         setTeam(teamData)
         setTeamData(teamData)
@@ -164,44 +211,40 @@ function CapitanDashboardContent() {
         if (teamData.distributors) {
           setDistributorData(teamData.distributors)
         }
-      }
 
-      // Si tiene equipo, cargar datos adicionales
-      if (profileData.team_id) {
+        // Cargar datos adicionales del equipo
         await loadTeamData(authUser.id, profileData.team_id)
       }
     } catch (error: any) {
-      console.error("Error al verificar usuario y equipo:", error)
+      console.error("CAPITAN DASHBOARD: Error checking user and team:", error)
       toast({
         title: "Error",
         description: error?.message || "No se pudo cargar la información del usuario o equipo",
         variant: "destructive",
       })
-    } finally {
-      setLoading(false)
     }
   }
 
   async function loadTeamData(userId: string, teamId: string) {
     try {
-      console.log("Cargando datos del equipo para usuario:", userId, "equipo:", teamId)
+      console.log("CAPITAN DASHBOARD: Loading team data for:", teamId)
 
       // Obtener todos los miembros del equipo
       const { data: teamMembers, error: teamError } = await supabase.from("profiles").select("id").eq("team_id", teamId)
 
       if (teamError) {
-        console.error("Error al obtener miembros del equipo:", teamError)
+        console.error("CAPITAN DASHBOARD: Error getting team members:", teamError)
         return
       }
 
       if (!teamMembers || teamMembers.length === 0) {
-        console.log("No se encontraron miembros en el equipo")
+        console.log("CAPITAN DASHBOARD: No team members found")
         return
       }
 
       // Obtener IDs de todos los miembros del equipo
       const memberIds = teamMembers.map((member) => member.id)
-      console.log("IDs de miembros del equipo:", memberIds)
+      console.log("CAPITAN DASHBOARD: Team member IDs:", memberIds)
 
       // Cargar ventas de todos los miembros del equipo
       const { data: salesData, error: salesError } = await supabase
@@ -214,9 +257,9 @@ function CapitanDashboardContent() {
         .order("created_at", { ascending: false })
 
       if (salesError) {
-        console.error("Error cargando ventas:", salesError)
+        console.error("CAPITAN DASHBOARD: Error loading sales:", salesError)
       } else {
-        console.log("Ventas cargadas:", salesData?.length || 0)
+        console.log("CAPITAN DASHBOARD: Sales loaded:", salesData?.length || 0)
         setSalesData(salesData || [])
       }
 
@@ -225,25 +268,25 @@ function CapitanDashboardContent() {
         const result = await getCompetitorClientsByTeam(teamId)
         if (result.success) {
           setClientsData(result.data || [])
-          console.log("Clientes cargados:", result.data?.length || 0)
+          console.log("CAPITAN DASHBOARD: Clients loaded:", result.data?.length || 0)
         } else {
-          console.error("Error al cargar clientes:", result.error)
+          console.error("CAPITAN DASHBOARD: Error loading clients:", result.error)
         }
       } catch (clientError) {
-        console.error("Error al cargar clientes:", clientError)
+        console.error("CAPITAN DASHBOARD: Error loading clients:", clientError)
       }
 
       // Cargar tiros libres del equipo
       try {
         const freeKickResult = await getFreeKickGoalsByTeam(teamId)
         if (freeKickResult.error) {
-          console.error("Error al cargar tiros libres:", freeKickResult.error)
+          console.error("CAPITAN DASHBOARD: Error loading free kicks:", freeKickResult.error)
         } else {
           setFreeKickData(freeKickResult.data || [])
-          console.log("Tiros libres cargados:", freeKickResult.data?.length || 0)
+          console.log("CAPITAN DASHBOARD: Free kicks loaded:", freeKickResult.data?.length || 0)
         }
       } catch (freeKickError) {
-        console.error("Error al cargar tiros libres:", freeKickError)
+        console.error("CAPITAN DASHBOARD: Error loading free kicks:", freeKickError)
       }
 
       // Cargar ranking real de la zona usando las funciones de server actions
@@ -260,29 +303,26 @@ function CapitanDashboardContent() {
               const position = rankingResult.data.findIndex((t: any) => t.team_id === teamId) + 1
               setRankingPosition(position > 0 ? position : null)
             } else {
-              console.error("Error en ranking:", rankingResult.error)
+              console.error("CAPITAN DASHBOARD: Error in ranking:", rankingResult.error)
             }
           }
         }
       } catch (rankingError) {
-        console.error("Error al cargar ranking:", rankingError)
+        console.error("CAPITAN DASHBOARD: Error loading ranking:", rankingError)
       }
     } catch (error) {
-      console.error("Error al cargar datos del equipo:", error)
+      console.error("CAPITAN DASHBOARD: Error loading team data:", error)
     }
   }
-
-  useEffect(() => {
-    if (team && user) {
-      loadTeamData(user.id, team.id)
-    }
-  }, [team, user])
 
   // Si está cargando, mostrar indicador
   if (loading) {
     return (
-      <div className="flex justify-center items-center h-full">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-corteva-600"></div>
+      <div className="flex justify-center items-center h-full min-h-[400px]">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-corteva-600 mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Cargando dashboard...</p>
+        </div>
       </div>
     )
   }

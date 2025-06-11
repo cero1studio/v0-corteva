@@ -24,6 +24,7 @@ import { getAllCompetitorClients, deleteCompetitorClient } from "@/app/actions/c
 import { getAllZones } from "@/app/actions/zones"
 import { getAllTeams } from "@/app/actions/teams"
 import { getAllUsers } from "@/app/actions/users"
+import * as XLSX from "xlsx"
 
 interface CompetitorClient {
   id: string
@@ -37,6 +38,9 @@ interface CompetitorClient {
   producto_anterior: string | null
   producto_super_ganaderia: string | null
   volumen_venta_estimado: string | null
+  contact_info: string | null
+  notes: string | null
+  nombre_almacen: string | null
   points: number
   created_at: string
   representative_profile: {
@@ -286,38 +290,104 @@ export default function AdminClientesPage() {
 
   const downloadExcel = () => {
     try {
+      if (filteredClients.length === 0) {
+        toast({
+          title: "Error",
+          description: "No hay datos para exportar",
+          variant: "destructive",
+        })
+        return
+      }
+
+      // Crear un nuevo workbook
+      const wb = XLSX.utils.book_new()
+      const ws = XLSX.utils.aoa_to_sheet([[]])
+
+      // Preparar datos completos para Excel (solo datos filtrados) - TODOS los campos
       const excelData = filteredClients.map((client) => ({
-        Ganadero: client.ganadero_name || client.client_name,
-        "Volumen de Venta Estimado": client.volumen_venta_estimado || "",
+        ID: client.id,
+        "Nombre Cliente": client.client_name || "",
+        "Nombre Ganadero": client.ganadero_name || "",
         "Cliente Competidora": client.client_name_competitora || "",
         "Razón Social": client.razon_social || "",
         "Tipo Venta": client.tipo_venta || "",
         "Ubicación Finca": client.ubicacion_finca || "",
-        "Área (Ha)": client.area_finca_hectareas || "",
+        "Área Finca (Hectáreas)": client.area_finca_hectareas || "",
         "Producto Anterior": client.producto_anterior || "",
         "Producto Súper Ganadería": client.producto_super_ganaderia || "",
+        "Volumen Venta Estimado": client.volumen_venta_estimado || "",
+        "Información Contacto": client.contact_info || "",
+        Notas: client.notes || "",
+        "Nombre Almacén": client.nombre_almacen || "",
         Puntos: client.points,
         Capitán: client.representative_profile?.full_name || "",
+        "ID Capitán": client.representative_profile?.id || "",
         Equipo: client.team?.name || "",
+        "ID Equipo": client.team?.id || "",
         Zona: client.team?.zone?.name || "",
+        "ID Zona": client.team?.zone?.id || "",
         "Fecha Registro": new Date(client.created_at).toLocaleDateString(),
+        "Fecha Registro (ISO)": client.created_at,
+        "Hora Registro": new Date(client.created_at).toLocaleTimeString(),
       }))
 
-      const headers = Object.keys(excelData[0] || {})
-      const csvContent = [
-        headers.join(","),
-        ...excelData.map((row) => headers.map((header) => `"${row[header as keyof typeof row]}"`).join(",")),
-      ].join("\n")
+      // Configurar anchos de columna para todos los campos
+      const colWidths = [
+        { wch: 10 }, // ID
+        { wch: 25 }, // Nombre Cliente
+        { wch: 25 }, // Nombre Ganadero
+        { wch: 25 }, // Cliente Competidora
+        { wch: 30 }, // Razón Social
+        { wch: 15 }, // Tipo Venta
+        { wch: 35 }, // Ubicación Finca
+        { wch: 15 }, // Área Finca
+        { wch: 25 }, // Producto Anterior
+        { wch: 25 }, // Producto Súper Ganadería
+        { wch: 20 }, // Volumen Venta Estimado
+        { wch: 30 }, // Información Contacto
+        { wch: 40 }, // Notas
+        { wch: 25 }, // Nombre Almacén
+        { wch: 10 }, // Puntos
+        { wch: 20 }, // Capitán
+        { wch: 15 }, // ID Capitán
+        { wch: 20 }, // Equipo
+        { wch: 15 }, // ID Equipo
+        { wch: 15 }, // Zona
+        { wch: 15 }, // ID Zona
+        { wch: 15 }, // Fecha Registro
+        { wch: 20 }, // Fecha Registro ISO
+        { wch: 15 }, // Hora Registro
+      ]
+      ws["!cols"] = colWidths
 
-      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" })
-      const link = document.createElement("a")
+      // Agregar worksheet al workbook
+      XLSX.utils.book_append_sheet(wb, ws, "Clientes")
+
+      // Generar archivo en formato binario
+      const excelBuffer = XLSX.write(wb, { bookType: "xlsx", type: "array" })
+
+      // Convertir a Blob
+      const blob = new Blob([excelBuffer], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      })
+
+      // Crear URL para el blob
       const url = URL.createObjectURL(blob)
-      link.setAttribute("href", url)
-      link.setAttribute("download", `clientes_${new Date().toISOString().split("T")[0]}.csv`)
-      link.style.visibility = "hidden"
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
+
+      // Crear elemento de enlace para descargar
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `clientes_${new Date().toISOString().split("T")[0]}.xlsx`
+
+      // Simular clic para iniciar descarga
+      document.body.appendChild(a)
+      a.click()
+
+      // Limpiar
+      setTimeout(() => {
+        document.body.removeChild(a)
+        URL.revokeObjectURL(url)
+      }, 0)
 
       toast({
         title: "Éxito",

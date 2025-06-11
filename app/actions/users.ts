@@ -50,7 +50,6 @@ export async function getUsersSimple() {
   }
 }
 
-// Replace the getUsers function with this updated version that supports zone filtering
 export async function getUsers(zoneFilter?: string) {
   try {
     const supabase = createServerClient()
@@ -58,7 +57,7 @@ export async function getUsers(zoneFilter?: string) {
     console.log("Obteniendo usuarios...")
 
     // Build the query with optional zone filter
-    let query = supabase.from("profiles").select(`
+    let profilesQuery = supabase.from("profiles").select(`
         id, 
         email, 
         full_name, 
@@ -70,12 +69,11 @@ export async function getUsers(zoneFilter?: string) {
 
     // Apply zone filter if provided
     if (zoneFilter && zoneFilter !== "all") {
-      query = query.eq("zone_id", zoneFilter)
+      profilesQuery = profilesQuery.eq("zone_id", zoneFilter)
     }
 
-    const { data: profiles, error: profilesError } = await query.order("full_name")
+    const { data: profiles, error: profilesError } = await profilesQuery.order("full_name")
 
-    // Rest of the function remains the same...
     if (profilesError) {
       console.error("Error al obtener usuarios:", profilesError)
       return { error: profilesError.message, data: null }
@@ -86,15 +84,22 @@ export async function getUsers(zoneFilter?: string) {
       return { data: [], error: null }
     }
 
-    // Obtener zonas, distribuidores y equipos por separado
-    const { data: zones } = await supabase.from("zones").select("id, name")
-    const { data: distributors } = await supabase.from("distributors").select("id, name, logo_url")
-    const { data: teams } = await supabase.from("teams").select("id, name")
+    // Obtener datos relacionados en paralelo pero con manejo de errores individual
+    const [zonesResult, distributorsResult, teamsResult] = await Promise.allSettled([
+      supabase.from("zones").select("id, name"),
+      supabase.from("distributors").select("id, name, logo_url"),
+      supabase.from("teams").select("id, name"),
+    ])
+
+    // Extraer datos de forma segura
+    const zones = zonesResult.status === "fulfilled" ? zonesResult.value.data || [] : []
+    const distributors = distributorsResult.status === "fulfilled" ? distributorsResult.value.data || [] : []
+    const teams = teamsResult.status === "fulfilled" ? teamsResult.value.data || [] : []
 
     // Crear mapas de búsqueda
-    const zoneMap = zones ? zones.reduce((map, zone) => ({ ...map, [zone.id]: zone }), {}) : {}
-    const distributorMap = distributors ? distributors.reduce((map, dist) => ({ ...map, [dist.id]: dist }), {}) : {}
-    const teamMap = teams ? teams.reduce((map, team) => ({ ...map, [team.id]: team }), {}) : {}
+    const zoneMap = zones.reduce((map, zone) => ({ ...map, [zone.id]: zone }), {})
+    const distributorMap = distributors.reduce((map, dist) => ({ ...map, [dist.id]: dist }), {})
+    const teamMap = teams.reduce((map, team) => ({ ...map, [team.id]: team }), {})
 
     // Transformar los datos
     const formattedData = profiles.map((user) => ({
@@ -119,6 +124,16 @@ export async function getUsers(zoneFilter?: string) {
     return { data: formattedData, error: null }
   } catch (error: any) {
     console.error("Error en getUsers:", error)
+
+    // Manejar errores específicos de rate limiting o JSON
+    if (error.message && error.message.includes("Too Many")) {
+      return { error: "Demasiadas solicitudes. Por favor, espera un momento e intenta de nuevo.", data: null }
+    }
+
+    if (error instanceof SyntaxError) {
+      return { error: "Error de conexión con la base de datos. Intenta recargar la página.", data: null }
+    }
+
     return { error: error.message || "Error al obtener usuarios", data: null }
   }
 }
@@ -179,21 +194,16 @@ export async function testSupabaseConfig() {
   }
 }
 
-export async function createUser(formData: FormData) {
+export async function createUser(userData: any) {
   try {
-    const email = formData.get("email") as string
-    const password = formData.get("password") as string
-    const fullName = formData.get("fullName") as string
-    const role = formData.get("role") as string
-    const zoneId = formData.get("zoneId") as string
-    const distributorId = formData.get("distributorId") as string
+    const { email, password, full_name, role, zone_id, distributor_id, team_id } = userData
 
     console.log("Iniciando creación de usuario...")
     console.log("Email:", email)
-    console.log("Nombre:", fullName)
+    console.log("Nombre:", full_name)
     console.log("Rol:", role)
 
-    if (!email || !password || !fullName || !role) {
+    if (!email || !password || !full_name || !role) {
       return { error: "Todos los campos son obligatorios" }
     }
 
@@ -225,7 +235,7 @@ export async function createUser(formData: FormData) {
       password: password,
       email_confirm: true,
       user_metadata: {
-        full_name: fullName,
+        full_name: full_name,
         role: role,
       },
     })
@@ -245,10 +255,11 @@ export async function createUser(formData: FormData) {
     const profileData = {
       id: authData.user.id,
       email: email,
-      full_name: fullName,
+      full_name: full_name,
       role: role,
-      zone_id: zoneId && zoneId !== "none" ? zoneId : null,
-      distributor_id: distributorId && distributorId !== "none" ? distributorId : null,
+      zone_id: zone_id && zone_id !== "none" && zone_id !== "" ? zone_id : null,
+      distributor_id: distributor_id && distributor_id !== "none" && distributor_id !== "" ? distributor_id : null,
+      team_id: team_id && team_id !== "none" && team_id !== "" ? team_id : null,
     }
 
     console.log("Creando perfil:", profileData)

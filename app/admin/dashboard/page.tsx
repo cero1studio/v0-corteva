@@ -25,10 +25,48 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { EmptyState } from "@/components/empty-state"
 import { useRouter } from "next/navigation"
 
+// Interfaces para tipado
+interface DashboardStats {
+  totalCapitanes: number
+  totalDirectores: number
+  totalTeams: number
+  totalZones: number
+  totalProducts: number
+  totalSales: number
+}
+
+interface TeamStats {
+  id: string
+  name: string
+  zone: string
+  points: number
+  goals: number
+}
+
+interface ZoneStats {
+  id: string
+  name: string
+  teams: number
+  total_goals: number // Cambiado de 'points' a 'total_goals'
+}
+
+interface ProductStats {
+  id: string
+  name: string
+  sales: number
+  points: number
+  totalPoints: number
+}
+
 export default function AdminDashboardPage() {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
-  const [stats, setStats] = useState({
+  const [statsLoading, setStatsLoading] = useState(true)
+  const [teamsLoading, setTeamsLoading] = useState(true)
+  const [zonesLoading, setZonesLoading] = useState(true)
+  const [productsLoading, setProductsLoading] = useState(true)
+
+  const [stats, setStats] = useState<DashboardStats>({
     totalCapitanes: 0,
     totalDirectores: 0,
     totalTeams: 0,
@@ -36,11 +74,10 @@ export default function AdminDashboardPage() {
     totalProducts: 0,
     totalSales: 0,
   })
-  const [topTeams, setTopTeams] = useState<any[]>([])
-  const [zoneStats, setZoneStats] = useState<any[]>([])
-  const [productStats, setProductStats] = useState<any[]>([])
+  const [topTeams, setTopTeams] = useState<TeamStats[]>([])
+  const [zoneStats, setZoneStats] = useState<ZoneStats[]>([])
+  const [productStats, setProductStats] = useState<ProductStats[]>([])
   const [error, setError] = useState<string | null>(null)
-  const [salesStructure, setSalesStructure] = useState<any>(null)
   const [retryCount, setRetryCount] = useState(0)
   const maxRetries = 3
 
@@ -60,7 +97,8 @@ export default function AdminDashboardPage() {
           await new Promise((resolve) => setTimeout(resolve, 2000))
           return checkSession(retry + 1)
         }
-        router.push("/login")
+        setError("Error de conexión. Por favor, verifica tu conexión a internet.")
+        setLoading(false)
         return
       }
 
@@ -95,7 +133,6 @@ export default function AdminDashboardPage() {
       if (profileError) {
         console.error("Error al obtener perfil:", profileError)
 
-        // Si es un error de red y no hemos alcanzado el máximo de reintentos
         if (retry < maxRetries && profileError.message?.includes("Failed to fetch")) {
           console.log(`Error de red al obtener perfil, reintentando... (${retry + 1}/${maxRetries})`)
           await new Promise((resolve) => setTimeout(resolve, 2000))
@@ -103,6 +140,7 @@ export default function AdminDashboardPage() {
         }
 
         setError("Error al verificar permisos. Por favor, inicia sesión nuevamente.")
+        setLoading(false)
         return
       }
 
@@ -112,8 +150,14 @@ export default function AdminDashboardPage() {
         return
       }
 
-      // Si todo está bien, cargar datos
-      fetchStructure()
+      // Si todo está bien, cargar datos en paralelo
+      setLoading(false)
+
+      // Cargar datos en paralelo para mejorar la experiencia
+      fetchBasicStats()
+      fetchTopTeams()
+      fetchZoneStats()
+      fetchProductStats()
     } catch (error) {
       console.error("Error al verificar perfil:", error)
       setError("Error al verificar permisos. Por favor, inicia sesión nuevamente.")
@@ -121,117 +165,54 @@ export default function AdminDashboardPage() {
     }
   }
 
-  // Obtener la estructura de la tabla sales primero
-  async function fetchStructure(retry = 0) {
+  // Obtener estadísticas básicas (conteos)
+  async function fetchBasicStats(retry = 0) {
     try {
-      // Verificar la estructura de la tabla sales
-      const { data: salesData, error: salesError } = await supabase
-        .from("sales")
-        .select("id, team_id, product_id, points, created_at")
-        .limit(1)
+      setStatsLoading(true)
 
-      if (salesError) {
-        // Si es un error de red y no hemos alcanzado el máximo de reintentos
-        if (retry < maxRetries && salesError.message?.includes("Failed to fetch")) {
-          console.log(`Error de red al obtener estructura, reintentando... (${retry + 1}/${maxRetries})`)
+      // Realizar todas las consultas de conteo en paralelo
+      const [capitanesResult, directoresResult, teamsResult, zonesResult, productsResult, salesResult] =
+        await Promise.all([
+          supabase.from("profiles").select("*", { count: "exact", head: true }).eq("role", "capitan"),
+          supabase.from("profiles").select("*", { count: "exact", head: true }).eq("role", "director_tecnico"),
+          supabase.from("teams").select("*", { count: "exact", head: true }),
+          supabase.from("zones").select("*", { count: "exact", head: true }),
+          supabase.from("products").select("*", { count: "exact", head: true }),
+          supabase.from("sales").select("*", { count: "exact", head: true }),
+        ])
+
+      // Verificar errores
+      if (
+        capitanesResult.error ||
+        directoresResult.error ||
+        teamsResult.error ||
+        zonesResult.error ||
+        productsResult.error ||
+        salesResult.error
+      ) {
+        // Si hay error de red y no hemos alcanzado el máximo de reintentos
+        if (retry < maxRetries) {
+          console.log(`Error de red al obtener estadísticas, reintentando... (${retry + 1}/${maxRetries})`)
           await new Promise((resolve) => setTimeout(resolve, 2000))
-          return fetchStructure(retry + 1)
+          return fetchBasicStats(retry + 1)
         }
 
-        throw salesError
+        throw new Error("Error al obtener estadísticas básicas")
       }
-
-      if (salesData && salesData.length > 0) {
-        setSalesStructure(salesData[0])
-      } else {
-        // Si no hay datos, crear estructura por defecto
-        setSalesStructure({ team_id: null, id_team: null })
-      }
-
-      // Continuar con el resto de las consultas
-      fetchStats()
-      fetchTopTeams()
-      fetchZoneStats()
-      fetchProductStats()
-    } catch (error: any) {
-      console.error("Error al obtener estructura:", error)
-      setError(`Error al cargar datos: ${error.message}`)
-      setLoading(false)
-    }
-  }
-
-  async function fetchStats(retry = 0) {
-    try {
-      setLoading(true)
-
-      // Obtener estadísticas de capitanes
-      const { count: capitanesCount, error: capitanesError } = await supabase
-        .from("profiles")
-        .select("*", { count: "exact", head: true })
-        .eq("role", "capitan")
-
-      if (capitanesError) {
-        // Si es un error de red y no hemos alcanzado el máximo de reintentos
-        if (retry < maxRetries && capitanesError.message?.includes("Failed to fetch")) {
-          console.log(`Error de red al obtener capitanes, reintentando... (${retry + 1}/${maxRetries})`)
-          await new Promise((resolve) => setTimeout(resolve, 2000))
-          return fetchStats(retry + 1)
-        }
-
-        throw capitanesError
-      }
-
-      // Obtener estadísticas de directores técnicos
-      const { count: directoresCount, error: directoresError } = await supabase
-        .from("profiles")
-        .select("*", { count: "exact", head: true })
-        .eq("role", "director_tecnico")
-
-      if (directoresError) throw directoresError
-
-      // Obtener estadísticas de equipos
-      const { count: teamsCount, error: teamsError } = await supabase
-        .from("teams")
-        .select("*", { count: "exact", head: true })
-
-      if (teamsError) throw teamsError
-
-      // Obtener estadísticas de zonas
-      const { count: zonesCount, error: zonesError } = await supabase
-        .from("zones")
-        .select("*", { count: "exact", head: true })
-
-      if (zonesError) throw zonesError
-
-      // Obtener estadísticas de productos
-      const { count: productsCount, error: productsError } = await supabase
-        .from("products")
-        .select("*", { count: "exact", head: true })
-
-      if (productsError) throw productsError
-
-      // Obtener estadísticas de ventas
-      const { count: salesCount, error: salesError } = await supabase
-        .from("sales")
-        .select("*", { count: "exact", head: true })
-
-      if (salesError) throw salesError
 
       setStats({
-        totalCapitanes: capitanesCount || 0,
-        totalDirectores: directoresCount || 0,
-        totalTeams: teamsCount || 0,
-        totalZones: zonesCount || 0,
-        totalProducts: productsCount || 0,
-        totalSales: salesCount || 0,
+        totalCapitanes: capitanesResult.count || 0,
+        totalDirectores: directoresResult.count || 0,
+        totalTeams: teamsResult.count || 0,
+        totalZones: zonesResult.count || 0,
+        totalProducts: productsResult.count || 0,
+        totalSales: salesResult.count || 0,
       })
 
-      // Resetear contador de reintentos en caso de éxito
       setRetryCount(0)
     } catch (error: any) {
       console.error("Error al cargar estadísticas:", error)
 
-      // Si es un error de red y no hemos alcanzado el máximo de reintentos
       if (retry < maxRetries && error.message?.includes("Failed to fetch")) {
         setRetryCount(retry + 1)
         setError(`Error de conexión. Reintentando... (${retry + 1}/${maxRetries})`)
@@ -240,13 +221,15 @@ export default function AdminDashboardPage() {
 
       setError(`Error al cargar estadísticas: ${error.message}`)
     } finally {
-      setLoading(false)
+      setStatsLoading(false)
     }
   }
 
   async function fetchTopTeams() {
     try {
-      // Obtener configuración de puntos para gol
+      setTeamsLoading(true)
+
+      // 1. Obtener configuración de puntos para gol
       const { data: puntosConfig } = await supabase
         .from("system_config")
         .select("value")
@@ -255,88 +238,115 @@ export default function AdminDashboardPage() {
 
       const pointsPerGoal = puntosConfig?.value ? Number(puntosConfig.value) : 100
 
-      // Obtener todos los equipos con sus miembros
-      const { data: teamsData, error: teamsError } = await supabase.from("teams").select("id, name, zone_id")
+      // 2. Obtener datos de equipos, zonas y distribuidores en una sola consulta
+      const { data: teamsData, error: teamsError } = await supabase.from("teams").select(`
+          id, 
+          name, 
+          zone_id,
+          zones (id, name),
+          distributors (id, name)
+        `)
 
       if (teamsError) throw teamsError
 
-      // Obtener todas las zonas
-      const { data: zonesData, error: zonesError } = await supabase.from("zones").select("id, name")
+      if (!teamsData || teamsData.length === 0) {
+        setTopTeams([])
+        setTeamsLoading(false)
+        return
+      }
 
-      if (zonesError) throw zonesError
+      // 3. Obtener todos los miembros de equipos en una sola consulta
+      const { data: allMembers } = await supabase.from("profiles").select("id, team_id").not("team_id", "is", null)
 
-      // Crear mapa de zonas para búsqueda rápida
-      const zonesMap = Object.fromEntries(zonesData.map((zone) => [zone.id, zone]))
+      // Crear mapa de miembros por equipo
+      const teamMembersMap = new Map<string, string[]>()
+      if (allMembers) {
+        allMembers.forEach((member) => {
+          if (!teamMembersMap.has(member.team_id)) {
+            teamMembersMap.set(member.team_id, [])
+          }
+          teamMembersMap.get(member.team_id)!.push(member.id)
+        })
+      }
 
-      // Calcular puntos totales para cada equipo
-      const teamPoints: Record<string, { id: string; name: string; zone: string; points: number; goals: number }> = {}
+      // 4. Obtener todas las ventas en una sola consulta
+      const { data: allSales } = await supabase.from("sales").select("points, representative_id, team_id")
+
+      // 5. Obtener todos los clientes en una sola consulta
+      const { data: allClients } = await supabase
+        .from("competitor_clients")
+        .select("id, points, representative_id, team_id")
+
+      // 6. Obtener todos los tiros libres en una sola consulta
+      const { data: allFreeKicks } = await supabase.from("free_kick_goals").select("points, team_id")
+
+      // Procesar datos para cada equipo
+      const teamPointsMap = new Map<string, TeamStats>()
 
       for (const team of teamsData) {
-        // Obtener miembros del equipo
-        const { data: teamMembers } = await supabase.from("profiles").select("id").eq("team_id", team.id)
-        const memberIds = teamMembers?.map((member) => member.id) || []
+        const memberIds = teamMembersMap.get(team.id) || []
 
-        // 1. PUNTOS DE VENTAS - BUSCAR POR AMBOS CAMPOS
+        // Calcular puntos de ventas
         let salesPoints = 0
+        if (allSales) {
+          // Ventas por representante
+          allSales
+            .filter((sale) => memberIds.includes(sale.representative_id))
+            .forEach((sale) => (salesPoints += sale.points || 0))
 
-        // Buscar ventas por representative_id (miembros del equipo)
-        if (memberIds.length > 0) {
-          const { data: salesByRep } = await supabase.from("sales").select("points").in("representative_id", memberIds)
-          if (salesByRep) {
-            salesPoints += salesByRep.reduce((sum, sale) => sum + (sale.points || 0), 0)
-          }
+          // Ventas directas por equipo
+          allSales.filter((sale) => sale.team_id === team.id).forEach((sale) => (salesPoints += sale.points || 0))
         }
 
-        // Buscar ventas directas por team_id
-        const { data: salesByTeam } = await supabase.from("sales").select("points").eq("team_id", team.id)
-        if (salesByTeam) {
-          salesPoints += salesByTeam.reduce((sum, sale) => sum + (sale.points || 0), 0)
-        }
-
-        // 2. PUNTOS DE CLIENTES DE COMPETENCIA
+        // Calcular puntos de clientes
         let clientsPoints = 0
+        const countedClientIds = new Set<string>()
 
-        // Buscar clientes por representative_id
-        if (memberIds.length > 0) {
-          const { data: clientsByRep } = await supabase
-            .from("competitor_clients")
-            .select("points")
-            .in("representative_id", memberIds)
-          if (clientsByRep) {
-            clientsPoints += clientsByRep.reduce((sum, client) => sum + (client.points || 200), 0)
-          }
+        if (allClients) {
+          // Clientes por representante
+          allClients
+            .filter((client) => memberIds.includes(client.representative_id))
+            .forEach((client) => {
+              if (!countedClientIds.has(client.id)) {
+                clientsPoints += client.points || 200
+                countedClientIds.add(client.id)
+              }
+            })
+
+          // Clientes directos por equipo
+          allClients
+            .filter((client) => client.team_id === team.id)
+            .forEach((client) => {
+              if (!countedClientIds.has(client.id)) {
+                clientsPoints += client.points || 200
+                countedClientIds.add(client.id)
+              }
+            })
         }
 
-        // Buscar clientes directos por team_id
-        const { data: clientsByTeam } = await supabase
-          .from("competitor_clients")
-          .select("points")
-          .eq("team_id", team.id)
-        if (clientsByTeam) {
-          clientsPoints += clientsByTeam.reduce((sum, client) => sum + (client.points || 200), 0)
+        // Calcular puntos de tiros libres
+        let freeKicksPoints = 0
+        if (allFreeKicks) {
+          allFreeKicks.filter((fk) => fk.team_id === team.id).forEach((fk) => (freeKicksPoints += fk.points || 0))
         }
 
-        // 3. PUNTOS DE TIROS LIBRES
-        const { data: freeKicksData } = await supabase.from("free_kick_goals").select("points").eq("team_id", team.id)
-        const freeKicksPoints = freeKicksData?.reduce((sum, freeKick) => sum + (freeKick.points || 0), 0) || 0
-
-        // SUMAR TODOS LOS PUNTOS
+        // Calcular puntos totales y goles
         const totalPoints = salesPoints + clientsPoints + freeKicksPoints
         const goals = Math.floor(totalPoints / pointsPerGoal)
 
-        const zoneName = team.zone_id && zonesMap[team.zone_id] ? zonesMap[team.zone_id].name : "Sin zona"
+        const zoneName = team.zones?.name || "Sin zona"
 
-        teamPoints[team.id] = {
+        teamPointsMap.set(team.id, {
           id: team.id,
           name: team.name,
           zone: zoneName,
           points: totalPoints,
           goals: goals,
-        }
+        })
       }
 
       // Convertir a array y ordenar por puntos totales
-      const sortedTeams = Object.values(teamPoints)
+      const sortedTeams = Array.from(teamPointsMap.values())
         .sort((a, b) => b.points - a.points)
         .slice(0, 5)
 
@@ -344,12 +354,16 @@ export default function AdminDashboardPage() {
     } catch (error: any) {
       console.error("Error al cargar equipos destacados:", error)
       // No establecemos error global para no bloquear todo el dashboard
+    } finally {
+      setTeamsLoading(false)
     }
   }
 
   async function fetchZoneStats() {
     try {
-      // Obtener configuración de puntos para gol
+      setZonesLoading(true)
+
+      // 1. Obtener configuración de puntos para gol
       const { data: puntosConfig } = await supabase
         .from("system_config")
         .select("value")
@@ -358,153 +372,175 @@ export default function AdminDashboardPage() {
 
       const pointsPerGoal = puntosConfig?.value ? Number(puntosConfig.value) : 100
 
-      // Obtener zonas
+      // 2. Obtener todas las zonas
       const { data: zones, error: zonesError } = await supabase.from("zones").select("id, name")
 
       if (zonesError) throw zonesError
 
       if (!zones || zones.length === 0) {
         setZoneStats([])
+        setZonesLoading(false)
         return
       }
 
-      // Para cada zona, obtener equipos y calcular puntos totales
-      const zoneStatsData = await Promise.all(
-        zones.map(async (zone) => {
-          // Contar equipos en la zona
-          const { count: teamCount, error: teamError } = await supabase
-            .from("teams")
-            .select("*", { count: "exact", head: true })
-            .eq("zone_id", zone.id)
+      // 3. Obtener todos los equipos con sus zonas
+      const { data: teams } = await supabase.from("teams").select("id, zone_id").not("zone_id", "is", null)
 
-          if (teamError) throw teamError
-
-          // Obtener equipos de la zona
-          const { data: teamIds, error: teamIdsError } = await supabase
-            .from("teams")
-            .select("id")
-            .eq("zone_id", zone.id)
-
-          if (teamIdsError) throw teamIdsError
-
-          let totalPoints = 0
-          let totalGoals = 0
-
-          if (teamIds && teamIds.length > 0) {
-            for (const team of teamIds) {
-              // Obtener miembros del equipo
-              const { data: teamMembers } = await supabase.from("profiles").select("id").eq("team_id", team.id)
-              const memberIds = teamMembers?.map((member) => member.id) || []
-
-              // 1. PUNTOS DE VENTAS
-              let salesPoints = 0
-
-              // Buscar ventas por representative_id
-              if (memberIds.length > 0) {
-                const { data: salesByRep } = await supabase
-                  .from("sales")
-                  .select("points")
-                  .in("representative_id", memberIds)
-                if (salesByRep) {
-                  salesPoints += salesByRep.reduce((sum, sale) => sum + (sale.points || 0), 0)
-                }
-              }
-
-              // Buscar ventas directas por team_id
-              const { data: salesByTeam } = await supabase.from("sales").select("points").eq("team_id", team.id)
-              if (salesByTeam) {
-                salesPoints += salesByTeam.reduce((sum, sale) => sum + (sale.points || 0), 0)
-              }
-
-              // 2. PUNTOS DE CLIENTES DE COMPETENCIA
-              let clientsPoints = 0
-
-              // Buscar clientes por representative_id
-              if (memberIds.length > 0) {
-                const { data: clientsByRep } = await supabase
-                  .from("competitor_clients")
-                  .select("points")
-                  .in("representative_id", memberIds)
-                if (clientsByRep) {
-                  clientsPoints += clientsByRep.reduce((sum, client) => sum + (client.points || 200), 0)
-                }
-              }
-
-              // Buscar clientes directos por team_id
-              const { data: clientsByTeam } = await supabase
-                .from("competitor_clients")
-                .select("points")
-                .eq("team_id", team.id)
-              if (clientsByTeam) {
-                clientsPoints += clientsByTeam.reduce((sum, client) => sum + (client.points || 200), 0)
-              }
-
-              // 3. PUNTOS DE TIROS LIBRES
-              const { data: freeKicksData } = await supabase
-                .from("free_kick_goals")
-                .select("points")
-                .eq("team_id", team.id)
-              const freeKicksPoints = freeKicksData?.reduce((sum, freeKick) => sum + (freeKick.points || 0), 0) || 0
-
-              // SUMAR TODOS LOS PUNTOS
-              const teamTotalPoints = salesPoints + clientsPoints + freeKicksPoints
-              totalPoints += teamTotalPoints
-            }
-
-            totalGoals = Math.floor(totalPoints / pointsPerGoal)
+      // Crear mapa de equipos por zona
+      const zoneTeamsMap = new Map<string, string[]>()
+      if (teams) {
+        teams.forEach((team) => {
+          if (!zoneTeamsMap.has(team.zone_id)) {
+            zoneTeamsMap.set(team.zone_id, [])
           }
+          zoneTeamsMap.get(team.zone_id)!.push(team.id)
+        })
+      }
 
-          return {
-            id: zone.id,
-            name: zone.name,
-            teams: teamCount || 0,
-            points: totalGoals, // Mostrar goles en lugar de puntos
+      // 4. Obtener todos los miembros de equipos
+      const { data: allMembers } = await supabase.from("profiles").select("id, team_id").not("team_id", "is", null)
+
+      // Crear mapa de miembros por equipo
+      const teamMembersMap = new Map<string, string[]>()
+      if (allMembers) {
+        allMembers.forEach((member) => {
+          if (!teamMembersMap.has(member.team_id)) {
+            teamMembersMap.set(member.team_id, [])
           }
-        }),
-      )
+          teamMembersMap.get(member.team_id)!.push(member.id)
+        })
+      }
+
+      // 5. Obtener todas las ventas, clientes y tiros libres en una sola consulta
+      const [salesResult, clientsResult, freeKicksResult] = await Promise.all([
+        supabase.from("sales").select("points, representative_id, team_id"),
+        supabase.from("competitor_clients").select("id, points, representative_id, team_id"),
+        supabase.from("free_kick_goals").select("points, team_id"),
+      ])
+
+      const allSales = salesResult.data || []
+      const allClients = clientsResult.data || []
+      const allFreeKicks = freeKicksResult.data || []
+
+      // Procesar datos para cada zona
+      const zoneStatsData: ZoneStats[] = zones.map((zone) => {
+        const teamIds = zoneTeamsMap.get(zone.id) || []
+        let totalPoints = 0
+
+        // Para cada equipo en la zona
+        teamIds.forEach((teamId) => {
+          const memberIds = teamMembersMap.get(teamId) || []
+
+          // Calcular puntos de ventas
+          let salesPoints = 0
+
+          // Ventas por representante
+          allSales
+            .filter((sale) => memberIds.includes(sale.representative_id))
+            .forEach((sale) => (salesPoints += sale.points || 0))
+
+          // Ventas directas por equipo
+          allSales.filter((sale) => sale.team_id === teamId).forEach((sale) => (salesPoints += sale.points || 0))
+
+          // Calcular puntos de clientes
+          let clientsPoints = 0
+          const countedClientIds = new Set<string>()
+
+          // Clientes por representante
+          allClients
+            .filter((client) => memberIds.includes(client.representative_id))
+            .forEach((client) => {
+              if (!countedClientIds.has(client.id)) {
+                clientsPoints += client.points || 200
+                countedClientIds.add(client.id)
+              }
+            })
+
+          // Clientes directos por equipo
+          allClients
+            .filter((client) => client.team_id === teamId)
+            .forEach((client) => {
+              if (!countedClientIds.has(client.id)) {
+                clientsPoints += client.points || 200
+                countedClientIds.add(client.id)
+              }
+            })
+
+          // Calcular puntos de tiros libres
+          let freeKicksPoints = 0
+          allFreeKicks.filter((fk) => fk.team_id === teamId).forEach((fk) => (freeKicksPoints += fk.points || 0))
+
+          // Sumar al total de la zona
+          totalPoints += salesPoints + clientsPoints + freeKicksPoints
+        })
+
+        // Calcular goles totales de la zona
+        const totalGoals = Math.floor(totalPoints / pointsPerGoal)
+
+        return {
+          id: zone.id,
+          name: zone.name,
+          teams: teamIds.length,
+          total_goals: totalGoals, // Cambiado de 'points' a 'total_goals'
+        }
+      })
+
+      // Añadir este console.log para depuración
+      console.log("DEBUG: Calculated zoneStatsData:", zoneStatsData)
 
       setZoneStats(zoneStatsData)
     } catch (error) {
       console.error("Error al cargar estadísticas de zonas:", error)
       // No establecemos error global para no bloquear todo el dashboard
+    } finally {
+      setZonesLoading(false)
     }
   }
 
   async function fetchProductStats() {
     try {
-      // Obtener productos
+      setProductsLoading(true)
+
+      // 1. Obtener productos con sus puntos
       const { data: products, error: productsError } = await supabase.from("products").select("id, name, points")
 
       if (productsError) throw productsError
 
       if (!products || products.length === 0) {
         setProductStats([])
+        setProductsLoading(false)
         return
       }
 
-      // Para cada producto, obtener ventas
-      const productStatsData = await Promise.all(
-        products.map(async (product) => {
-          // Contar ventas del producto
-          const { count: salesCount, error: salesError } = await supabase
-            .from("sales")
-            .select("*", { count: "exact", head: true })
-            .eq("product_id", product.id)
+      // 2. Obtener todas las ventas en una sola consulta
+      const { data: allSales } = await supabase.from("sales").select("product_id, quantity, points")
 
-          if (salesError) throw salesError
+      // Crear mapa para contar ventas por producto
+      const productSalesMap = new Map<string, { count: number; points: number }>()
 
-          // Calcular puntos totales
-          const totalPoints = (salesCount || 0) * (product.points || 0)
-
-          return {
-            id: product.id,
-            name: product.name,
-            sales: salesCount || 0,
-            points: product.points || 0,
-            totalPoints,
+      if (allSales) {
+        allSales.forEach((sale) => {
+          if (!productSalesMap.has(sale.product_id)) {
+            productSalesMap.set(sale.product_id, { count: 0, points: 0 })
           }
-        }),
-      )
+          const current = productSalesMap.get(sale.product_id)!
+          current.count += sale.quantity || 1
+          current.points += sale.points || 0
+        })
+      }
+
+      // Procesar estadísticas de productos
+      const productStatsData = products.map((product) => {
+        const salesData = productSalesMap.get(product.id) || { count: 0, points: 0 }
+
+        return {
+          id: product.id,
+          name: product.name,
+          sales: salesData.count,
+          points: product.points || 0,
+          totalPoints: salesData.points,
+        }
+      })
 
       // Ordenar por ventas
       productStatsData.sort((a, b) => b.sales - a.sales)
@@ -513,12 +549,32 @@ export default function AdminDashboardPage() {
     } catch (error) {
       console.error("Error al cargar estadísticas de productos:", error)
       // No establecemos error global para no bloquear todo el dashboard
+    } finally {
+      setProductsLoading(false)
     }
   }
 
   const handleRetry = () => {
     setError(null)
-    fetchStructure()
+    fetchBasicStats()
+    fetchTopTeams()
+    fetchZoneStats()
+    fetchProductStats()
+  }
+
+  if (loading) {
+    return (
+      <div className="flex-1 space-y-4 p-8">
+        <Skeleton className="h-8 w-1/3" />
+        <Skeleton className="h-4 w-1/4" />
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mt-6">
+          {[...Array(4)].map((_, i) => (
+            <Skeleton key={i} className="h-32 w-full" />
+          ))}
+        </div>
+        <Skeleton className="h-[400px] w-full mt-6" />
+      </div>
+    )
   }
 
   if (error) {
@@ -567,7 +623,11 @@ export default function AdminDashboardPage() {
             <Building2 className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            {loading ? <Skeleton className="h-8 w-20" /> : <div className="text-2xl font-bold">{stats.totalTeams}</div>}
+            {statsLoading ? (
+              <Skeleton className="h-8 w-20" />
+            ) : (
+              <div className="text-2xl font-bold">{stats.totalTeams}</div>
+            )}
             <p className="text-xs text-muted-foreground">Equipos registrados</p>
           </CardContent>
         </Card>
@@ -577,7 +637,7 @@ export default function AdminDashboardPage() {
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            {loading ? (
+            {statsLoading ? (
               <Skeleton className="h-8 w-20" />
             ) : (
               <div className="text-2xl font-bold">{stats.totalCapitanes + stats.totalDirectores}</div>
@@ -594,7 +654,7 @@ export default function AdminDashboardPage() {
             <Package className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            {loading ? (
+            {statsLoading ? (
               <Skeleton className="h-8 w-20" />
             ) : (
               <div className="text-2xl font-bold">{stats.totalProducts}</div>
@@ -608,7 +668,11 @@ export default function AdminDashboardPage() {
             <Trophy className="h-4 w-4 text-yellow-500" />
           </CardHeader>
           <CardContent>
-            {loading ? <Skeleton className="h-8 w-20" /> : <div className="text-2xl font-bold">{stats.totalSales}</div>}
+            {statsLoading ? (
+              <Skeleton className="h-8 w-20" />
+            ) : (
+              <div className="text-2xl font-bold">{stats.totalSales}</div>
+            )}
             <p className="text-xs text-muted-foreground">Ventas registradas</p>
           </CardContent>
         </Card>
@@ -640,7 +704,7 @@ export default function AdminDashboardPage() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  {loading ? (
+                  {teamsLoading ? (
                     <>
                       <Skeleton className="h-12 w-full" />
                       <Skeleton className="h-12 w-full" />
@@ -681,7 +745,7 @@ export default function AdminDashboardPage() {
                     </>
                   )}
                 </div>
-                {!loading && (
+                {!teamsLoading && (
                   <div className="mt-4 flex justify-end gap-3">
                     <Button asChild variant="default" size="sm">
                       <Link href="/admin/equipos/nuevo">Crear Equipo</Link>
@@ -703,12 +767,12 @@ export default function AdminDashboardPage() {
             </CardHeader>
             <CardContent>
               <div className="h-[400px]">
-                <AdminZonesChart />
+                <AdminZonesChart zonesData={zoneStats.sort((a, b) => b.total_goals - a.total_goals).slice(0, 2)} />
               </div>
             </CardContent>
           </Card>
           <div className="grid gap-4 md:grid-cols-3">
-            {loading ? (
+            {zonesLoading ? (
               <>
                 <Skeleton className="h-32 w-full" />
                 <Skeleton className="h-32 w-full" />
@@ -732,7 +796,7 @@ export default function AdminDashboardPage() {
                     <CardTitle className="text-sm">{zone.name}</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold text-green-600">{zone.points}</div>
+                    <div className="text-2xl font-bold text-green-600">{zone.total_goals}</div>
                     <p className="text-xs text-muted-foreground">{zone.teams} equipos</p>
                   </CardContent>
                 </Card>
@@ -747,7 +811,7 @@ export default function AdminDashboardPage() {
               <CardDescription>Distribución de ventas por producto</CardDescription>
             </CardHeader>
             <CardContent>
-              {loading ? (
+              {productsLoading ? (
                 <>
                   <Skeleton className="h-12 w-full mb-4" />
                   <Skeleton className="h-12 w-full mb-4" />
@@ -774,7 +838,7 @@ export default function AdminDashboardPage() {
                       </div>
                       <div className="flex justify-between text-xs text-muted-foreground">
                         <span>{product.sales} unidades</span>
-                        <span>{product.totalPoints} goles</span>
+                        <span>{product.totalPoints} puntos</span>
                       </div>
                     </div>
                   ))}

@@ -5,9 +5,23 @@ import { DashboardNav } from "@/components/dashboard-nav"
 import { Button } from "@/components/ui/button"
 import { Menu, X } from "lucide-react"
 import { useState } from "react"
+import { useAuth } from "@/components/auth-provider"
 
-export default function ArbitroLayout({ children }: { children: React.ReactNode }) {
+export default function PerfilLayout({ children }: { children: React.ReactNode }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const { profile } = useAuth()
+  const userRole = profile?.role || "capitan"
+
+  const getRoleForNav = (role: string) => {
+    switch (role) {
+      case "director_tecnico":
+        return "director-tecnico"
+      default:
+        return role as "admin" | "capitan" | "supervisor" | "director-tecnico" | "representante" | "arbitro"
+    }
+  }
+
+  const navRole = getRoleForNav(userRole)
 
   return (
     <div className="flex min-h-screen">
@@ -23,7 +37,7 @@ export default function ArbitroLayout({ children }: { children: React.ReactNode 
 
       {/* Sidebar para desktop */}
       <div className="fixed left-0 top-0 z-30 h-screen w-64 border-r bg-white lg:block hidden">
-        <DashboardNav role="arbitro" />
+        <DashboardNav role={navRole} />
       </div>
 
       {/* Sidebar móvil */}
@@ -31,14 +45,14 @@ export default function ArbitroLayout({ children }: { children: React.ReactNode 
         <div className="fixed inset-0 z-40 lg:hidden">
           <div className="fixed inset-0 bg-black/50" onClick={() => setMobileMenuOpen(false)} />
           <div className="fixed inset-y-0 left-0 w-64 bg-white shadow-lg">
-            <DashboardNav role="arbitro" onMobileMenuClose={() => setMobileMenuOpen(false)} />
+            <DashboardNav role={navRole} onMobileMenuClose={() => setMobileMenuOpen(false)} />
           </div>
         </div>
       )}
 
       <main className="flex-1 lg:ml-64">
         <header className="flex h-16 shrink-0 items-center border-b px-6">
-          <h2 className="text-lg font-semibold">Panel de Árbitro</h2>
+          <h2 className="text-lg font-semibold">Mi Perfil</h2>
         </header>
         <div className="p-6">{children}</div>
       </main>

@@ -46,7 +46,8 @@ export default function PerfilPage() {
       })
 
       if (error) {
-        setMessage({ type: "error", text: error.message })
+        console.error("Error al cambiar contraseña:", error)
+        setMessage({ type: "error", text: "Error al actualizar la contraseña: " + error.message })
       } else {
         setMessage({ type: "success", text: "Contraseña actualizada exitosamente" })
         setCurrentPassword("")
@@ -54,7 +55,8 @@ export default function PerfilPage() {
         setConfirmPassword("")
       }
     } catch (error: any) {
-      setMessage({ type: "error", text: "Error al actualizar la contraseña" })
+      console.error("Error inesperado:", error)
+      setMessage({ type: "error", text: "Error inesperado al actualizar la contraseña" })
     } finally {
       setIsLoading(false)
     }
@@ -84,7 +86,7 @@ export default function PerfilPage() {
   }
 
   return (
-    <div className="container mx-auto px-4 py-8 max-w-2xl">
+    <div className="max-w-2xl mx-auto">
       <div className="space-y-6">
         {/* Información del perfil */}
         <Card>

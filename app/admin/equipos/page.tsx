@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useToast } from "@/components/ui/use-toast"
-import { PlusCircle, Edit, Trash2, Save, Users, AlertCircle } from "lucide-react"
+import { PlusCircle, Edit, Trash2, Save, Users, AlertCircle, Search, Filter } from "lucide-react"
 import {
   Dialog,
   DialogContent,
@@ -36,10 +36,10 @@ interface Distributor {
 interface Team {
   id: string
   name: string
-  distributor_id: string
+  distributor_id: string | null
   distributor_name: string
-  distributor_logo?: string
-  zone_id: string
+  distributor_logo?: string | null
+  zone_id: string | null
   zone_name: string
   created_at: string
 }
@@ -58,10 +58,16 @@ export default function EquiposPage() {
   const [isAddingTeam, setIsAddingTeam] = useState(false)
   const [editingTeam, setEditingTeam] = useState<Team | null>(null)
   const [error, setError] = useState<string | null>(null)
+
+  // Estados para filtros
+  const [searchTerm, setSearchTerm] = useState("")
+  const [selectedZone, setSelectedZone] = useState<string>("all")
+
   const { toast } = useToast()
 
   useEffect(() => {
     const loadData = async () => {
+      console.log("🔄 Iniciando carga de datos...")
       await Promise.all([fetchZones(), fetchDistributors(), fetchTeams()])
     }
 
@@ -70,10 +76,15 @@ export default function EquiposPage() {
 
   async function fetchZones() {
     try {
+      console.log("📍 Cargando zonas...")
       const { data, error } = await supabase.from("zones").select("id, name").order("name")
 
-      if (error) throw error
+      if (error) {
+        console.error("❌ Error al cargar zonas:", error)
+        throw error
+      }
 
+      console.log("✅ Zonas cargadas:", data?.length || 0)
       setZones(data || [])
     } catch (error) {
       console.error("Error al cargar zonas:", error)
@@ -87,10 +98,15 @@ export default function EquiposPage() {
 
   async function fetchDistributors() {
     try {
+      console.log("🏢 Cargando distribuidores...")
       const { data, error } = await supabase.from("distributors").select("id, name, logo_url").order("name")
 
-      if (error) throw error
+      if (error) {
+        console.error("❌ Error al cargar distribuidores:", error)
+        throw error
+      }
 
+      console.log("✅ Distribuidores cargados:", data?.length || 0)
       setDistributors(data || [])
     } catch (error) {
       console.error("Error al cargar distribuidores:", error)
@@ -106,43 +122,55 @@ export default function EquiposPage() {
     setLoading(true)
     setError(null)
     try {
+      console.log("👥 Cargando equipos...")
+
+      // Usar LEFT JOIN para incluir equipos sin zona o distribuidor
       const { data, error } = await supabase
         .from("teams")
         .select(`
-        id, 
-        name, 
-        distributor_id,
-        zone_id,
-        created_at
-      `)
+          id, 
+          name, 
+          distributor_id,
+          zone_id,
+          created_at,
+          zones (
+            id,
+            name
+          ),
+          distributors (
+            id,
+            name,
+            logo_url
+          )
+        `)
         .order("name")
 
-      if (error) throw error
+      if (error) {
+        console.error("❌ Error al cargar equipos:", error)
+        throw error
+      }
 
-      // Obtener información adicional de distribuidores y zonas
-      const formattedData = await Promise.all(
-        (data || []).map(async (team) => {
-          const [distributorData, zoneData] = await Promise.all([
-            supabase.from("distributors").select("name, logo_url").eq("id", team.distributor_id).single(),
-            supabase.from("zones").select("name").eq("id", team.zone_id).single(),
-          ])
+      console.log("✅ Equipos cargados (raw):", data?.length || 0)
+      console.log("📊 Primer equipo:", data?.[0])
 
-          return {
-            id: team.id,
-            name: team.name,
-            distributor_id: team.distributor_id,
-            distributor_name: distributorData.data?.name || "Sin distribuidor",
-            distributor_logo: distributorData.data?.logo_url || null,
-            zone_id: team.zone_id,
-            zone_name: zoneData.data?.name || "Sin zona",
-            created_at: team.created_at,
-          }
-        }),
-      )
+      // Formatear datos manejando valores NULL
+      const formattedData = (data || []).map((team: any) => ({
+        id: team.id,
+        name: team.name || "Sin nombre",
+        distributor_id: team.distributor_id,
+        distributor_name: team.distributors?.name || "Sin distribuidor",
+        distributor_logo: team.distributors?.logo_url || null,
+        zone_id: team.zone_id,
+        zone_name: team.zones?.name || "Sin zona",
+        created_at: team.created_at,
+      }))
+
+      console.log("✅ Equipos formateados:", formattedData.length)
+      console.log("📊 Primer equipo formateado:", formattedData[0])
 
       setTeams(formattedData)
     } catch (error: any) {
-      console.error("Error al cargar equipos:", error)
+      console.error("❌ Error al cargar equipos:", error)
       setError(error.message || "Error al cargar equipos")
       toast({
         title: "Error",
@@ -199,10 +227,10 @@ export default function EquiposPage() {
   }
 
   async function handleUpdateTeam() {
-    if (!editingTeam || !editingTeam.name.trim() || !editingTeam.zone_id || !editingTeam.distributor_id) {
+    if (!editingTeam || !editingTeam.name.trim()) {
       toast({
         title: "Error",
-        description: "El nombre, la zona y el distribuidor son obligatorios",
+        description: "El nombre es obligatorio",
         variant: "destructive",
       })
       return
@@ -213,15 +241,19 @@ export default function EquiposPage() {
         .from("teams")
         .update({
           name: editingTeam.name.trim(),
-          zone_id: editingTeam.zone_id,
-          distributor_id: editingTeam.distributor_id,
+          zone_id: editingTeam.zone_id || null,
+          distributor_id: editingTeam.distributor_id || null,
         })
         .eq("id", editingTeam.id)
 
       if (error) throw error
 
-      const zoneName = zones.find((z) => z.id === editingTeam.zone_id)?.name || "Sin zona"
-      const distributor = distributors.find((d) => d.id === editingTeam.distributor_id)
+      const zoneName = editingTeam.zone_id
+        ? zones.find((z) => z.id === editingTeam.zone_id)?.name || "Sin zona"
+        : "Sin zona"
+      const distributor = editingTeam.distributor_id
+        ? distributors.find((d) => d.id === editingTeam.distributor_id)
+        : null
       const distributorName = distributor?.name || "Sin distribuidor"
       const distributorLogo = distributor?.logo_url || null
 
@@ -279,6 +311,26 @@ export default function EquiposPage() {
       })
     }
   }
+
+  // Filtrar equipos
+  const filteredTeams = teams.filter((team) => {
+    const matchesSearch =
+      !searchTerm ||
+      team.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      team.distributor_name.toLowerCase().includes(searchTerm.toLowerCase())
+    const matchesZone = selectedZone === "all" || team.zone_id === selectedZone
+
+    return matchesSearch && matchesZone
+  })
+
+  console.log("📊 Estado actual:", {
+    totalTeams: teams.length,
+    filteredTeams: filteredTeams.length,
+    loading,
+    error,
+    searchTerm,
+    selectedZone,
+  })
 
   return (
     <div className="space-y-6">
@@ -368,10 +420,68 @@ export default function EquiposPage() {
         </Dialog>
       </div>
 
+      {/* Filtros */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Filter className="h-5 w-5" />
+            Filtros
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <Label htmlFor="search">Buscar</Label>
+              <div className="relative">
+                <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                <Input
+                  id="search"
+                  placeholder="Buscar por nombre o distribuidor..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+            </div>
+            <div>
+              <Label htmlFor="zone">Zona</Label>
+              <Select value={selectedZone} onValueChange={setSelectedZone}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Todas las zonas" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas las zonas</SelectItem>
+                  {zones.map((zone) => (
+                    <SelectItem key={zone.id} value={zone.id}>
+                      {zone.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex items-end">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setSearchTerm("")
+                  setSelectedZone("all")
+                }}
+                className="w-full"
+              >
+                Limpiar Filtros
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       <Card>
         <CardHeader>
           <CardTitle>Equipos</CardTitle>
-          <CardDescription>Administra los equipos para la competición</CardDescription>
+          <CardDescription>
+            {filteredTeams.length} equipo{filteredTeams.length !== 1 ? "s" : ""} encontrado
+            {filteredTeams.length !== 1 ? "s" : ""}
+          </CardDescription>
         </CardHeader>
         <CardContent>
           {loading ? (
@@ -391,7 +501,25 @@ export default function EquiposPage() {
                 }
               />
             </div>
-          ) : teams.length === 0 ? (
+          ) : filteredTeams.length === 0 && teams.length > 0 ? (
+            <div className="py-8">
+              <EmptyState
+                icon={Users}
+                title="No se encontraron equipos"
+                description="No se encontraron equipos con los filtros aplicados"
+                action={
+                  <Button
+                    onClick={() => {
+                      setSearchTerm("")
+                      setSelectedZone("all")
+                    }}
+                  >
+                    Limpiar Filtros
+                  </Button>
+                }
+              />
+            </div>
+          ) : filteredTeams.length === 0 ? (
             <div className="py-8">
               <EmptyState
                 icon={Users}
@@ -417,7 +545,7 @@ export default function EquiposPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {teams.map((team) => (
+                  {filteredTeams.map((team) => (
                     <TableRow key={team.id}>
                       <TableCell>
                         {editingTeam?.id === team.id ? (
@@ -432,13 +560,14 @@ export default function EquiposPage() {
                       <TableCell>
                         {editingTeam?.id === team.id ? (
                           <Select
-                            value={editingTeam.zone_id}
-                            onValueChange={(value) => setEditingTeam({ ...editingTeam, zone_id: value })}
+                            value={editingTeam.zone_id || ""}
+                            onValueChange={(value) => setEditingTeam({ ...editingTeam, zone_id: value || null })}
                           >
                             <SelectTrigger>
                               <SelectValue placeholder="Selecciona una zona" />
                             </SelectTrigger>
                             <SelectContent>
+                              <SelectItem value="null">Sin zona</SelectItem>
                               {zones.map((zone) => (
                                 <SelectItem key={zone.id} value={zone.id}>
                                   {zone.name}
@@ -453,13 +582,14 @@ export default function EquiposPage() {
                       <TableCell>
                         {editingTeam?.id === team.id ? (
                           <Select
-                            value={editingTeam.distributor_id}
-                            onValueChange={(value) => setEditingTeam({ ...editingTeam, distributor_id: value })}
+                            value={editingTeam.distributor_id || ""}
+                            onValueChange={(value) => setEditingTeam({ ...editingTeam, distributor_id: value || null })}
                           >
                             <SelectTrigger>
                               <SelectValue placeholder="Selecciona un distribuidor" />
                             </SelectTrigger>
                             <SelectContent>
+                              <SelectItem value="null">Sin distribuidor</SelectItem>
                               {distributors.map((distributor) => (
                                 <SelectItem key={distributor.id} value={distributor.id}>
                                   {distributor.name}
@@ -469,18 +599,24 @@ export default function EquiposPage() {
                           </Select>
                         ) : (
                           <div className="flex justify-start">
-                            <img
-                              src={getDistributorLogoUrl({
-                                name: team.distributor_name,
-                                logo_url: team.distributor_logo || "/placeholder.svg",
-                              })}
-                              alt={team.distributor_name}
-                              title={team.distributor_name}
-                              className="h-8 w-16 object-contain"
-                              onError={(e) => {
-                                e.currentTarget.src = "/placeholder.svg?height=32&width=64&text=Logo"
-                              }}
-                            />
+                            {team.distributor_logo ? (
+                              <img
+                                src={
+                                  getDistributorLogoUrl({
+                                    name: team.distributor_name,
+                                    logo_url: team.distributor_logo,
+                                  }) || "/placeholder.svg"
+                                }
+                                alt={team.distributor_name}
+                                title={team.distributor_name}
+                                className="h-8 w-16 object-contain"
+                                onError={(e) => {
+                                  e.currentTarget.src = "/placeholder.svg?height=32&width=64&text=Logo"
+                                }}
+                              />
+                            ) : (
+                              <span className="text-sm text-muted-foreground">{team.distributor_name}</span>
+                            )}
                           </div>
                         )}
                       </TableCell>

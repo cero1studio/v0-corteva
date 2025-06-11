@@ -15,39 +15,38 @@ export default function DirectorTecnicoLayout({ children }: { children: React.Re
   const userRole = user?.role === "arbitro" ? "arbitro" : "director-tecnico"
 
   return (
-    <div className="flex min-h-screen flex-col">
-      <header className="sticky top-0 z-30 flex h-16 items-center gap-4 border-b bg-background px-4 md:px-6">
-        <div className="flex flex-1 items-center gap-4">
-          <div className="flex items-center gap-2">
-            <img src="/corteva-logo.png" alt="Corteva Logo" className="h-8 w-auto" />
-            <span className="text-lg font-semibold tracking-tight">Corteva</span>
+    <div className="flex min-h-screen">
+      {/* Botón de menú móvil */}
+      <Button
+        variant="outline"
+        size="icon"
+        className="fixed top-4 right-4 z-50 lg:hidden"
+        onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+      >
+        {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+      </Button>
+
+      {/* Sidebar para desktop */}
+      <div className="fixed left-0 top-0 z-30 h-screen w-64 border-r bg-white lg:block hidden">
+        <DashboardNav role={userRole} />
+      </div>
+
+      {/* Sidebar móvil */}
+      {mobileMenuOpen && (
+        <div className="fixed inset-0 z-40 lg:hidden">
+          <div className="fixed inset-0 bg-black/50" onClick={() => setMobileMenuOpen(false)} />
+          <div className="fixed inset-y-0 left-0 w-64 bg-white shadow-lg">
+            <DashboardNav role={userRole} onMobileMenuClose={() => setMobileMenuOpen(false)} />
           </div>
         </div>
+      )}
 
-        {/* Botón de menú móvil */}
-        <Button variant="outline" size="icon" className="md:hidden" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
-          {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-        </Button>
-      </header>
-
-      <div className="flex flex-1">
-        {/* Sidebar para desktop */}
-        <aside className="w-64 border-r bg-muted/40 hidden md:block">
-          <DashboardNav role={userRole} />
-        </aside>
-
-        {/* Sidebar móvil */}
-        {mobileMenuOpen && (
-          <div className="fixed inset-0 z-40 md:hidden">
-            <div className="fixed inset-0 bg-black/50" onClick={() => setMobileMenuOpen(false)} />
-            <div className="fixed inset-y-0 left-0 w-64 bg-white shadow-lg">
-              <DashboardNav role={userRole} onMobileMenuClose={() => setMobileMenuOpen(false)} />
-            </div>
-          </div>
-        )}
-
-        <main className="flex-1 p-4 md:p-6">{children}</main>
-      </div>
+      <main className="flex-1 lg:ml-64">
+        <header className="flex h-16 shrink-0 items-center border-b px-6">
+          <h2 className="text-lg font-semibold">Panel de Director Técnico</h2>
+        </header>
+        <div className="p-6">{children}</div>
+      </main>
     </div>
   )
 }

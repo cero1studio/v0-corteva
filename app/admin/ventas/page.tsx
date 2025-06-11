@@ -226,31 +226,118 @@ export default function AdminVentasPage() {
 
   const downloadExcel = () => {
     try {
-      // Preparar datos para Excel
+      // Importar la librería xlsx dinámicamente
+      import("xlsx")
+        .then((XLSX) => {
+          // Preparar datos filtrados para Excel
+          const excelData = filteredSales.map((sale) => ({
+            Producto: sale.products?.name || "N/A",
+            Capitán: sale.representative?.full_name || "N/A",
+            Distribuidor: sale.distributor?.name || "N/A",
+            Equipo: sale.team?.name || "N/A",
+            Zona: sale.zone?.name || "N/A",
+            Cantidad: sale.quantity,
+            Puntos: sale.points,
+            "Precio Total": (sale.price || 0).toLocaleString("es-CO", { style: "currency", currency: "COP" }),
+            "Fecha de Venta": sale.sale_date ? new Date(sale.sale_date).toLocaleDateString("es-CO") : "N/A",
+            "Fecha de Registro": new Date(sale.created_at).toLocaleDateString("es-CO"),
+          }))
+
+          // Crear workbook y worksheet
+          const wb = XLSX.utils.book_new()
+          const ws = XLSX.utils.json_to_sheet(excelData)
+
+          // Configurar ancho de columnas
+          const colWidths = [
+            { wch: 25 }, // Producto
+            { wch: 20 }, // Capitán
+            { wch: 20 }, // Distribuidor
+            { wch: 15 }, // Equipo
+            { wch: 15 }, // Zona
+            { wch: 10 }, // Cantidad
+            { wch: 12 }, // Puntos
+            { wch: 15 }, // Precio Total
+            { wch: 15 }, // Fecha de Venta
+            { wch: 18 }, // Fecha de Registro
+          ]
+          ws["!cols"] = colWidths
+
+          // Agregar worksheet al workbook
+          XLSX.utils.book_append_sheet(wb, ws, "Ventas")
+
+          // Generar nombre de archivo con filtros aplicados
+          let fileName = "ventas"
+          if (selectedZone !== "all") {
+            const zoneName = zones.find((z) => z.id === selectedZone)?.name || "zona"
+            fileName += `_${zoneName.toLowerCase().replace(/\s+/g, "_")}`
+          }
+          if (selectedTeam !== "all") {
+            const teamName = teams.find((t) => t.id === selectedTeam)?.name || "equipo"
+            fileName += `_${teamName.toLowerCase().replace(/\s+/g, "_")}`
+          }
+          if (selectedDistributor !== "all") {
+            const distributorName = distributors.find((d) => d.id === selectedDistributor)?.name || "distribuidor"
+            fileName += `_${distributorName.toLowerCase().replace(/\s+/g, "_")}`
+          }
+          if (searchTerm) {
+            fileName += `_busqueda`
+          }
+          fileName += `_${new Date().toISOString().split("T")[0]}.xlsx`
+
+          // Descargar archivo
+          XLSX.writeFile(wb, fileName)
+
+          toast({
+            title: "Éxito",
+            description: `Archivo Excel descargado: ${filteredSales.length} registros exportados`,
+          })
+        })
+        .catch((error) => {
+          console.error("Error loading xlsx library:", error)
+          // Fallback a CSV si no se puede cargar xlsx
+          downloadCSVFallback()
+        })
+    } catch (error) {
+      console.error("Error downloading Excel:", error)
+      toast({
+        title: "Error",
+        description: "Error al descargar el archivo Excel",
+        variant: "destructive",
+      })
+    }
+  }
+
+  // Función de respaldo para CSV
+  const downloadCSVFallback = () => {
+    try {
       const excelData = filteredSales.map((sale) => ({
         Producto: sale.products?.name || "N/A",
+        Capitán: sale.representative?.full_name || "N/A",
+        Distribuidor: sale.distributor?.name || "N/A",
         Equipo: sale.team?.name || "N/A",
         Zona: sale.zone?.name || "N/A",
-        Distribuidor: sale.distributor?.name || "N/A",
         Cantidad: sale.quantity,
         Puntos: sale.points,
-        "Fecha de Venta": sale.sale_date ? new Date(sale.sale_date).toLocaleDateString() : "N/A",
-        "Fecha de Registro": new Date(sale.created_at).toLocaleDateString(),
+        "Precio Total": (sale.price || 0).toLocaleString("es-CO", { style: "currency", currency: "COP" }),
+        "Fecha de Venta": sale.sale_date ? new Date(sale.sale_date).toLocaleDateString("es-CO") : "N/A",
+        "Fecha de Registro": new Date(sale.created_at).toLocaleDateString("es-CO"),
       }))
 
-      // Crear CSV
+      // Crear CSV con BOM para caracteres especiales
       const headers = Object.keys(excelData[0] || {})
-      const csvContent = [
-        headers.join(","),
-        ...excelData.map((row) => headers.map((header) => `"${row[header as keyof typeof row]}"`).join(",")),
-      ].join("\n")
+      const csvContent =
+        "\uFEFF" +
+        [
+          headers.join(","),
+          ...excelData.map((row) => headers.map((header) => `"${row[header as keyof typeof row]}"`).join(",")),
+        ].join("\n")
 
-      // Descargar archivo
+      // Descargar archivo CSV
       const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" })
       const link = document.createElement("a")
       const url = URL.createObjectURL(blob)
       link.setAttribute("href", url)
-      link.setAttribute("download", `ventas_${new Date().toISOString().split("T")[0]}.csv`)
+      link.setAttribute("download", `ventas_filtradas_${new Date().toISOString().split("T")[0]}.csv`)
       link.style.visibility = "hidden"
       document.body.appendChild(link)
       link.click()
@@ -258,13 +345,13 @@ export default function AdminVentasPage() {
 
       toast({
         title: "Éxito",
-        description: "Archivo Excel descargado correctamente",
+        description: `Archivo CSV descargado: ${filteredSales.length} registros exportados`,
       })
     } catch (error) {
-      console.error("Error downloading Excel:", error)
+      console.error("Error downloading CSV:", error)
       toast({
         title: "Error",
-        description: "Error al descargar el archivo Excel",
+        description: "Error al descargar el archivo",
         variant: "destructive",
       })
     }
@@ -446,7 +533,7 @@ export default function AdminVentasPage() {
         <div className="flex gap-2">
           <Button variant="outline" onClick={downloadExcel} disabled={filteredSales.length === 0}>
             <Download className="mr-2 h-4 w-4" />
-            Descargar Excel
+            Exportar Excel ({filteredSales.length})
           </Button>
           <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
             <DialogTrigger asChild>

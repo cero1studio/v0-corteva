@@ -13,11 +13,17 @@ type WeeklyData = {
   [key: string]: any
 }
 
+type TeamWithColor = {
+  id: string
+  name: string
+  color: string
+}
+
 export function AdminStatsChart() {
   const [isMounted, setIsMounted] = useState(false)
   const [loading, setLoading] = useState(true)
   const [data, setData] = useState<WeeklyData[]>([])
-  const [teams, setTeams] = useState<{ id: string; name: string; color: string }[]>([])
+  const [teams, setTeams] = useState<TeamWithColor[]>([])
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -30,8 +36,15 @@ export function AdminStatsChart() {
       setLoading(true)
       setError(null)
 
-      // 1. Obtener equipos
-      const { data: teamsData, error: teamsError } = await supabase.from("teams").select("id, name").order("name")
+      // 1. Obtener equipos y puntos para gol en paralelo
+      const [teamsResponse, configResponse] = await Promise.all([
+        supabase.from("teams").select("id, name").order("name"),
+        supabase.from("system_config").select("value").eq("key", "puntos_para_gol").maybeSingle(),
+      ])
+
+      const teamsData = teamsResponse.data
+      const teamsError = teamsResponse.error
+      const puntosConfig = configResponse.data
 
       if (teamsError) throw teamsError
 
@@ -50,64 +63,90 @@ export function AdminStatsChart() {
 
       setTeams(teamsWithColors)
 
-      // 2. Obtener configuración de puntos para gol
-      const { data: puntosConfig } = await supabase
-        .from("system_config")
-        .select("value")
-        .eq("key", "puntos_para_gol")
-        .maybeSingle()
-
       const puntosParaGol = puntosConfig?.value ? Number(puntosConfig.value) : 100
 
-      // 3. Calcular goles totales actuales por equipo (usando la misma lógica del ranking)
+      // 2. Obtener todos los datos necesarios en paralelo
+      const [profilesResponse, salesResponse, clientsResponse, freeKicksResponse] = await Promise.all([
+        supabase.from("profiles").select("id, team_id").not("team_id", "is", null),
+        supabase.from("sales").select("points, representative_id, team_id"),
+        supabase.from("competitor_clients").select("id, points, representative_id, team_id"),
+        supabase.from("free_kick_goals").select("points, team_id"),
+      ])
+
+      const profiles = profilesResponse.data || []
+      const sales = salesResponse.data || []
+      const clients = clientsResponse.data || []
+      const freeKicks = freeKicksResponse.data || []
+
+      // Crear mapas para acceso rápido
+      const teamMembersMap = new Map<string, string[]>()
+      profiles.forEach((profile) => {
+        if (!teamMembersMap.has(profile.team_id)) {
+          teamMembersMap.set(profile.team_id, [])
+        }
+        teamMembersMap.get(profile.team_id)!.push(profile.id)
+      })
+
+      // 3. Calcular goles totales actuales por equipo
       const teamGoals: Record<string, number> = {}
 
       for (const team of teamsData) {
-        // Obtener miembros del equipo
-        const { data: teamMembers } = await supabase.from("profiles").select("id").eq("team_id", team.id)
+        const memberIds = teamMembersMap.get(team.id) || []
 
-        const memberIds = teamMembers?.map((member) => member.id) || []
-
-        // Obtener puntos de ventas
+        // Calcular puntos de ventas
         let totalPointsFromSales = 0
-        if (memberIds.length > 0) {
-          const { data: sales } = await supabase.from("sales").select("points").in("representative_id", memberIds)
 
-          if (sales) {
-            totalPointsFromSales = sales.reduce((sum, sale) => sum + (sale.points || 0), 0)
-          }
-        }
+        // Ventas por representante
+        sales
+          .filter((sale) => memberIds.includes(sale.representative_id))
+          .forEach((sale) => (totalPointsFromSales += sale.points || 0))
 
-        // Obtener clientes del equipo
-        let totalClients = 0
-        if (memberIds.length > 0) {
-          const { count: clientsCount } = await supabase
-            .from("competitor_clients")
-            .select("*", { count: "exact", head: true })
-            .in("representative_id", memberIds)
+        // Ventas directas por equipo
+        sales.filter((sale) => sale.team_id === team.id).forEach((sale) => (totalPointsFromSales += sale.points || 0))
 
-          totalClients = clientsCount || 0
-        }
+        // Calcular puntos de clientes
+        let clientsPoints = 0
+        const countedClientIds = new Set<string>()
 
-        // Obtener tiros libres del equipo
-        const { data: freeKicks } = await supabase.from("free_kick_goals").select("goals").eq("team_id", team.id)
+        // Clientes por representante
+        clients
+          .filter((client) => memberIds.includes(client.representative_id))
+          .forEach((client) => {
+            if (!countedClientIds.has(client.id)) {
+              clientsPoints += client.points || 200
+              countedClientIds.add(client.id)
+            }
+          })
 
-        let freeKickGoals = 0
-        if (freeKicks) {
-          freeKickGoals = freeKicks.reduce((sum, fk) => sum + (fk.goals || 0), 0)
-        }
+        // Clientes directos por equipo
+        clients
+          .filter((client) => client.team_id === team.id)
+          .forEach((client) => {
+            if (!countedClientIds.has(client.id)) {
+              clientsPoints += client.points || 200
+              countedClientIds.add(client.id)
+            }
+          })
 
-        // Calcular puntos totales
-        const clientsPoints = totalClients * 200
-        const finalTotalPoints = totalPointsFromSales + clientsPoints
+        // Calcular puntos de tiros libres
+        let freeKickPoints = 0
+        freeKicks.filter((fk) => fk.team_id === team.id).forEach((fk) => (freeKickPoints += fk.points || 0))
+
+        // Calcular puntos totales y goles
+        const finalTotalPoints = totalPointsFromSales + clientsPoints + freeKickPoints
         const goalsFromPoints = Math.floor(finalTotalPoints / puntosParaGol)
+
+        // Obtener tiros libres del equipo (goles directos)
+        const freeKickGoals = freeKicks
+          .filter((fk) => fk.team_id === team.id)
+          .reduce((sum, fk) => sum + (fk.goals || 0), 0)
+
         const totalGoals = goalsFromPoints + freeKickGoals
 
         teamGoals[team.id] = totalGoals
       }
 
       // 4. Crear datos para el gráfico (simulando evolución semanal)
-      // Por ahora mostramos el total actual, pero se puede expandir para mostrar evolución real
       const currentWeek = getCurrentWeek()
       const chartData: WeeklyData[] = []
 

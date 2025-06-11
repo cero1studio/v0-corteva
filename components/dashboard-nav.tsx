@@ -104,6 +104,7 @@ export function DashboardNav({ role, onMobileMenuClose }: NavProps) {
           { href: "/admin/retos", label: "Retos", icon: Target },
           { href: "/admin/tiros-libres", label: "Tiros Libres", icon: Zap },
           { href: "/admin/configuracion", label: "Configuración", icon: Settings },
+          { href: "/perfil", label: "Perfil", icon: User },
         ]
       case "capitan":
         return [
@@ -111,12 +112,14 @@ export function DashboardNav({ role, onMobileMenuClose }: NavProps) {
           { href: "/capitan/ventas", label: "Ventas", icon: ShoppingCart },
           { href: "/capitan/clientes", label: "Clientes", icon: Users },
           { href: "/capitan/ranking", label: "Ranking", icon: Trophy },
+          { href: "/perfil", label: "Perfil", icon: User },
         ]
       case "supervisor":
         return [
           { href: "/supervisor/dashboard", label: "Dashboard", icon: Home },
           { href: "/supervisor/equipos", label: "Equipos", icon: Users },
           { href: "/supervisor/reportes", label: "Reportes", icon: FileText },
+          { href: "/perfil", label: "Perfil", icon: User },
         ]
       case "director-tecnico":
         return [
@@ -125,19 +128,22 @@ export function DashboardNav({ role, onMobileMenuClose }: NavProps) {
           { href: "/director-tecnico/ranking", label: "Ranking", icon: Trophy },
           { href: "/director-tecnico/reportes", label: "Reportes", icon: FileText },
           { href: "/director-tecnico/perfil", label: "Perfil", icon: User },
+          { href: "/perfil", label: "Cambiar Contraseña", icon: Settings },
         ]
       case "representante":
         return [
           { href: "/representante/dashboard", label: "Dashboard", icon: Home },
           { href: "/representante/registrar-venta", label: "Registrar Venta", icon: ShoppingCart },
+          { href: "/perfil", label: "Perfil", icon: User },
         ]
       case "arbitro":
         return [
-          { href: "/director-tecnico/dashboard", label: "Dashboard", icon: Home },
-          { href: "/director-tecnico/equipos", label: "Equipos", icon: Users },
-          { href: "/director-tecnico/ranking", label: "Ranking", icon: Trophy },
-          { href: "/director-tecnico/reportes", label: "Reportes", icon: FileText },
-          { href: "/director-tecnico/perfil", label: "Perfil", icon: User },
+          { href: "/arbitro/dashboard", label: "Dashboard", icon: Home },
+          { href: "/arbitro/equipos", label: "Equipos", icon: Users },
+          { href: "/arbitro/ranking", label: "Ranking", icon: Trophy },
+          { href: "/arbitro/reportes", label: "Reportes", icon: FileText },
+          { href: "/arbitro/perfil", label: "Perfil", icon: User },
+          { href: "/perfil", label: "Cambiar Contraseña", icon: Settings },
         ]
       default:
         return []
