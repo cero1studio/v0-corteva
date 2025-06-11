@@ -12,6 +12,8 @@ import { AdminRankingChart } from "@/components/admin-ranking-chart"
 import { getTeamRankingByZone } from "@/app/actions/ranking"
 import { EmptyState } from "@/components/empty-state"
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
+import * as XLSX from "xlsx"
+import { toast } from "@/components/ui/use-toast"
 
 // Tipos para los datos
 type Team = {
@@ -199,6 +201,75 @@ export default function RankingAdminPage() {
     </div>
   )
 
+  const exportToExcel = () => {
+    try {
+      if (teams.length === 0) {
+        toast({
+          title: "Error",
+          description: "No hay datos para exportar",
+          variant: "destructive",
+        })
+        return
+      }
+
+      // Preparar datos para Excel
+      const excelData = teams.map((team, index) => ({
+        Posición: index + 1,
+        Equipo: team.team_name,
+        Zona: team.zone_name,
+        Goles: team.goals,
+        "Puntos Totales": team.total_points,
+      }))
+
+      // Crear workbook y worksheet
+      const wb = XLSX.utils.book_new()
+      const ws = XLSX.utils.json_to_sheet(excelData)
+
+      // Configurar anchos de columna
+      const colWidths = [
+        { wch: 10 }, // Posición
+        { wch: 30 }, // Equipo
+        { wch: 20 }, // Zona
+        { wch: 10 }, // Goles
+        { wch: 15 }, // Puntos Totales
+      ]
+      ws["!cols"] = colWidths
+
+      // Agregar worksheet al workbook
+      XLSX.utils.book_append_sheet(wb, ws, "Ranking Nacional")
+
+      // Si hay zona ganadora, agregar hoja adicional
+      if (winningZone) {
+        const zoneData = [
+          {
+            "Zona Ganadora": winningZone.name,
+            "Goles Totales": winningZone.total_goals,
+            Equipos: winningZone.teams_count,
+            "Puntos Totales": winningZone.total_points,
+          },
+        ]
+        const wsZone = XLSX.utils.json_to_sheet(zoneData)
+        XLSX.utils.book_append_sheet(wb, wsZone, "Zona Ganadora")
+      }
+
+      // Generar y descargar archivo
+      const fileName = `ranking_nacional_${new Date().toISOString().split("T")[0]}.xlsx`
+      XLSX.writeFile(wb, fileName)
+
+      toast({
+        title: "Éxito",
+        description: "Ranking exportado correctamente",
+      })
+    } catch (error) {
+      console.error("Error exporting to Excel:", error)
+      toast({
+        title: "Error",
+        description: "Error al exportar el ranking",
+        variant: "destructive",
+      })
+    }
+  }
+
   return (
     <div className="flex-1 space-y-4">
       <div className="flex items-center justify-between">
@@ -207,7 +278,7 @@ export default function RankingAdminPage() {
           <p className="text-muted-foreground">Visualiza y gestiona el ranking de equipos</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" className="gap-2">
+          <Button variant="outline" className="gap-2" onClick={exportToExcel} disabled={teams.length === 0}>
             <Download className="h-4 w-4" />
             Exportar Ranking
           </Button>
