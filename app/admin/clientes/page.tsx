@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react" // Added useCallback
 import {
   type ColumnDef,
   flexRender,
@@ -23,8 +23,8 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { getAllCompetitorClients, deleteCompetitorClient } from "@/app/actions/competitor-clients"
 import { getAllZones } from "@/app/actions/zones"
 import { getAllTeams } from "@/app/actions/teams"
-import { getAllUsers } from "@/app/actions/users"
-import * as XLSX from "xlsx" // Importar la librería XLSX
+import { getAllUsers } from "@/app/actions/users" // Assuming this fetches all users, we'll filter it.
+import * as XLSX from "xlsx"
 
 interface CompetitorClient {
   id: string
@@ -169,51 +169,19 @@ const columns: ColumnDef<CompetitorClient>[] = [
   },
 ]
 
-const handleDeleteClient = async (clientId: string) => {
-  if (!confirm("¿Estás seguro de que quieres eliminar este cliente?")) return
-
-  try {
-    const result = await deleteCompetitorClient(clientId)
-    if (result.success) {
-      toast({
-        title: "Éxito",
-        description: "Cliente eliminado correctamente",
-      })
-      // Recargar datos
-      window.location.reload()
-    } else {
-      toast({
-        title: "Error",
-        description: result.error || "Error al eliminar cliente",
-        variant: "destructive",
-      })
-    }
-  } catch (error) {
-    console.error("Error deleting client:", error)
-    toast({
-      title: "Error",
-      description: "Error al eliminar cliente",
-      variant: "destructive",
-    })
-  }
-}
-
 export default function AdminClientesPage() {
   const [clients, setClients] = useState<CompetitorClient[]>([])
   const [zones, setZones] = useState<Zone[]>([])
   const [teams, setTeams] = useState<Team[]>([])
-  const [users, setUsers] = useState<User[]>([])
+  const [captains, setCaptains] = useState<User[]>([]) // Renamed to captains
   const [loading, setLoading] = useState(true)
   const [open, setOpen] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedZone, setSelectedZone] = useState<string>("all")
   const [selectedTeam, setSelectedTeam] = useState<string>("all")
 
-  useEffect(() => {
-    loadData()
-  }, [])
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
+    // Wrapped in useCallback
     try {
       setLoading(true)
 
@@ -221,7 +189,7 @@ export default function AdminClientesPage() {
         getAllCompetitorClients(),
         getAllZones(),
         getAllTeams(),
-        getAllUsers(),
+        getAllUsers(), // Fetch all users
       ])
 
       if (clientsResult.success) {
@@ -248,9 +216,10 @@ export default function AdminClientesPage() {
       }
 
       if (usersResult.data) {
-        setUsers(usersResult.data.filter((user) => user.role === "capitan") || []) // Filter for captains
+        // Filter users to only include 'capitan' role
+        setCaptains(usersResult.data.filter((user) => user.role === "capitan") || [])
       } else {
-        setUsers([])
+        setCaptains([])
       }
     } catch (error) {
       console.error("Error loading data:", error)
@@ -262,6 +231,39 @@ export default function AdminClientesPage() {
     } finally {
       setLoading(false)
     }
+  }, []) // Empty dependency array as it only depends on external actions
+
+  useEffect(() => {
+    loadData()
+  }, [loadData]) // Depend on loadData
+
+  const handleDeleteClient = async (clientId: string) => {
+    if (!confirm("¿Estás seguro de que quieres eliminar este cliente?")) return
+
+    try {
+      const result = await deleteCompetitorClient(clientId)
+      if (result.success) {
+        toast({
+          title: "Éxito",
+          description: "Cliente eliminado correctamente",
+        })
+        // Update state directly instead of reloading
+        setClients((prevClients) => prevClients.filter((client) => client.id !== clientId))
+      } else {
+        toast({
+          title: "Error",
+          description: result.error || "Error al eliminar cliente",
+          variant: "destructive",
+        })
+      }
+    } catch (error) {
+      console.error("Error deleting client:", error)
+      toast({
+        title: "Error",
+        description: "Error al eliminar cliente",
+        variant: "destructive",
+      })
+    }
   }
 
   const filteredClients = clients.filter((client) => {
@@ -271,7 +273,6 @@ export default function AdminClientesPage() {
     const razonSocial = client.razon_social || ""
     const tipoVenta = client.tipo_venta || ""
     const ubicacionFinca = client.ubicacion_finca || ""
-    const area_finca_hectareas: number | null = client.area_finca_hectareas
     const productoAnterior = client.producto_anterior || ""
     const productoSuperGanaderia = client.producto_super_ganaderia || ""
     const volumenVentaEstimado = client.volumen_venta_estimado || ""
@@ -463,7 +464,8 @@ export default function AdminClientesPage() {
         </div>
       </div>
 
-      <ClientForm open={open} setOpen={setOpen} zones={zones} teams={teams} users={users} onSuccess={loadData} />
+      {/* Pass the filtered captains to the form */}
+      <ClientForm open={open} setOpen={setOpen} zones={zones} teams={teams} users={captains} onSuccess={loadData} />
 
       {/* Filtros */}
       <Card>
