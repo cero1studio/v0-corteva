@@ -36,10 +36,10 @@ interface Distributor {
 interface Team {
   id: string
   name: string
-  distributor_id: string
+  distributor_id: string | null
   distributor_name: string
-  distributor_logo?: string
-  zone_id: string
+  distributor_logo?: string | null
+  zone_id: string | null
   zone_name: string
   created_at: string
 }
@@ -124,12 +124,7 @@ export default function EquiposPage() {
     try {
       console.log("👥 Cargando equipos...")
 
-      // Primero, hacer una consulta simple para ver si hay equipos
-      const { data: simpleTeams, error: simpleError } = await supabase.from("teams").select("id, name").limit(5)
-
-      console.log("🔍 Consulta simple de equipos:", simpleTeams?.length || 0, simpleError)
-
-      // Ahora hacer la consulta completa
+      // Usar LEFT JOIN para incluir equipos sin zona o distribuidor
       const { data, error } = await supabase
         .from("teams")
         .select(`
@@ -158,10 +153,10 @@ export default function EquiposPage() {
       console.log("✅ Equipos cargados (raw):", data?.length || 0)
       console.log("📊 Primer equipo:", data?.[0])
 
-      // Formatear datos
+      // Formatear datos manejando valores NULL
       const formattedData = (data || []).map((team: any) => ({
         id: team.id,
-        name: team.name,
+        name: team.name || "Sin nombre",
         distributor_id: team.distributor_id,
         distributor_name: team.distributors?.name || "Sin distribuidor",
         distributor_logo: team.distributors?.logo_url || null,
@@ -232,10 +227,10 @@ export default function EquiposPage() {
   }
 
   async function handleUpdateTeam() {
-    if (!editingTeam || !editingTeam.name.trim() || !editingTeam.zone_id || !editingTeam.distributor_id) {
+    if (!editingTeam || !editingTeam.name.trim()) {
       toast({
         title: "Error",
-        description: "El nombre, la zona y el distribuidor son obligatorios",
+        description: "El nombre es obligatorio",
         variant: "destructive",
       })
       return
@@ -246,15 +241,19 @@ export default function EquiposPage() {
         .from("teams")
         .update({
           name: editingTeam.name.trim(),
-          zone_id: editingTeam.zone_id,
-          distributor_id: editingTeam.distributor_id,
+          zone_id: editingTeam.zone_id || null,
+          distributor_id: editingTeam.distributor_id || null,
         })
         .eq("id", editingTeam.id)
 
       if (error) throw error
 
-      const zoneName = zones.find((z) => z.id === editingTeam.zone_id)?.name || "Sin zona"
-      const distributor = distributors.find((d) => d.id === editingTeam.distributor_id)
+      const zoneName = editingTeam.zone_id
+        ? zones.find((z) => z.id === editingTeam.zone_id)?.name || "Sin zona"
+        : "Sin zona"
+      const distributor = editingTeam.distributor_id
+        ? distributors.find((d) => d.id === editingTeam.distributor_id)
+        : null
       const distributorName = distributor?.name || "Sin distribuidor"
       const distributorLogo = distributor?.logo_url || null
 
@@ -421,21 +420,6 @@ export default function EquiposPage() {
         </Dialog>
       </div>
 
-      {/* Debug Info */}
-      <Card className="bg-yellow-50 border-yellow-200">
-        <CardHeader>
-          <CardTitle className="text-sm text-yellow-800">Debug Info</CardTitle>
-        </CardHeader>
-        <CardContent className="text-sm text-yellow-700">
-          <div>Total equipos: {teams.length}</div>
-          <div>Equipos filtrados: {filteredTeams.length}</div>
-          <div>Loading: {loading ? "Sí" : "No"}</div>
-          <div>Error: {error || "Ninguno"}</div>
-          <div>Zonas: {zones.length}</div>
-          <div>Distribuidores: {distributors.length}</div>
-        </CardContent>
-      </Card>
-
       {/* Filtros */}
       <Card>
         <CardHeader>
@@ -576,13 +560,14 @@ export default function EquiposPage() {
                       <TableCell>
                         {editingTeam?.id === team.id ? (
                           <Select
-                            value={editingTeam.zone_id}
-                            onValueChange={(value) => setEditingTeam({ ...editingTeam, zone_id: value })}
+                            value={editingTeam.zone_id || ""}
+                            onValueChange={(value) => setEditingTeam({ ...editingTeam, zone_id: value || null })}
                           >
                             <SelectTrigger>
                               <SelectValue placeholder="Selecciona una zona" />
                             </SelectTrigger>
                             <SelectContent>
+                              <SelectItem value="null">Sin zona</SelectItem>
                               {zones.map((zone) => (
                                 <SelectItem key={zone.id} value={zone.id}>
                                   {zone.name}
@@ -597,13 +582,14 @@ export default function EquiposPage() {
                       <TableCell>
                         {editingTeam?.id === team.id ? (
                           <Select
-                            value={editingTeam.distributor_id}
-                            onValueChange={(value) => setEditingTeam({ ...editingTeam, distributor_id: value })}
+                            value={editingTeam.distributor_id || ""}
+                            onValueChange={(value) => setEditingTeam({ ...editingTeam, distributor_id: value || null })}
                           >
                             <SelectTrigger>
                               <SelectValue placeholder="Selecciona un distribuidor" />
                             </SelectTrigger>
                             <SelectContent>
+                              <SelectItem value="null">Sin distribuidor</SelectItem>
                               {distributors.map((distributor) => (
                                 <SelectItem key={distributor.id} value={distributor.id}>
                                   {distributor.name}
@@ -613,18 +599,24 @@ export default function EquiposPage() {
                           </Select>
                         ) : (
                           <div className="flex justify-start">
-                            <img
-                              src={getDistributorLogoUrl({
-                                name: team.distributor_name,
-                                logo_url: team.distributor_logo || "/placeholder.svg",
-                              })}
-                              alt={team.distributor_name}
-                              title={team.distributor_name}
-                              className="h-8 w-16 object-contain"
-                              onError={(e) => {
-                                e.currentTarget.src = "/placeholder.svg?height=32&width=64&text=Logo"
-                              }}
-                            />
+                            {team.distributor_logo ? (
+                              <img
+                                src={
+                                  getDistributorLogoUrl({
+                                    name: team.distributor_name,
+                                    logo_url: team.distributor_logo,
+                                  }) || "/placeholder.svg"
+                                }
+                                alt={team.distributor_name}
+                                title={team.distributor_name}
+                                className="h-8 w-16 object-contain"
+                                onError={(e) => {
+                                  e.currentTarget.src = "/placeholder.svg?height=32&width=64&text=Logo"
+                                }}
+                              />
+                            ) : (
+                              <span className="text-sm text-muted-foreground">{team.distributor_name}</span>
+                            )}
                           </div>
                         )}
                       </TableCell>
