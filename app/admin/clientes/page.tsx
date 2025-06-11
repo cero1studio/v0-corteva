@@ -38,6 +38,9 @@ interface CompetitorClient {
   producto_anterior: string | null
   producto_super_ganaderia: string | null
   volumen_venta_estimado: string | null
+  contact_info: string | null
+  notes: string | null
+  nombre_almacen: string | null
   points: number
   created_at: string
   representative_profile: {
@@ -296,7 +299,11 @@ export default function AdminClientesPage() {
         return
       }
 
-      // Preparar datos completos para Excel (solo datos filtrados)
+      // Crear un nuevo workbook
+      const wb = XLSX.utils.book_new()
+      const ws = XLSX.utils.aoa_to_sheet([[]])
+
+      // Preparar datos completos para Excel (solo datos filtrados) - TODOS los campos
       const excelData = filteredClients.map((client) => ({
         ID: client.id,
         "Nombre Cliente": client.client_name || "",
@@ -309,19 +316,22 @@ export default function AdminClientesPage() {
         "Producto Anterior": client.producto_anterior || "",
         "Producto Súper Ganadería": client.producto_super_ganaderia || "",
         "Volumen Venta Estimado": client.volumen_venta_estimado || "",
+        "Información Contacto": client.contact_info || "",
+        Notas: client.notes || "",
+        "Nombre Almacén": client.nombre_almacen || "",
         Puntos: client.points,
         Capitán: client.representative_profile?.full_name || "",
+        "ID Capitán": client.representative_profile?.id || "",
         Equipo: client.team?.name || "",
+        "ID Equipo": client.team?.id || "",
         Zona: client.team?.zone?.name || "",
+        "ID Zona": client.team?.zone?.id || "",
         "Fecha Registro": new Date(client.created_at).toLocaleDateString(),
         "Fecha Registro (ISO)": client.created_at,
+        "Hora Registro": new Date(client.created_at).toLocaleTimeString(),
       }))
 
-      // Crear workbook y worksheet
-      const wb = XLSX.utils.book_new()
-      const ws = XLSX.utils.json_to_sheet(excelData)
-
-      // Configurar anchos de columna
+      // Configurar anchos de columna para todos los campos
       const colWidths = [
         { wch: 10 }, // ID
         { wch: 25 }, // Nombre Cliente
@@ -329,17 +339,24 @@ export default function AdminClientesPage() {
         { wch: 25 }, // Cliente Competidora
         { wch: 30 }, // Razón Social
         { wch: 15 }, // Tipo Venta
-        { wch: 30 }, // Ubicación Finca
+        { wch: 35 }, // Ubicación Finca
         { wch: 15 }, // Área Finca
         { wch: 25 }, // Producto Anterior
         { wch: 25 }, // Producto Súper Ganadería
         { wch: 20 }, // Volumen Venta Estimado
+        { wch: 30 }, // Información Contacto
+        { wch: 40 }, // Notas
+        { wch: 25 }, // Nombre Almacén
         { wch: 10 }, // Puntos
         { wch: 20 }, // Capitán
+        { wch: 15 }, // ID Capitán
         { wch: 20 }, // Equipo
+        { wch: 15 }, // ID Equipo
         { wch: 15 }, // Zona
+        { wch: 15 }, // ID Zona
         { wch: 15 }, // Fecha Registro
         { wch: 20 }, // Fecha Registro ISO
+        { wch: 15 }, // Hora Registro
       ]
       ws["!cols"] = colWidths
 
