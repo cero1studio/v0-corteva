@@ -261,6 +261,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           }
         }
       } else if (event === "SIGNED_OUT") {
+        console.log("AUTH: SIGNED_OUT event received")
         setSession(null)
         setUser(null)
         setProfile(null)
@@ -302,15 +303,52 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = async () => {
     try {
+      console.log("AUTH: Starting sign out process...")
       setIsLoading(true)
+
+      // Limpiar caché y estado local ANTES de llamar a Supabase
       clearAllCache()
-      await supabase.auth.signOut()
-    } catch (err: any) {
-      console.error("AUTH: Error signing out:", err)
-    } finally {
+      setSession(null)
+      setUser(null)
+      setProfile(null)
+      setError(null)
+
+      // Cerrar sesión en Supabase
+      const { error } = await supabase.auth.signOut()
+      if (error) {
+        console.error("AUTH: Error signing out from Supabase:", error)
+        // Aún así continuar con la redirección
+      } else {
+        console.log("AUTH: Successfully signed out from Supabase")
+      }
+
       setIsLoading(false)
+
+      // Forzar redirección a login
+      if (typeof window !== "undefined") {
+        window.location.href = "/login"
+      } else {
+        router.push("/login")
+      }
+    } catch (err: any) {
+      console.error("AUTH: Error during sign out:", err)
+      setIsLoading(false)
+
+      // En caso de error, forzar redirección de todas formas
+      if (typeof window !== "undefined") {
+        window.location.href = "/login"
+      } else {
+        router.push("/login")
+      }
     }
   }
+
+  useEffect(() => {
+    // Resetear loading state cuando estamos en login
+    if (pathname === "/login") {
+      setIsLoading(false)
+    }
+  }, [pathname])
 
   const refreshProfile = useCallback(async () => {
     if (!user) return

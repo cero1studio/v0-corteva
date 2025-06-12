@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import {
   type ColumnDef,
   flexRender,
@@ -17,18 +17,19 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { PlusIcon, Search, Filter, MoreHorizontal, Edit, Trash2, Users, Download } from "lucide-react"
-import { ClientForm } from "./components/client-form"
 import { toast } from "@/hooks/use-toast"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { getAllCompetitorClients, deleteCompetitorClient } from "@/app/actions/competitor-clients"
 import { getAllZones } from "@/app/actions/zones"
 import { getAllTeams } from "@/app/actions/teams"
 import { getAllUsers } from "@/app/actions/users"
+import * as XLSX from "xlsx"
+import Link from "next/link" // Import Link
 
 interface CompetitorClient {
   id: string
   client_name: string
-  client_name_competitora: string | null
+  competitor_name: string | null
   ganadero_name: string | null
   razon_social: string | null
   tipo_venta: string | null
@@ -37,6 +38,9 @@ interface CompetitorClient {
   producto_anterior: string | null
   producto_super_ganaderia: string | null
   volumen_venta_estimado: string | null
+  contact_info: string | null
+  notes: string | null
+  nombre_almacen: string | null
   points: number
   created_at: string
   representative_profile: {
@@ -66,8 +70,8 @@ interface Team {
 
 interface User {
   id: string
-  full_name: string
-  team_id: string
+  full_name: string | null
+  team_id: string | null
   role: string
 }
 
@@ -141,6 +145,34 @@ const columns: ColumnDef<CompetitorClient>[] = [
     cell: ({ row }) => {
       const client = row.original
 
+      const handleDeleteClient = async (clientId: string) => {
+        if (!confirm("¿Estás seguro de que quieres eliminar este cliente?")) return
+
+        try {
+          const result = await deleteCompetitorClient(clientId)
+          if (result.success) {
+            toast({
+              title: "Éxito",
+              description: "Cliente eliminado correctamente",
+            })
+            setClients((prevClients) => prevClients.filter((client) => client.id !== clientId))
+          } else {
+            toast({
+              title: "Error",
+              description: result.error || "Error al eliminar cliente",
+              variant: "destructive",
+            })
+          }
+        } catch (error) {
+          console.error("Error deleting client:", error)
+          toast({
+            title: "Error",
+            description: "Error al eliminar cliente",
+            variant: "destructive",
+          })
+        }
+      }
+
       return (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -165,51 +197,17 @@ const columns: ColumnDef<CompetitorClient>[] = [
   },
 ]
 
-const handleDeleteClient = async (clientId: string) => {
-  if (!confirm("¿Estás seguro de que quieres eliminar este cliente?")) return
-
-  try {
-    const result = await deleteCompetitorClient(clientId)
-    if (result.success) {
-      toast({
-        title: "Éxito",
-        description: "Cliente eliminado correctamente",
-      })
-      // Recargar datos
-      window.location.reload()
-    } else {
-      toast({
-        title: "Error",
-        description: result.error || "Error al eliminar cliente",
-        variant: "destructive",
-      })
-    }
-  } catch (error) {
-    console.error("Error deleting client:", error)
-    toast({
-      title: "Error",
-      description: "Error al eliminar cliente",
-      variant: "destructive",
-    })
-  }
-}
-
 export default function AdminClientesPage() {
   const [clients, setClients] = useState<CompetitorClient[]>([])
   const [zones, setZones] = useState<Zone[]>([])
   const [teams, setTeams] = useState<Team[]>([])
-  const [users, setUsers] = useState<User[]>([])
+  const [captains, setCaptains] = useState<User[]>([])
   const [loading, setLoading] = useState(true)
-  const [open, setOpen] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedZone, setSelectedZone] = useState<string>("all")
   const [selectedTeam, setSelectedTeam] = useState<string>("all")
 
-  useEffect(() => {
-    loadData()
-  }, [])
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       setLoading(true)
 
@@ -244,9 +242,9 @@ export default function AdminClientesPage() {
       }
 
       if (usersResult.data) {
-        setUsers(usersResult.data || [])
+        setCaptains(usersResult.data.filter((user) => user.role === "capitan") || [])
       } else {
-        setUsers([])
+        setCaptains([])
       }
     } catch (error) {
       console.error("Error loading data:", error)
@@ -258,23 +256,45 @@ export default function AdminClientesPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
+
+  useEffect(() => {
+    loadData()
+  }, [loadData])
 
   const filteredClients = clients.filter((client) => {
     const ganaderoName = client.ganadero_name || ""
     const clientName = client.client_name || ""
+    const competitorName = client.competitor_name || ""
+    const razonSocial = client.razon_social || ""
+    const tipoVenta = client.tipo_venta || ""
+    const ubicacionFinca = client.ubicacion_finca || ""
+    const productoAnterior = client.producto_anterior || ""
+    const productoSuperGanaderia = client.producto_super_ganaderia || ""
+    const volumenVentaEstimado = client.volumen_venta_estimado || ""
+    const contactInfo = client.contact_info || ""
+    const notes = client.notes || ""
+    const nombreAlmacen = client.nombre_almacen || ""
+    const captainName = client.representative_profile?.full_name || ""
     const teamName = client.team?.name || ""
     const zoneName = client.team?.zone?.name || ""
-    const volumenVentaEstimado = client.volumen_venta_estimado || ""
-    const captainName = client.representative_profile?.full_name || ""
 
     const matchesSearch =
       ganaderoName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       clientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      teamName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      zoneName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      competitorName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      razonSocial.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      tipoVenta.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      ubicacionFinca.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      productoAnterior.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      productoSuperGanaderia.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      volumenVentaEstimado.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      contactInfo.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      notes.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      nombreAlmacen.toLowerCase().includes(searchTerm.toLowerCase()) ||
       captainName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      volumenVentaEstimado.toLowerCase().includes(searchTerm.toLowerCase())
+      teamName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      zoneName.toLowerCase().includes(searchTerm.toLowerCase())
 
     const matchesZone = selectedZone === "all" || client.team?.zone?.id === selectedZone
     const matchesTeam = selectedTeam === "all" || client.team?.id === selectedTeam
@@ -286,38 +306,96 @@ export default function AdminClientesPage() {
 
   const downloadExcel = () => {
     try {
+      if (filteredClients.length === 0) {
+        toast({
+          title: "Error",
+          description: "No hay datos para exportar",
+          variant: "destructive",
+        })
+        return
+      }
+
+      const wb = XLSX.utils.book_new()
+      const ws = XLSX.utils.aoa_to_sheet([[]])
+
       const excelData = filteredClients.map((client) => ({
-        Ganadero: client.ganadero_name || client.client_name,
-        "Volumen de Venta Estimado": client.volumen_venta_estimado || "",
-        "Cliente Competidora": client.client_name_competitora || "",
+        ID: client.id,
+        "Nombre Cliente": client.client_name || "",
+        "Nombre Ganadero": client.ganadero_name || "",
+        "Cliente Competidora": client.competitor_name || "",
         "Razón Social": client.razon_social || "",
         "Tipo Venta": client.tipo_venta || "",
         "Ubicación Finca": client.ubicacion_finca || "",
-        "Área (Ha)": client.area_finca_hectareas || "",
+        "Área Finca (Hectáreas)": client.area_finca_hectareas || "",
         "Producto Anterior": client.producto_anterior || "",
         "Producto Súper Ganadería": client.producto_super_ganaderia || "",
+        "Volumen Venta Estimado": client.volumen_venta_estimado || "",
+        "Información Contacto": client.contact_info || "",
+        Notas: client.notes || "",
+        "Nombre Almacén": client.nombre_almacen || "",
         Puntos: client.points,
         Capitán: client.representative_profile?.full_name || "",
+        "ID Capitán": client.representative_profile?.id || "",
         Equipo: client.team?.name || "",
+        "ID Equipo": client.team?.id || "",
         Zona: client.team?.zone?.name || "",
+        "ID Zona": client.team?.zone?.id || "",
         "Fecha Registro": new Date(client.created_at).toLocaleDateString(),
+        "Fecha Registro (ISO)": client.created_at,
+        "Hora Registro": new Date(client.created_at).toLocaleTimeString(),
       }))
 
-      const headers = Object.keys(excelData[0] || {})
-      const csvContent = [
-        headers.join(","),
-        ...excelData.map((row) => headers.map((header) => `"${row[header as keyof typeof row]}"`).join(",")),
-      ].join("\n")
+      XLSX.utils.sheet_add_json(ws, excelData, { origin: "A1", skipHeader: false })
 
-      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" })
-      const link = document.createElement("a")
+      const colWidths = [
+        { wch: 10 },
+        { wch: 25 },
+        { wch: 25 },
+        { wch: 25 },
+        { wch: 30 },
+        { wch: 15 },
+        { wch: 35 },
+        { wch: 15 },
+        { wch: 25 },
+        { wch: 25 },
+        { wch: 20 },
+        { wch: 30 },
+        { wch: 40 },
+        { wch: 25 },
+        { wch: 10 },
+        { wch: 20 },
+        { wch: 15 },
+        { wch: 20 },
+        { wch: 15 },
+        { wch: 15 },
+        { wch: 15 },
+        { wch: 15 },
+        { wch: 20 },
+        { wch: 15 },
+      ]
+      ws["!cols"] = colWidths
+
+      XLSX.utils.book_append_sheet(wb, ws, "Clientes")
+
+      const excelBuffer = XLSX.write(wb, { bookType: "xlsx", type: "array" })
+
+      const blob = new Blob([excelBuffer], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      })
+
       const url = URL.createObjectURL(blob)
-      link.setAttribute("href", url)
-      link.setAttribute("download", `clientes_${new Date().toISOString().split("T")[0]}.csv`)
-      link.style.visibility = "hidden"
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
+
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `clientes_${new Date().toISOString().split("T")[0]}.xlsx`
+
+      document.body.appendChild(a)
+      a.click()
+
+      setTimeout(() => {
+        document.body.removeChild(a)
+        URL.revokeObjectURL(url)
+      }, 0)
 
       toast({
         title: "Éxito",
@@ -364,14 +442,16 @@ export default function AdminClientesPage() {
             <Download className="mr-2 h-4 w-4" />
             Descargar Excel
           </Button>
-          <Button onClick={() => setOpen(true)}>
-            <PlusIcon className="mr-2 h-4 w-4" />
-            Agregar Cliente
+          <Button asChild>
+            {" "}
+            {/* Use asChild to render Link inside Button */}
+            <Link href="/admin/clientes/nuevo">
+              <PlusIcon className="mr-2 h-4 w-4" />
+              Agregar Cliente
+            </Link>
           </Button>
         </div>
       </div>
-
-      <ClientForm open={open} setOpen={setOpen} zones={zones} teams={teams} users={users} onSuccess={loadData} />
 
       {/* Filtros */}
       <Card>

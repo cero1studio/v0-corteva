@@ -26,6 +26,7 @@ import { getAllTeams } from "@/app/actions/teams"
 import { getAllProducts } from "@/app/actions/products"
 import { getAllUsers } from "@/app/actions/users"
 import { getAllDistributors } from "@/app/actions/distributors"
+import * as XLSX from "xlsx" // Importar la librería XLSX
 
 interface Sale {
   id: string
@@ -226,35 +227,74 @@ export default function AdminVentasPage() {
 
   const downloadExcel = () => {
     try {
+      if (filteredSales.length === 0) {
+        toast({
+          title: "Error",
+          description: "No hay datos para exportar",
+          variant: "destructive",
+        })
+        return
+      }
+
       // Preparar datos para Excel
       const excelData = filteredSales.map((sale) => ({
         Producto: sale.products?.name || "N/A",
+        Capitán: sale.representative?.full_name || "N/A",
+        Distribuidor: sale.distributor?.name || "N/A",
         Equipo: sale.team?.name || "N/A",
         Zona: sale.zone?.name || "N/A",
-        Distribuidor: sale.distributor?.name || "N/A",
         Cantidad: sale.quantity,
         Puntos: sale.points,
         "Fecha de Venta": sale.sale_date ? new Date(sale.sale_date).toLocaleDateString() : "N/A",
         "Fecha de Registro": new Date(sale.created_at).toLocaleDateString(),
       }))
 
-      // Crear CSV
-      const headers = Object.keys(excelData[0] || {})
-      const csvContent = [
-        headers.join(","),
-        ...excelData.map((row) => headers.map((header) => `"${row[header as keyof typeof row]}"`).join(",")),
-      ].join("\n")
+      // Crear workbook y worksheet
+      const wb = XLSX.utils.book_new()
+      const ws = XLSX.utils.json_to_sheet(excelData)
 
-      // Descargar archivo
-      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" })
-      const link = document.createElement("a")
+      // Configurar anchos de columna
+      const colWidths = [
+        { wch: 25 }, // Producto
+        { wch: 20 }, // Capitán
+        { wch: 20 }, // Distribuidor
+        { wch: 20 }, // Equipo
+        { wch: 15 }, // Zona
+        { wch: 10 }, // Cantidad
+        { wch: 10 }, // Puntos
+        { wch: 15 }, // Fecha de Venta
+        { wch: 18 }, // Fecha de Registro
+      ]
+      ws["!cols"] = colWidths
+
+      // Agregar worksheet al workbook
+      XLSX.utils.book_append_sheet(wb, ws, "Ventas")
+
+      // Generar archivo en formato binario
+      const excelBuffer = XLSX.write(wb, { bookType: "xlsx", type: "array" })
+
+      // Convertir a Blob
+      const blob = new Blob([excelBuffer], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      })
+
+      // Crear URL para el blob
       const url = URL.createObjectURL(blob)
-      link.setAttribute("href", url)
-      link.setAttribute("download", `ventas_${new Date().toISOString().split("T")[0]}.csv`)
-      link.style.visibility = "hidden"
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
+
+      // Crear elemento de enlace para descargar
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `ventas_${new Date().toISOString().split("T")[0]}.xlsx`
+
+      // Simular clic para iniciar descarga
+      document.body.appendChild(a)
+      a.click()
+
+      // Limpiar
+      setTimeout(() => {
+        document.body.removeChild(a)
+        URL.revokeObjectURL(url)
+      }, 0)
 
       toast({
         title: "Éxito",

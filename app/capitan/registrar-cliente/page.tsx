@@ -202,7 +202,7 @@ export default function RegistrarClientePage() {
       description: "El cliente ha sido registrado correctamente (+2 goles)",
     })
 
-    // Limpiar formulario
+    // Limpiar formulario y resetear estados
     setFarmerName("")
     setBusinessName("")
     setSaleType("")
@@ -214,6 +214,7 @@ export default function RegistrarClientePage() {
     setVolumenFacturado("")
     setContactInfo("")
     setNotes("")
+    setLoading(false) // Asegurar que loading esté en false
 
     // Redirigir al dashboard
     router.push("/capitan/dashboard")

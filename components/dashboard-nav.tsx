@@ -28,7 +28,7 @@ interface NavProps {
 
 export function DashboardNav({ role, onMobileMenuClose }: NavProps) {
   const pathname = usePathname()
-  const { profile, signOut } = useAuth()
+  const { profile, signOut, isLoading } = useAuth()
 
   // Función para obtener las iniciales del nombre
   const getInitials = (name: string) => {
@@ -40,13 +40,15 @@ export function DashboardNav({ role, onMobileMenuClose }: NavProps) {
       .substring(0, 2)
   }
 
-  // Función para cerrar sesión
+  // Función para cerrar sesión mejorada
   const handleSignOut = async () => {
     try {
-      console.log("Cerrando sesión...")
+      console.log("Dashboard: Iniciando cierre de sesión...")
       await signOut()
     } catch (error) {
-      console.error("Error al cerrar sesión:", error)
+      console.error("Dashboard: Error al cerrar sesión:", error)
+      // Forzar redirección en caso de error
+      window.location.href = "/login"
     }
   }
 
@@ -102,6 +104,7 @@ export function DashboardNav({ role, onMobileMenuClose }: NavProps) {
           { href: "/admin/retos", label: "Retos", icon: Target },
           { href: "/admin/tiros-libres", label: "Tiros Libres", icon: Zap },
           { href: "/admin/configuracion", label: "Configuración", icon: Settings },
+          { href: "/perfil", label: "Perfil", icon: User },
         ]
       case "capitan":
         return [
@@ -109,12 +112,14 @@ export function DashboardNav({ role, onMobileMenuClose }: NavProps) {
           { href: "/capitan/ventas", label: "Ventas", icon: ShoppingCart },
           { href: "/capitan/clientes", label: "Clientes", icon: Users },
           { href: "/capitan/ranking", label: "Ranking", icon: Trophy },
+          { href: "/perfil", label: "Perfil", icon: User },
         ]
       case "supervisor":
         return [
           { href: "/supervisor/dashboard", label: "Dashboard", icon: Home },
           { href: "/supervisor/equipos", label: "Equipos", icon: Users },
           { href: "/supervisor/reportes", label: "Reportes", icon: FileText },
+          { href: "/perfil", label: "Perfil", icon: User },
         ]
       case "director-tecnico":
         return [
@@ -123,19 +128,22 @@ export function DashboardNav({ role, onMobileMenuClose }: NavProps) {
           { href: "/director-tecnico/ranking", label: "Ranking", icon: Trophy },
           { href: "/director-tecnico/reportes", label: "Reportes", icon: FileText },
           { href: "/director-tecnico/perfil", label: "Perfil", icon: User },
+          { href: "/perfil", label: "Cambiar Contraseña", icon: Settings },
         ]
       case "representante":
         return [
           { href: "/representante/dashboard", label: "Dashboard", icon: Home },
           { href: "/representante/registrar-venta", label: "Registrar Venta", icon: ShoppingCart },
+          { href: "/perfil", label: "Perfil", icon: User },
         ]
       case "arbitro":
         return [
-          { href: "/director-tecnico/dashboard", label: "Dashboard", icon: Home },
-          { href: "/director-tecnico/equipos", label: "Equipos", icon: Users },
-          { href: "/director-tecnico/ranking", label: "Ranking", icon: Trophy },
-          { href: "/director-tecnico/reportes", label: "Reportes", icon: FileText },
-          { href: "/director-tecnico/perfil", label: "Perfil", icon: User },
+          { href: "/arbitro/dashboard", label: "Dashboard", icon: Home },
+          { href: "/arbitro/equipos", label: "Equipos", icon: Users },
+          { href: "/arbitro/ranking", label: "Ranking", icon: Trophy },
+          { href: "/arbitro/reportes", label: "Reportes", icon: FileText },
+          { href: "/arbitro/perfil", label: "Perfil", icon: User },
+          { href: "/perfil", label: "Cambiar Contraseña", icon: Settings },
         ]
       default:
         return []
@@ -194,10 +202,11 @@ export function DashboardNav({ role, onMobileMenuClose }: NavProps) {
 
         <button
           onClick={handleSignOut}
-          className="mt-4 flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
+          disabled={isLoading}
+          className="mt-4 flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 disabled:opacity-50"
         >
           <LogOut className="h-4 w-4" />
-          <span>Cerrar Sesión</span>
+          <span>{isLoading ? "Cerrando..." : "Cerrar Sesión"}</span>
         </button>
       </div>
     </div>

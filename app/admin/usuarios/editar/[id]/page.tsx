@@ -1,16 +1,16 @@
 "use client"
 
-import type React from "react"
-import { use, useState, useEffect } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
+import Link from "next/link"
+import { Eye, EyeOff, ArrowLeft, Save } from "lucide-react"
+
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useToast } from "@/components/ui/use-toast"
-import { ArrowLeft, Save } from "lucide-react"
-import Link from "next/link"
 import { getUserById, updateUser, getZones, getDistributors } from "@/app/actions/users"
 
 interface Team {
@@ -29,11 +29,11 @@ interface Distributor {
 }
 
 interface PageProps {
-  params: Promise<{ id: string }> | { id: string }
+  params: { id: string }
 }
 
 export default function EditarUsuarioPage({ params }: PageProps) {
-  const resolvedParams = params instanceof Promise ? use(params) : params
+  const [showPassword, setShowPassword] = useState(false)
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [fullName, setFullName] = useState("")
@@ -49,13 +49,12 @@ export default function EditarUsuarioPage({ params }: PageProps) {
   const [error, setError] = useState<string | null>(null)
   const router = useRouter()
   const { toast } = useToast()
-  const userId = resolvedParams.id
+  const userId = params.id
 
   useEffect(() => {
     loadInitialData()
   }, [userId])
 
-  // Cuando cambia el rol a admin, eliminar el equipo, zona y distribuidor
   useEffect(() => {
     if (role === "admin") {
       setTeamId("none")
@@ -69,7 +68,6 @@ export default function EditarUsuarioPage({ params }: PageProps) {
       setLoadingData(true)
       setError(null)
 
-      // Cargar datos en paralelo
       const [userResult, zonesResult, distributorsResult, teamsResult] = await Promise.all([
         getUserById(userId),
         getZones(),
@@ -77,10 +75,7 @@ export default function EditarUsuarioPage({ params }: PageProps) {
         fetchTeams(),
       ])
 
-      // Manejar resultado del usuario
-      if (userResult.error) {
-        throw new Error(userResult.error)
-      }
+      if (userResult.error) throw new Error(userResult.error)
 
       if (userResult.data) {
         setEmail(userResult.data.email || "")
@@ -91,28 +86,15 @@ export default function EditarUsuarioPage({ params }: PageProps) {
         setDistributorId(userResult.data.distributor_id || "none")
       }
 
-      // Manejar zonas
-      if (zonesResult.error) {
-        console.warn("Error al cargar zonas:", zonesResult.error)
-      } else {
-        setZones(zonesResult.data || [])
-      }
-
-      // Manejar distribuidores
-      if (distributorsResult.error) {
-        console.warn("Error al cargar distribuidores:", distributorsResult.error)
-      } else {
-        setDistributors(distributorsResult.data || [])
-      }
-
-      // Manejar equipos
+      if (!zonesResult.error) setZones(zonesResult.data || [])
+      if (!distributorsResult.error) setDistributors(distributorsResult.data || [])
       setTeams(teamsResult || [])
     } catch (error: any) {
       console.error("Error al cargar datos:", error)
-      setError(error.message || "Error al cargar los datos del usuario")
+      setError(error.message)
       toast({
         title: "Error",
-        description: error.message || "No se pudieron cargar los datos del usuario",
+        description: error.message,
         variant: "destructive",
       })
     } finally {
@@ -122,17 +104,13 @@ export default function EditarUsuarioPage({ params }: PageProps) {
 
   async function fetchTeams() {
     try {
-      // Importar dinámicamente para evitar problemas de SSR
       const { createServerClient } = await import("@/lib/supabase/client")
       const supabase = createServerClient()
-
       const { data, error } = await supabase.from("teams").select("id, name").order("name")
-
       if (error) {
         console.warn("Error al cargar equipos:", error)
         return []
       }
-
       return data || []
     } catch (error) {
       console.warn("Error al cargar equipos:", error)
@@ -155,42 +133,30 @@ export default function EditarUsuarioPage({ params }: PageProps) {
     setLoading(true)
 
     try {
-      // Crear FormData para enviar a la función server action
       const formData = new FormData()
       formData.append("email", email)
       formData.append("fullName", fullName)
       formData.append("role", role)
       formData.append("zoneId", zoneId === "none" ? "" : zoneId)
       formData.append("distributorId", distributorId === "none" ? "" : distributorId)
-      if (password.trim()) {
-        formData.append("password", password)
-      }
+      if (password.trim()) formData.append("password", password)
 
       const result = await updateUser(userId, formData)
 
-      if (result.error) {
-        throw new Error(result.error)
-      }
+      if (result.error) throw new Error(result.error)
 
-      if (result.warning) {
-        toast({
-          title: "Usuario actualizado con advertencias",
-          description: result.warning,
-          variant: "default",
-        })
-      } else {
-        toast({
-          title: "Usuario actualizado",
-          description: result.message || "El usuario ha sido actualizado exitosamente",
-        })
-      }
+      toast({
+        title: result.warning ? "Usuario actualizado con advertencias" : "Usuario actualizado",
+        description: result.message || result.warning,
+        variant: result.warning ? "default" : "success",
+      })
 
       router.push("/admin/usuarios")
     } catch (error: any) {
       console.error("Error al actualizar usuario:", error)
       toast({
         title: "Error",
-        description: error.message || "No se pudo actualizar el usuario",
+        description: error.message,
         variant: "destructive",
       })
     } finally {
@@ -272,26 +238,33 @@ export default function EditarUsuarioPage({ params }: PageProps) {
               <Label htmlFor="email">Correo electrónico</Label>
               <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
             </div>
+
             <div className="space-y-2">
               <Label htmlFor="password">Nueva contraseña (opcional)</Label>
-              <Input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Dejar en blanco para mantener la actual"
-              />
+              <div className="relative">
+                <Input
+                  id="password"
+                  type={showPassword ? "text" : "password"}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Dejar en blanco para mantener la actual"
+                  className="pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((prev) => !prev)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 focus:outline-none"
+                >
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
             </div>
+
             <div className="space-y-2">
               <Label htmlFor="fullName">Nombre completo</Label>
-              <Input
-                id="fullName"
-                value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
-                placeholder="Nombre y apellido"
-                required
-              />
+              <Input id="fullName" value={fullName} onChange={(e) => setFullName(e.target.value)} required />
             </div>
+
             <div className="space-y-2">
               <Label htmlFor="role">Rol *</Label>
               <Select value={role} onValueChange={setRole} required>
@@ -334,9 +307,9 @@ export default function EditarUsuarioPage({ params }: PageProps) {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">Sin distribuidor</SelectItem>
-                      {distributors.map((distributor) => (
-                        <SelectItem key={distributor.id} value={distributor.id}>
-                          {distributor.name}
+                      {distributors.map((d) => (
+                        <SelectItem key={d.id} value={d.id}>
+                          {d.name}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -347,7 +320,7 @@ export default function EditarUsuarioPage({ params }: PageProps) {
                   <Label htmlFor="team">Equipo</Label>
                   <Select value={teamId} onValueChange={setTeamId}>
                     <SelectTrigger id="team">
-                      <SelectValue placeholder="Selecciona un equipo (opcional)" />
+                      <SelectValue placeholder="Selecciona un equipo" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">Sin equipo</SelectItem>
@@ -361,18 +334,13 @@ export default function EditarUsuarioPage({ params }: PageProps) {
                 </div>
               </>
             )}
-
-            {role === "admin" && (
-              <div className="p-3 bg-gray-50 rounded-md text-sm text-gray-500">
-                Los administradores no pueden tener equipos, zonas o distribuidores asignados.
-              </div>
-            )}
           </CardContent>
+
           <CardFooter>
             <Button type="submit" disabled={loading} className="w-full">
               {loading ? (
                 <>
-                  <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent"></div>
+                  <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
                   Actualizando usuario...
                 </>
               ) : (

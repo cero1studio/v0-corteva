@@ -1,7 +1,6 @@
 "use client"
 
 import type React from "react"
-
 import { useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/components/auth-provider"
@@ -45,7 +44,7 @@ function getDashboardRoute(role: string, hasTeam: boolean) {
     case "representante":
       return "/representante/dashboard"
     case "arbitro":
-      return "/director-tecnico/dashboard"
+      return "/arbitro/dashboard"
     default:
       return "/login"
   }

@@ -12,6 +12,8 @@ import { AdminRankingChart } from "@/components/admin-ranking-chart"
 import { getTeamRankingByZone } from "@/app/actions/ranking"
 import { EmptyState } from "@/components/empty-state"
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
+import * as XLSX from "xlsx"
+import { toast } from "@/components/ui/use-toast"
 
 // Tipos para los datos
 type Team = {
@@ -74,7 +76,7 @@ export default function RankingAdminPage() {
 
         const teamsData = rankingResult.data || []
 
-        console.log("Teams data:", teamsData)
+        console.log("DEBUG: Teams data for ranking page:", teamsData) // Log de depuración
 
         // Inicializar zonas con contadores en cero
         const zoneMap = new Map<string, Zone>()
@@ -106,11 +108,11 @@ export default function RankingAdminPage() {
         // Debug info
         let debug = "Zonas procesadas:\n"
         processedZones.forEach((zone) => {
-          debug += `${zone.name}: ${zone.total_goals} goles, ${zone.teams_count} equipos\n`
+          debug += `${zone.name}: ${zone.total_goals} goles, ${zone.teams_count} equipos, ${zone.total_points} puntos\n`
         })
         setDebugInfo(debug)
 
-        console.log("Processed zones:", processedZones)
+        console.log("DEBUG: Processed zones for ranking page (after aggregation):", processedZones) // Log de depuración
 
         // Encontrar zona ganadora - ordenar por goles totales
         const sortedZones = [...processedZones].sort((a, b) => {
@@ -120,11 +122,11 @@ export default function RankingAdminPage() {
           return b.total_points - a.total_points
         })
 
-        console.log("Sorted zones:", sortedZones)
+        console.log("DEBUG: Sorted zones for winning zone:", sortedZones) // Log de depuración
 
         // Seleccionar la zona con más goles (si hay empate, la que tenga más puntos)
         const winner = sortedZones.length > 0 ? sortedZones[0] : null
-        console.log("Winning zone:", winner)
+        console.log("DEBUG: Winning zone selected:", winner) // Log de depuración
 
         setTeams(teamsData)
         setZones(processedZones)
@@ -155,6 +157,7 @@ export default function RankingAdminPage() {
         const rankingResult = await getTeamRankingByZone(selectedZone)
         if (rankingResult.success && rankingResult.data) {
           setTeamsInZone(rankingResult.data)
+          console.log("DEBUG: Teams in selected zone:", rankingResult.data) // Log de depuración
         }
       } catch (error) {
         console.error("Error cargando equipos de zona:", error)
@@ -199,6 +202,100 @@ export default function RankingAdminPage() {
     </div>
   )
 
+  const exportToExcel = () => {
+    try {
+      if (filteredTeams.length === 0) {
+        toast({
+          title: "Error",
+          description: "No hay datos para exportar",
+          variant: "destructive",
+        })
+        return
+      }
+
+      // Preparar datos para Excel (solo datos filtrados)
+      const excelData = filteredTeams.map((team, index) => ({
+        Posición: index + 1,
+        Equipo: team.team_name,
+        Zona: team.zone_name,
+        Goles: team.goals,
+        "Puntos Totales": team.total_points,
+        Kilos: Math.round((team.total_points * 10) / 100), // Cálculo: puntos * 10 / 100
+      }))
+
+      // Crear workbook y worksheet
+      const wb = XLSX.utils.book_new()
+      const ws = XLSX.utils.json_to_sheet(excelData)
+
+      // Configurar anchos de columna
+      const colWidths = [
+        { wch: 10 }, // Posición
+        { wch: 30 }, // Equipo
+        { wch: 20 }, // Zona
+        { wch: 10 }, // Goles
+        { wch: 15 }, // Puntos Totales
+        { wch: 10 }, // Kilos
+      ]
+      ws["!cols"] = colWidths
+
+      // Agregar worksheet al workbook
+      XLSX.utils.book_append_sheet(wb, ws, "Ranking Nacional")
+
+      // Si hay zona ganadora, agregar hoja adicional
+      if (winningZone) {
+        const zoneData = [
+          {
+            "Zona Ganadora": winningZone.name,
+            "Goles Totales": winningZone.total_goals,
+            Equipos: winningZone.teams_count,
+            "Puntos Totales": winningZone.total_points,
+            "Kilos Totales": Math.round((winningZone.total_points * 10) / 100),
+          },
+        ]
+        const wsZone = XLSX.utils.json_to_sheet(zoneData)
+        XLSX.utils.book_append_sheet(wb, wsZone, "Zona Ganadora")
+      }
+
+      // Generar archivo en formato binario
+      const excelBuffer = XLSX.write(wb, { bookType: "xlsx", type: "array" })
+
+      // Convertir a Blob
+      const blob = new Blob([excelBuffer], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      })
+
+      // Crear URL para el blob
+      const url = URL.createObjectURL(blob)
+
+      // Crear elemento de enlace para descargar
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `ranking_nacional_${new Date().toISOString().split("T")[0]}.xlsx`
+
+      // Simular clic para iniciar descarga
+      document.body.appendChild(a)
+      a.click()
+
+      // Limpiar
+      setTimeout(() => {
+        document.body.removeChild(a)
+        URL.revokeObjectURL(url)
+      }, 0)
+
+      toast({
+        title: "Éxito",
+        description: "Ranking exportado correctamente",
+      })
+    } catch (error) {
+      console.error("Error exporting to Excel:", error)
+      toast({
+        title: "Error",
+        description: "Error al exportar el ranking",
+        variant: "destructive",
+      })
+    }
+  }
+
   return (
     <div className="flex-1 space-y-4">
       <div className="flex items-center justify-between">
@@ -207,7 +304,7 @@ export default function RankingAdminPage() {
           <p className="text-muted-foreground">Visualiza y gestiona el ranking de equipos</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" className="gap-2">
+          <Button variant="outline" className="gap-2" onClick={exportToExcel} disabled={filteredTeams.length === 0}>
             <Download className="h-4 w-4" />
             Exportar Ranking
           </Button>
@@ -310,6 +407,7 @@ export default function RankingAdminPage() {
                       <TableHead>Equipo</TableHead>
                       <TableHead>Zona</TableHead>
                       <TableHead className="text-right">Goles</TableHead>
+                      <TableHead className="text-right">Kilos</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -326,6 +424,9 @@ export default function RankingAdminPage() {
                         <TableCell>{team.team_name}</TableCell>
                         <TableCell>{team.zone_name}</TableCell>
                         <TableCell className="text-right font-bold text-corteva-600">{team.goals}</TableCell>
+                        <TableCell className="text-right font-bold text-green-600">
+                          {Math.round((team.total_points * 10) / 100)} kg
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -359,6 +460,12 @@ export default function RankingAdminPage() {
                     <div className="text-center">
                       <div className="text-4xl font-bold">{winningZone.teams_count}</div>
                       <p className="text-sm text-muted-foreground">Equipos</p>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-4xl font-bold text-green-600">
+                        {Math.round((winningZone.total_points * 10) / 100)}
+                      </div>
+                      <p className="text-sm text-muted-foreground">Kilos totales</p>
                     </div>
                   </div>
                 </CardContent>
@@ -418,6 +525,7 @@ export default function RankingAdminPage() {
                       <TableHead className="w-16">Pos.</TableHead>
                       <TableHead>Equipo</TableHead>
                       <TableHead className="text-right">Goles</TableHead>
+                      <TableHead className="text-right">Kilos</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -433,6 +541,9 @@ export default function RankingAdminPage() {
                         </TableCell>
                         <TableCell>{team.team_name}</TableCell>
                         <TableCell className="text-right font-bold text-corteva-600">{team.goals}</TableCell>
+                        <TableCell className="text-right font-bold text-green-600">
+                          {Math.round((team.total_points * 10) / 100)} kg
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
