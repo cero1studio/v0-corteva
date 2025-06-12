@@ -283,42 +283,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       setIsLoading(true)
       setError(null)
-
-      const { data, error: signInError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      })
-
+      const { error: signInError } = await supabase.auth.signInWithPassword({ email, password })
       if (signInError) {
         setError(signInError.message)
         return { error: signInError.message }
       }
-
-      // Si el login es exitoso, obtener el perfil y redirigir inmediatamente
-      if (data.session && data.user) {
-        console.log("AUTH: Login successful, fetching profile...")
-
-        const userProfile = await fetchUserProfile(data.user.id, data.user.email)
-        if (userProfile) {
-          setSession(data.session)
-          setUser(data.user)
-          setProfile(userProfile)
-          cacheSession(data.session, data.user)
-          cacheProfile(userProfile)
-
-          // Redirección inmediata
-          const dashboardRoute = getDashboardRoute(userProfile.role, userProfile.team_id)
-          console.log("AUTH: Redirecting to:", dashboardRoute)
-
-          // Usar window.location para forzar la navegación
-          if (typeof window !== "undefined") {
-            window.location.href = dashboardRoute
-          } else {
-            router.push(dashboardRoute)
-          }
-        }
-      }
-
       return { error: null }
     } catch (err: any) {
       setError(err.message)
