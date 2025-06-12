@@ -52,8 +52,15 @@ export default function LoginPage() {
         }
         setIsSubmitting(false)
       } else {
-        console.log("LOGIN: Sign in successful, waiting for redirection...")
-        // No resetear isSubmitting aquí, dejar que AuthGuard maneje la redirección
+        console.log("LOGIN: Sign in successful")
+        // No resetear isSubmitting aquí, la redirección debería ocurrir automáticamente
+        // Si no ocurre en 3 segundos, mostrar error
+        setTimeout(() => {
+          if (isSubmitting) {
+            setLocalError("Error en la redirección. Recarga la página.")
+            setIsSubmitting(false)
+          }
+        }, 3000)
       }
     } catch (error: any) {
       console.error("LOGIN: Error en inicio de sesión:", error)

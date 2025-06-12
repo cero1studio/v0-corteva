@@ -108,21 +108,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const handleRedirection = useCallback(
     (userProfile: UserProfile) => {
-      const currentPath = pathname || "/"
       const dashboardRoute = getDashboardRoute(userProfile.role, userProfile.team_id)
+      console.log("AUTH: Handling redirection to:", dashboardRoute)
 
-      console.log("AUTH: Current path:", currentPath, "Dashboard route:", dashboardRoute)
-
-      // Solo redirigir desde login
-      if (currentPath === "/login") {
-        console.log("AUTH: Redirecting from login to dashboard")
+      // Usar window.location para navegación más confiable
+      if (typeof window !== "undefined") {
+        window.location.href = dashboardRoute
+      } else {
         router.push(dashboardRoute)
-      } else if (userProfile.role === "capitan" && !userProfile.team_id && currentPath !== "/capitan/crear-equipo") {
-        console.log("AUTH: Captain without team, redirecting to create team")
-        router.push("/capitan/crear-equipo")
       }
     },
-    [pathname, getDashboardRoute, router],
+    [getDashboardRoute, router],
   )
 
   // Inicialización inmediata con caché para URLs directas
@@ -287,11 +283,42 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       setIsLoading(true)
       setError(null)
-      const { error: signInError } = await supabase.auth.signInWithPassword({ email, password })
+
+      const { data, error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      })
+
       if (signInError) {
         setError(signInError.message)
         return { error: signInError.message }
       }
+
+      // Si el login es exitoso, obtener el perfil y redirigir inmediatamente
+      if (data.session && data.user) {
+        console.log("AUTH: Login successful, fetching profile...")
+
+        const userProfile = await fetchUserProfile(data.user.id, data.user.email)
+        if (userProfile) {
+          setSession(data.session)
+          setUser(data.user)
+          setProfile(userProfile)
+          cacheSession(data.session, data.user)
+          cacheProfile(userProfile)
+
+          // Redirección inmediata
+          const dashboardRoute = getDashboardRoute(userProfile.role, userProfile.team_id)
+          console.log("AUTH: Redirecting to:", dashboardRoute)
+
+          // Usar window.location para forzar la navegación
+          if (typeof window !== "undefined") {
+            window.location.href = dashboardRoute
+          } else {
+            router.push(dashboardRoute)
+          }
+        }
+      }
+
       return { error: null }
     } catch (err: any) {
       setError(err.message)
