@@ -25,7 +25,6 @@ import { getAllZones } from "@/app/actions/zones"
 import { getAllTeams } from "@/app/actions/teams"
 import { getAllProducts } from "@/app/actions/products"
 import { getAllUsers } from "@/app/actions/users"
-import { getAllDistributors } from "@/app/actions/distributors"
 
 interface Sale {
   id: string
@@ -99,9 +98,6 @@ export default function AdminVentasPage() {
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedZone, setSelectedZone] = useState<string>("all")
-  const [selectedTeam, setSelectedTeam] = useState<string>("all")
-  const [selectedDistributor, setSelectedDistributor] = useState<string>("all")
-  const [selectedCaptain, setSelectedCaptain] = useState<string>("all")
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [editingSale, setEditingSale] = useState<Sale | null>(null)
@@ -139,13 +135,12 @@ export default function AdminVentasPage() {
     try {
       setLoading(true)
 
-      const [salesResult, zonesData, teamsResult, productsResult, usersResult, distributorsData] = await Promise.all([
+      const [salesResult, zonesData, teamsResult, productsResult, usersResult] = await Promise.all([
         getAllSales(),
         getAllZones(),
         getAllTeams(),
         getAllProducts(),
         getAllUsers(),
-        getAllDistributors(),
       ])
 
       if (salesResult.success) {
@@ -182,12 +177,6 @@ export default function AdminVentasPage() {
       } else {
         setUsers([])
       }
-
-      if (distributorsData && Array.isArray(distributorsData)) {
-        setDistributors(distributorsData)
-      } else {
-        setDistributors([])
-      }
     } catch (error) {
       console.error("Error loading data:", error)
       toast({
@@ -215,14 +204,9 @@ export default function AdminVentasPage() {
       captainName.toLowerCase().includes(searchTerm.toLowerCase())
 
     const matchesZone = selectedZone === "all" || sale.zone?.id === selectedZone
-    const matchesTeam = selectedTeam === "all" || sale.team?.id === selectedTeam
-    const matchesDistributor = selectedDistributor === "all" || sale.distributor?.id === selectedDistributor
-    const matchesCaptain = selectedCaptain === "all" || sale.representative?.id === selectedCaptain
 
-    return matchesSearch && matchesZone && matchesTeam && matchesDistributor && matchesCaptain
+    return matchesSearch && matchesZone
   })
-
-  const filteredTeams = selectedZone === "all" ? teams : teams.filter((team) => team.zone_id === selectedZone)
 
   const downloadExcel = () => {
     try {
@@ -270,14 +254,6 @@ export default function AdminVentasPage() {
           if (selectedZone !== "all") {
             const zoneName = zones.find((z) => z.id === selectedZone)?.name || "zona"
             fileName += `_${zoneName.toLowerCase().replace(/\s+/g, "_")}`
-          }
-          if (selectedTeam !== "all") {
-            const teamName = teams.find((t) => t.id === selectedTeam)?.name || "equipo"
-            fileName += `_${teamName.toLowerCase().replace(/\s+/g, "_")}`
-          }
-          if (selectedDistributor !== "all") {
-            const distributorName = distributors.find((d) => d.id === selectedDistributor)?.name || "distribuidor"
-            fileName += `_${distributorName.toLowerCase().replace(/\s+/g, "_")}`
           }
           if (searchTerm) {
             fileName += `_busqueda`
@@ -629,7 +605,7 @@ export default function AdminVentasPage() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
               <Label htmlFor="search">Buscar</Label>
               <div className="relative">
@@ -642,22 +618,6 @@ export default function AdminVentasPage() {
                   className="pl-10"
                 />
               </div>
-            </div>
-            <div>
-              <Label htmlFor="distributor">Distribuidor</Label>
-              <Select value={selectedDistributor} onValueChange={setSelectedDistributor}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Todos los distribuidores" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos los distribuidores</SelectItem>
-                  {distributors.map((distributor) => (
-                    <SelectItem key={distributor.id} value={distributor.id}>
-                      {distributor.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
             </div>
             <div>
               <Label htmlFor="zone">Zona</Label>
@@ -675,49 +635,12 @@ export default function AdminVentasPage() {
                 </SelectContent>
               </Select>
             </div>
-            <div>
-              <Label htmlFor="team">Equipo</Label>
-              <Select value={selectedTeam} onValueChange={setSelectedTeam}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Todos los equipos" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos los equipos</SelectItem>
-                  {filteredTeams.map((team) => (
-                    <SelectItem key={team.id} value={team.id}>
-                      {team.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label htmlFor="captain">Capitán</Label>
-              <Select value={selectedCaptain} onValueChange={setSelectedCaptain}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Todos los capitanes" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos los capitanes</SelectItem>
-                  {users
-                    .filter((user) => user.role === "Capitan")
-                    .map((captain) => (
-                      <SelectItem key={captain.id} value={captain.id}>
-                        {captain.full_name}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
-            </div>
             <div className="flex items-end">
               <Button
                 variant="outline"
                 onClick={() => {
                   setSearchTerm("")
                   setSelectedZone("all")
-                  setSelectedTeam("all")
-                  setSelectedDistributor("all")
-                  setSelectedCaptain("all")
                 }}
                 className="w-full"
               >
@@ -743,7 +666,7 @@ export default function AdminVentasPage() {
               <Package className="mx-auto h-12 w-12 text-muted-foreground" />
               <h3 className="mt-4 text-lg font-semibold">No hay ventas</h3>
               <p className="text-muted-foreground">
-                {searchTerm || selectedZone !== "all" || selectedTeam !== "all" || selectedDistributor !== "all"
+                {searchTerm || selectedZone !== "all"
                   ? "No se encontraron ventas con los filtros aplicados"
                   : "Aún no hay ventas registradas"}
               </p>
