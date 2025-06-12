@@ -7,11 +7,11 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { registerCompetitorClient } from "@/app/actions/competitor-clients"
-import { redirect } from "next/navigation"
 import { toast } from "@/hooks/use-toast"
 import { useState, useEffect } from "react"
 import Link from "next/link"
 import { ArrowLeft } from "lucide-react"
+import { useRouter } from "next/navigation"
 
 interface Zone {
   id: string
@@ -43,6 +43,8 @@ export function NewClientForm({ zones, teams, captains }: NewClientFormProps) {
   const [selectedTeamId, setSelectedTeamId] = useState<string>("")
   const [tipoVenta, setTipoVenta] = useState<string>("")
   const [nombreAlmacen, setNombreAlmacen] = useState<string>("")
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const router = useRouter()
 
   // Filter teams based on selected zone
   const availableTeams = selectedZoneId ? teams.filter((team) => team.zone_id === selectedZoneId) : teams
@@ -108,26 +110,38 @@ export function NewClientForm({ zones, teams, captains }: NewClientFormProps) {
       return
     }
 
+    setIsSubmitting(true)
+
     // Append additional data to formData for the server action
     formData.append("team_id", selectedTeamId)
     formData.append("representative_id", teamCaptain!.id) // teamCaptain is guaranteed to exist here due to validation
     formData.append("tipo_venta", tipoVenta)
     formData.append("nombre_almacen", tipoVenta === "distribuidor" ? nombreAlmacen : "")
 
-    const result = await registerCompetitorClient(formData)
+    try {
+      const result = await registerCompetitorClient(formData)
 
-    if (result.success) {
-      toast({
-        title: "Éxito",
-        description: "Cliente registrado correctamente",
-      })
-      redirect("/admin/clientes") // Redirect on success
-    } else {
+      if (result.success) {
+        toast({
+          title: "Éxito",
+          description: "Cliente registrado correctamente",
+        })
+        router.push("/admin/clientes")
+      } else {
+        toast({
+          title: "Error",
+          description: result.error || "Error al registrar cliente",
+          variant: "destructive",
+        })
+      }
+    } catch (error: any) {
       toast({
         title: "Error",
-        description: result.error || "Error al registrar cliente",
+        description: "Error inesperado al registrar cliente",
         variant: "destructive",
       })
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
@@ -256,10 +270,10 @@ export function NewClientForm({ zones, teams, captains }: NewClientFormProps) {
                       <SelectValue placeholder="Seleccionar tipo de venta" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="directa">Venta Directa</SelectItem>
+                      <SelectItem value="venta_directa">Venta Directa</SelectItem>
                       <SelectItem value="distribuidor">A través de Distribuidor</SelectItem>
-                      <SelectItem value="credito">Venta a Crédito</SelectItem>
-                      <SelectItem value="contado">Venta de Contado</SelectItem>
+                      <SelectItem value="venta_credito">Venta a Crédito</SelectItem>
+                      <SelectItem value="venta_contado">Venta de Contado</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -316,6 +330,26 @@ export function NewClientForm({ zones, teams, captains }: NewClientFormProps) {
                   {formErrors.points && <p className="text-red-500 text-sm mt-1">{formErrors.points}</p>}
                 </div>
               </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="producto_anterior">Producto Anterior</Label>
+                  <Input
+                    id="producto_anterior"
+                    name="producto_anterior"
+                    placeholder="Producto que usaba anteriormente"
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="producto_super_ganaderia">Producto Súper Ganadería</Label>
+                  <Input
+                    id="producto_super_ganaderia"
+                    name="producto_super_ganaderia"
+                    placeholder="Producto de Súper Ganadería recomendado"
+                  />
+                </div>
+              </div>
             </div>
 
             {/* Notas */}
@@ -328,7 +362,9 @@ export function NewClientForm({ zones, teams, captains }: NewClientFormProps) {
               <Button type="button" variant="outline" asChild>
                 <Link href="/admin/clientes">Cancelar</Link>
               </Button>
-              <Button type="submit">Registrar Cliente</Button>
+              <Button type="submit" disabled={isSubmitting}>
+                {isSubmitting ? "Registrando..." : "Registrar Cliente"}
+              </Button>
             </div>
           </form>
         </CardContent>
