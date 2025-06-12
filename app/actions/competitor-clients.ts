@@ -2,7 +2,6 @@
 
 import { createServerClient } from "@/lib/supabase/server"
 import { revalidatePath } from "next/cache"
-import { redirect } from "next/navigation" // Import redirect
 
 export async function registerCompetitorClient(formData: FormData) {
   const supabase = createServerClient()
@@ -53,8 +52,8 @@ export async function registerCompetitorClient(formData: FormData) {
     }
 
     revalidatePath("/admin/clientes")
-    // Redirect to the clients list page after successful registration
-    redirect("/admin/clientes")
+    return { success: true, message: "Cliente registrado exitosamente" }
+    // Remover el redirect de aquí ya que debe manejarse en el cliente
   } catch (error: any) {
     console.error("Error inesperado al registrar cliente de la competencia:", error)
     return { success: false, error: error.message || "Error inesperado al registrar cliente" }
