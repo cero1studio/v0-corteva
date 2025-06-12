@@ -442,14 +442,12 @@ export default function AdminClientesPage() {
             <Download className="mr-2 h-4 w-4" />
             Descargar Excel
           </Button>
-          <Button asChild>
-            {" "}
-            {/* Use asChild to render Link inside Button */}
-            <Link href="/admin/clientes/nuevo">
+          <Link href="/admin/clientes/nuevo">
+            <Button>
               <PlusIcon className="mr-2 h-4 w-4" />
               Agregar Cliente
-            </Link>
-          </Button>
+            </Button>
+          </Link>
         </div>
       </div>
 
