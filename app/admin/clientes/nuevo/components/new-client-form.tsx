@@ -343,11 +343,15 @@ export function NewClientForm({ zones, teams, captains }: NewClientFormProps) {
 
                 <div>
                   <Label htmlFor="producto_super_ganaderia">Producto Súper Ganadería</Label>
-                  <Input
-                    id="producto_super_ganaderia"
-                    name="producto_super_ganaderia"
-                    placeholder="Producto de Súper Ganadería recomendado"
-                  />
+                  <Select name="producto_super_ganaderia">
+                    <SelectTrigger>
+                      <SelectValue placeholder="Seleccionar producto" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Combatran XT">Combatran XT</SelectItem>
+                      <SelectItem value="Pastar D">Pastar D</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
             </div>
