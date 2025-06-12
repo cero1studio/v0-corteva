@@ -108,17 +108,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const handleRedirection = useCallback(
     (userProfile: UserProfile) => {
+      const currentPath = pathname || "/"
       const dashboardRoute = getDashboardRoute(userProfile.role, userProfile.team_id)
-      console.log("AUTH: Handling redirection to:", dashboardRoute)
 
-      // Usar window.location para navegación más confiable
-      if (typeof window !== "undefined") {
-        window.location.href = dashboardRoute
-      } else {
+      console.log("AUTH: Current path:", currentPath, "Dashboard route:", dashboardRoute)
+
+      // Solo redirigir desde login
+      if (currentPath === "/login") {
+        console.log("AUTH: Redirecting from login to dashboard")
         router.push(dashboardRoute)
+      } else if (userProfile.role === "capitan" && !userProfile.team_id && currentPath !== "/capitan/crear-equipo") {
+        console.log("AUTH: Captain without team, redirecting to create team")
+        router.push("/capitan/crear-equipo")
       }
     },
-    [getDashboardRoute, router],
+    [pathname, getDashboardRoute, router],
   )
 
   // Inicialización inmediata con caché para URLs directas
