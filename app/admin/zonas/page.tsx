@@ -1,13 +1,14 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { useToast } from "@/components/ui/use-toast"
-import { PlusCircle, Edit, Trash2, MapPin, RefreshCw } from "lucide-react"
+import { PlusCircle, Edit, Trash2, MapPin, RefreshCw, Search, X } from "lucide-react"
 import { EmptyState } from "@/components/empty-state"
 import Link from "next/link"
 
@@ -24,6 +25,7 @@ export default function ZonasPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [retryCount, setRetryCount] = useState(0)
+  const [searchTerm, setSearchTerm] = useState("")
   const { toast } = useToast()
 
   const fetchZones = useCallback(async () => {
@@ -59,6 +61,18 @@ export default function ZonasPage() {
     }
   }, [toast])
 
+  // Filtrar zonas basándose en el término de búsqueda
+  const filteredZones = useMemo(() => {
+    if (!searchTerm.trim()) return zones
+
+    const searchLower = searchTerm.toLowerCase().trim()
+    return zones.filter(
+      (zone) =>
+        zone.name.toLowerCase().includes(searchLower) ||
+        (zone.description && zone.description.toLowerCase().includes(searchLower)),
+    )
+  }, [zones, searchTerm])
+
   // Usar useEffect con dependencia en retryCount para permitir reintentos
   useEffect(() => {
     fetchZones()
@@ -66,6 +80,10 @@ export default function ZonasPage() {
 
   const handleRetry = () => {
     setRetryCount((prev) => prev + 1)
+  }
+
+  const clearSearch = () => {
+    setSearchTerm("")
   }
 
   async function handleDeleteZone(id: string, name: string) {
@@ -168,6 +186,36 @@ export default function ZonasPage() {
           <CardDescription>Administra las zonas geográficas para la competición</CardDescription>
         </CardHeader>
         <CardContent>
+          {/* Filtro de búsqueda */}
+          <div className="mb-6">
+            <div className="relative max-w-sm">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+              <Input
+                placeholder="Buscar zonas por nombre o descripción..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10 pr-10"
+              />
+              {searchTerm && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={clearSearch}
+                  className="absolute right-1 top-1/2 transform -translate-y-1/2 h-8 w-8"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
+            {searchTerm && (
+              <p className="text-sm text-muted-foreground mt-2">
+                {filteredZones.length === 0
+                  ? `No se encontraron zonas que coincidan con "${searchTerm}"`
+                  : `Mostrando ${filteredZones.length} zona${filteredZones.length !== 1 ? "s" : ""} de ${zones.length}`}
+              </p>
+            )}
+          </div>
+
           {zones.length === 0 ? (
             <EmptyState
               icon={MapPin}
@@ -182,6 +230,18 @@ export default function ZonasPage() {
                 </Button>
               }
             />
+          ) : filteredZones.length === 0 && searchTerm ? (
+            <EmptyState
+              icon={Search}
+              title="No se encontraron resultados"
+              description={`No hay zonas que coincidan con "${searchTerm}"`}
+              action={
+                <Button onClick={clearSearch} variant="outline">
+                  <X className="mr-2 h-4 w-4" />
+                  Limpiar búsqueda
+                </Button>
+              }
+            />
           ) : (
             <Table>
               <TableHeader>
@@ -192,7 +252,7 @@ export default function ZonasPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {zones.map((zone) => (
+                {filteredZones.map((zone) => (
                   <TableRow key={zone.id}>
                     <TableCell>
                       <div className="font-medium">{zone.name}</div>
