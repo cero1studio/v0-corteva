@@ -160,20 +160,6 @@ export function AdminZonesChart({ zonesData: propZonesData }: AdminZonesChartPro
     }
   }, [])
 
-  useEffect(() => {
-    setIsMounted(true)
-    if (propZonesData) {
-      setData(propZonesData)
-      setLoading(false)
-    } else {
-      fetchData()
-    }
-
-    return () => {
-      // Cleanup
-    }
-  }, [propZonesData, fetchData])
-
   // Función para generar colores aleatorios pero consistentes basados en ID
   const getRandomColor = (id: string) => {
     // Lista de colores predefinidos vibrantes
@@ -200,6 +186,18 @@ export function AdminZonesChart({ zonesData: propZonesData }: AdminZonesChartPro
     const hash = id.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0)
     return colors[hash % colors.length]
   }
+
+  // useEffect simplificado que siempre carga datos frescos
+  useEffect(() => {
+    setIsMounted(true)
+
+    // Siempre cargar datos frescos, ignorar propZonesData para evitar conflictos
+    fetchData()
+
+    return () => {
+      // Cleanup si es necesario
+    }
+  }, [fetchData]) // Solo depende de fetchData
 
   const CustomTooltip = ({ active, payload }: any) => {
     if (active && payload && payload.length) {
