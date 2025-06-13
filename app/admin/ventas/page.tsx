@@ -33,6 +33,7 @@ interface Sale {
   quantity: number
   points: number
   price: number
+  kilos: number // Nuevo campo
   sale_date: string
   created_at: string
   products: {
@@ -110,6 +111,7 @@ export default function AdminVentasPage() {
     quantity: "",
     points: "",
     representative_id: "",
+    kilos: "", // Nuevo campo
   })
 
   const [selectedProductPoints, setSelectedProductPoints] = useState<number>(0)
@@ -236,6 +238,7 @@ export default function AdminVentasPage() {
         Equipo: sale.team?.name || "N/A",
         Zona: sale.zone?.name || "N/A",
         Cantidad: sale.quantity,
+        Kilos: sale.kilos || 0, // Nuevo campo
         Puntos: sale.points,
         "Fecha de Venta": sale.sale_date ? new Date(sale.sale_date).toLocaleDateString() : "N/A",
         "Fecha de Registro": new Date(sale.created_at).toLocaleDateString(),
@@ -253,6 +256,7 @@ export default function AdminVentasPage() {
         { wch: 20 }, // Equipo
         { wch: 15 }, // Zona
         { wch: 10 }, // Cantidad
+        { wch: 10 }, // Kilos
         { wch: 10 }, // Puntos
         { wch: 15 }, // Fecha de Venta
         { wch: 18 }, // Fecha de Registro
@@ -336,6 +340,7 @@ export default function AdminVentasPage() {
       form.append("quantity", formData.quantity)
       form.append("points", finalPoints)
       form.append("representative_id", formData.representative_id)
+      form.append("kilos", formData.kilos) // Nuevo campo
 
       const result = await createSale(form)
 
@@ -345,7 +350,7 @@ export default function AdminVentasPage() {
           description: "Venta creada correctamente",
         })
         setIsCreateDialogOpen(false)
-        setFormData({ product_id: "", quantity: "", points: "", representative_id: "" })
+        setFormData({ product_id: "", quantity: "", points: "", representative_id: "", kilos: "" })
         setSelectedProductPoints(0)
         loadData()
       } else {
@@ -387,6 +392,7 @@ export default function AdminVentasPage() {
       form.append("quantity", formData.quantity)
       form.append("points", formData.points)
       form.append("representative_id", formData.representative_id)
+      form.append("kilos", formData.kilos) // Nuevo campo
 
       const result = await updateSale(editingSale.id, form)
 
@@ -453,6 +459,7 @@ export default function AdminVentasPage() {
       quantity: sale.quantity.toString(),
       points: sale.points.toString(),
       representative_id: sale.representative?.id || "",
+      kilos: sale.kilos?.toString() || "", // Nuevo campo
     })
     setIsEditDialogOpen(true)
   }
@@ -537,6 +544,17 @@ export default function AdminVentasPage() {
                     value={formData.quantity}
                     onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
                     placeholder="Cantidad vendida"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="kilos">Kilos</Label>
+                  <Input
+                    id="kilos"
+                    type="number"
+                    step="0.01"
+                    value={formData.kilos}
+                    onChange={(e) => setFormData({ ...formData, kilos: e.target.value })}
+                    placeholder="Kilos vendidos"
                   />
                 </div>
                 <div>
@@ -650,6 +668,7 @@ export default function AdminVentasPage() {
                   <TableHead>Equipo</TableHead>
                   <TableHead>Zona</TableHead>
                   <TableHead>Cantidad</TableHead>
+                  <TableHead>Kilos</TableHead>
                   <TableHead>Puntos</TableHead>
                   <TableHead>Fecha</TableHead>
                   <TableHead>Acciones</TableHead>
@@ -688,6 +707,7 @@ export default function AdminVentasPage() {
                       <Badge variant="secondary">{sale.zone?.name || "N/A"}</Badge>
                     </TableCell>
                     <TableCell>{sale.quantity}</TableCell>
+                    <TableCell>{sale.kilos?.toLocaleString() || "0"}</TableCell>
                     <TableCell>{sale.points?.toLocaleString() || "0"}</TableCell>
                     <TableCell>{sale.sale_date ? new Date(sale.sale_date).toLocaleDateString() : "N/A"}</TableCell>
                     <TableCell>
@@ -769,6 +789,17 @@ export default function AdminVentasPage() {
                 value={formData.quantity}
                 onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
                 placeholder="Cantidad vendida"
+              />
+            </div>
+            <div>
+              <Label htmlFor="edit-kilos">Kilos</Label>
+              <Input
+                id="edit-kilos"
+                type="number"
+                step="0.01"
+                value={formData.kilos}
+                onChange={(e) => setFormData({ ...formData, kilos: e.target.value })}
+                placeholder="Kilos vendidos"
               />
             </div>
             <div>

@@ -3,8 +3,6 @@
 import { createServerSupabaseClient } from "@/lib/supabase/server"
 import { revalidatePath } from "next/cache"
 
-
-
 export async function registerSale(formData: FormData) {
   const supabase = createServerSupabaseClient()
 
@@ -163,6 +161,7 @@ export async function getAllSales() {
         representative_id,
         quantity,
         points,
+        kilos,
         sale_date,
         created_at
       `)
@@ -253,6 +252,7 @@ export async function getAllSales() {
         quantity: sale.quantity,
         points: sale.points,
         price: sale.points, // Mapear points a price para compatibilidad con UI
+        kilos: sale.kilos, // Incluir kilos
         sale_date: sale.sale_date,
         created_at: sale.created_at,
         products: product
@@ -309,6 +309,7 @@ export async function createSale(formData: FormData) {
   const points = formData.get("points") as string
   const price = formData.get("price") as string
   const representative_id = formData.get("representative_id") as string
+  const kilos = formData.get("kilos") as string // Nuevo campo
 
   try {
     // Validar que tenemos todos los datos necesarios
@@ -365,6 +366,7 @@ export async function createSale(formData: FormData) {
       points: finalPoints,
       representative_id,
       team_id: representative.team_id,
+      kilos: kilos ? Number.parseFloat(kilos) : null, // Nuevo campo
     })
 
     const { data, error } = await supabase
@@ -377,6 +379,7 @@ export async function createSale(formData: FormData) {
           representative_id,
           team_id: representative.team_id,
           sale_date: new Date().toISOString(),
+          kilos: kilos ? Number.parseFloat(kilos) : null, // Nuevo campo
         },
       ])
       .select()
@@ -403,6 +406,7 @@ export async function updateSale(id: string, formData: FormData) {
   const quantity = formData.get("quantity") as string
   const points = formData.get("points") || (formData.get("price") as string)
   const representative_id = formData.get("representative_id") as string
+  const kilos = formData.get("kilos") as string // Nuevo campo
 
   try {
     // Obtener el team_id del representante
@@ -424,6 +428,7 @@ export async function updateSale(id: string, formData: FormData) {
         points: Number.parseFloat(points),
         representative_id,
         team_id: representative.team_id,
+        kilos: kilos ? Number.parseFloat(kilos) : null, // Nuevo campo
       })
       .eq("id", id)
       .select()
