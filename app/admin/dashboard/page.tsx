@@ -42,13 +42,16 @@ export default function AdminDashboardPage() {
   const [productStats, setProductStats] = useState<any[]>([])
   const [error, setError] = useState<string | null>(null)
   const [retryCount, setRetryCount] = useState(0)
-  const maxRetries = 3
+  const [dataLoaded, setDataLoaded] = useState({
+    basicStats: false,
+    topTeams: false,
+    zoneStats: false,
+    productStats: false,
+  })
 
-  // Función simple para obtener estadísticas básicas
+  // Función para obtener estadísticas básicas
   const fetchBasicStats = useCallback(async () => {
     try {
-      setLoading(true)
-
       // Usar consultas simples y separadas en lugar de Promise.all
       const capitanesResult = await supabase
         .from("profiles")
@@ -77,100 +80,181 @@ export default function AdminDashboardPage() {
         totalSales: salesResult.count || 0,
       })
 
-      // Cargar top teams de forma simple
-      const topTeamsResult = await supabase
-        .from("teams")
-        .select(`
-          id,
-          name,
-          total_points,
-          zones (name)
-        `)
-        .order("total_points", { ascending: false })
-        .limit(5)
-
-      if (topTeamsResult.data) {
-        const formattedTeams = topTeamsResult.data.map((team) => ({
-          id: team.id,
-          name: team.name,
-          goals: team.total_points || 0,
-          zone: team.zones?.name || "Sin zona",
-        }))
-        setTopTeams(formattedTeams)
-      }
-
-      // También agregar carga de estadísticas de zonas
-      const zoneStatsResult = await supabase.from("zones").select(`
-          id,
-          name,
-          teams (
-            id,
-            total_points
-          )
-        `)
-
-      if (zoneStatsResult.data) {
-        const formattedZones = zoneStatsResult.data.map((zone) => ({
-          id: zone.id,
-          name: zone.name,
-          teams: zone.teams?.length || 0,
-          total_goals: zone.teams?.reduce((sum, team) => sum + (team.total_points || 0), 0) || 0,
-        }))
-        setZoneStats(formattedZones)
-      }
-
-      // Y estadísticas de productos
-      const productStatsResult = await supabase.from("products").select(`
-          id,
-          name,
-          sales (
-            id,
-            quantity,
-            points
-          )
-        `)
-
-      if (productStatsResult.data) {
-        const formattedProducts = productStatsResult.data.map((product) => ({
-          id: product.id,
-          name: product.name,
-          sales: product.sales?.reduce((sum, sale) => sum + (sale.quantity || 0), 0) || 0,
-          totalPoints: product.sales?.reduce((sum, sale) => sum + (sale.points || 0), 0) || 0,
-        }))
-        setProductStats(formattedProducts)
-      }
-
-      setLoading(false)
+      setDataLoaded((prev) => ({ ...prev, basicStats: true }))
+      return true
     } catch (error: any) {
       console.error("Error al cargar estadísticas básicas:", error)
-      setError("Error al cargar estadísticas. Por favor, intenta nuevamente.")
-      setLoading(false)
+      return false
     }
   }, [])
 
-  // Usar useEffect con dependencia en retryCount para permitir reintentos
-  useEffect(() => {
-    // Establecer un timeout para evitar carga infinita
-    const timeout = setTimeout(() => {
-      if (loading) {
-        setLoading(false)
-        setError("La carga está tardando demasiado. Por favor, intenta nuevamente.")
-      }
-    }, 10000) // 10 segundos máximo
+  // Función separada para cargar equipos destacados
+  const fetchTopTeams = useCallback(async () => {
+    try {
+      // Consulta simplificada para top teams
+      const { data, error } = await supabase
+        .from("teams")
+        .select("id, name, total_points, zone_id")
+        .order("total_points", { ascending: false })
+        .limit(5)
 
-    fetchBasicStats()
+      if (error) throw error
+
+      // Obtener nombres de zonas en una consulta separada
+      const zoneIds = data.map((team) => team.zone_id).filter(Boolean)
+      let zoneNames: Record<string, string> = {}
+
+      if (zoneIds.length > 0) {
+        const { data: zonesData } = await supabase.from("zones").select("id, name").in("id", zoneIds)
+
+        if (zonesData) {
+          zoneNames = zonesData.reduce(
+            (acc, zone) => {
+              acc[zone.id] = zone.name
+              return acc
+            },
+            {} as Record<string, string>,
+          )
+        }
+      }
+
+      const formattedTeams = data.map((team) => ({
+        id: team.id,
+        name: team.name,
+        goals: team.total_points || 0,
+        zone: team.zone_id ? zoneNames[team.zone_id] || "Sin zona" : "Sin zona",
+      }))
+
+      setTopTeams(formattedTeams)
+      setDataLoaded((prev) => ({ ...prev, topTeams: true }))
+      return true
+    } catch (error) {
+      console.error("Error al cargar equipos destacados:", error)
+      return false
+    }
+  }, [])
+
+  // Función separada para cargar estadísticas de zonas
+  const fetchZoneStats = useCallback(async () => {
+    try {
+      // Consulta simplificada para zonas
+      const { data, error } = await supabase.from("zones").select("id, name")
+
+      if (error) throw error
+
+      // Para cada zona, obtener equipos en consultas separadas
+      const zoneStatsPromises = data.map(async (zone) => {
+        const { data: teamsData, count } = await supabase
+          .from("teams")
+          .select("id, total_points", { count: "exact" })
+          .eq("zone_id", zone.id)
+
+        const totalGoals = teamsData?.reduce((sum, team) => sum + (team.total_points || 0), 0) || 0
+
+        return {
+          id: zone.id,
+          name: zone.name,
+          teams: count || 0,
+          total_goals: totalGoals,
+        }
+      })
+
+      const zoneStatsResults = await Promise.all(zoneStatsPromises)
+      setZoneStats(zoneStatsResults)
+      setDataLoaded((prev) => ({ ...prev, zoneStats: true }))
+      return true
+    } catch (error) {
+      console.error("Error al cargar estadísticas de zonas:", error)
+      return false
+    }
+  }, [])
+
+  // Función separada para cargar estadísticas de productos
+  const fetchProductStats = useCallback(async () => {
+    try {
+      // Consulta simplificada para productos
+      const { data, error } = await supabase.from("products").select("id, name")
+
+      if (error) throw error
+
+      // Para cada producto, obtener ventas en consultas separadas
+      const productStatsPromises = data.map(async (product) => {
+        const { data: salesData } = await supabase.from("sales").select("quantity, points").eq("product_id", product.id)
+
+        const totalSales = salesData?.reduce((sum, sale) => sum + (sale.quantity || 0), 0) || 0
+        const totalPoints = salesData?.reduce((sum, sale) => sum + (sale.points || 0), 0) || 0
+
+        return {
+          id: product.id,
+          name: product.name,
+          sales: totalSales,
+          totalPoints: totalPoints,
+        }
+      })
+
+      const productStatsResults = await Promise.all(productStatsPromises)
+      setProductStats(productStatsResults)
+      setDataLoaded((prev) => ({ ...prev, productStats: true }))
+      return true
+    } catch (error) {
+      console.error("Error al cargar estadísticas de productos:", error)
+      return false
+    }
+  }, [])
+
+  // Cargar datos de forma secuencial y con manejo de errores
+  useEffect(() => {
+    let isMounted = true
+    let timeoutId: NodeJS.Timeout | null = null
+
+    const loadData = async () => {
+      if (!isMounted) return
+
+      setLoading(true)
+      setError(null)
+
+      // Establecer un timeout para evitar carga infinita
+      timeoutId = setTimeout(() => {
+        if (isMounted && loading) {
+          setLoading(false)
+          // Solo mostrar error si realmente no se han cargado los datos
+          if (!dataLoaded.basicStats) {
+            setError("La carga está tardando demasiado. Por favor, intenta nuevamente.")
+          }
+        }
+      }, 15000) // 15 segundos máximo
+
+      // Cargar datos de forma secuencial
+      const basicStatsSuccess = await fetchBasicStats()
+
+      // Cargar el resto de datos en paralelo
+      if (basicStatsSuccess && isMounted) {
+        // Usar Promise.allSettled para que un error no detenga las otras consultas
+        await Promise.allSettled([fetchTopTeams(), fetchZoneStats(), fetchProductStats()])
+      }
+
+      // Marcar como completado solo si el componente sigue montado
+      if (isMounted) {
+        setLoading(false)
+        // Limpiar el timeout ya que terminamos
+        if (timeoutId) clearTimeout(timeoutId)
+      }
+    }
+
+    loadData()
 
     return () => {
-      clearTimeout(timeout)
+      isMounted = false
+      if (timeoutId) clearTimeout(timeoutId)
     }
-  }, [fetchBasicStats, retryCount])
+  }, [fetchBasicStats, fetchTopTeams, fetchZoneStats, fetchProductStats, retryCount])
 
   const handleRetry = () => {
     setError(null)
     setRetryCount((prev) => prev + 1)
   }
 
-  if (error) {
+  if (error && !dataLoaded.basicStats) {
     return (
       <EmptyState
         icon={AlertCircle}
@@ -219,7 +303,11 @@ export default function AdminDashboardPage() {
             <Building2 className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            {loading ? <Skeleton className="h-8 w-20" /> : <div className="text-2xl font-bold">{stats.totalTeams}</div>}
+            {loading && !dataLoaded.basicStats ? (
+              <Skeleton className="h-8 w-20" />
+            ) : (
+              <div className="text-2xl font-bold">{stats.totalTeams}</div>
+            )}
             <p className="text-xs text-muted-foreground">Equipos registrados</p>
           </CardContent>
         </Card>
@@ -229,7 +317,7 @@ export default function AdminDashboardPage() {
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            {loading ? (
+            {loading && !dataLoaded.basicStats ? (
               <Skeleton className="h-8 w-20" />
             ) : (
               <div className="text-2xl font-bold">{stats.totalCapitanes + stats.totalDirectores}</div>
@@ -246,7 +334,7 @@ export default function AdminDashboardPage() {
             <Package className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            {loading ? (
+            {loading && !dataLoaded.basicStats ? (
               <Skeleton className="h-8 w-20" />
             ) : (
               <div className="text-2xl font-bold">{stats.totalProducts}</div>
@@ -260,7 +348,11 @@ export default function AdminDashboardPage() {
             <Trophy className="h-4 w-4 text-yellow-500" />
           </CardHeader>
           <CardContent>
-            {loading ? <Skeleton className="h-8 w-20" /> : <div className="text-2xl font-bold">{stats.totalSales}</div>}
+            {loading && !dataLoaded.basicStats ? (
+              <Skeleton className="h-8 w-20" />
+            ) : (
+              <div className="text-2xl font-bold">{stats.totalSales}</div>
+            )}
             <p className="text-xs text-muted-foreground">Ventas registradas</p>
           </CardContent>
         </Card>
@@ -292,7 +384,7 @@ export default function AdminDashboardPage() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  {loading ? (
+                  {loading && !dataLoaded.topTeams ? (
                     <>
                       <Skeleton className="h-12 w-full" />
                       <Skeleton className="h-12 w-full" />
@@ -361,7 +453,7 @@ export default function AdminDashboardPage() {
             </CardContent>
           </Card>
           <div className="grid gap-4 md:grid-cols-3">
-            {loading ? (
+            {loading && !dataLoaded.zoneStats ? (
               <>
                 <Skeleton className="h-32 w-full" />
                 <Skeleton className="h-32 w-full" />
@@ -400,7 +492,7 @@ export default function AdminDashboardPage() {
               <CardDescription>Distribución de ventas por producto</CardDescription>
             </CardHeader>
             <CardContent>
-              {loading ? (
+              {loading && !dataLoaded.productStats ? (
                 <>
                   <Skeleton className="h-12 w-full mb-4" />
                   <Skeleton className="h-12 w-full mb-4" />
