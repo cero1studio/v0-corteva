@@ -1,103 +1,158 @@
 "use client"
 
-import { useState, useEffect, useCallback, useMemo } from "react"
-import { useRouter } from "next/navigation"
+import { useState, useEffect, useMemo } from "react"
 import { supabase } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { useToast } from "@/components/ui/use-toast"
-import { PlusCircle, Edit, Trash2, MapPin, RefreshCw, Search, X } from "lucide-react"
-import { EmptyState } from "@/components/empty-state"
-import Link from "next/link"
+import { PlusCircle, Edit, Trash2, Save, Search, X } from "lucide-react"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
 
 interface Zone {
   id: string
   name: string
-  description?: string | null
   created_at: string
 }
 
 export default function ZonasPage() {
-  const router = useRouter()
   const [zones, setZones] = useState<Zone[]>([])
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [retryCount, setRetryCount] = useState(0)
+  const [newZoneName, setNewZoneName] = useState("")
+  const [isAddingZone, setIsAddingZone] = useState(false)
+  const [editingZone, setEditingZone] = useState<Zone | null>(null)
+  const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")
   const { toast } = useToast()
 
-  const fetchZones = useCallback(async () => {
+  useEffect(() => {
+    fetchZones()
+  }, [])
+
+  async function fetchZones() {
     setLoading(true)
-    setError(null)
-
     try {
-      // Establecer un timeout para evitar carga infinita
-      const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error("La consulta está tardando demasiado")), 8000),
-      )
+      const { data, error } = await supabase.from("zones").select("*").order("name")
 
-      // Consulta a Supabase
-      const fetchPromise = supabase.from("zones").select("*").order("name")
+      if (error) throw error
 
-      // Race entre el timeout y la consulta
-      const result = (await Promise.race([fetchPromise, timeoutPromise])) as any
-
-      if (result.error) throw result.error
-
-      setZones(result.data || [])
-      setLoading(false)
-    } catch (error: any) {
+      setZones(data || [])
+    } catch (error) {
       console.error("Error al cargar zonas:", error)
-      setError(error.message || "Error al cargar zonas")
-      setLoading(false)
-
       toast({
         title: "Error",
-        description: "No se pudieron cargar las zonas. " + error.message,
+        description: "No se pudieron cargar las zonas",
         variant: "destructive",
       })
+    } finally {
+      setLoading(false)
     }
-  }, [toast])
+  }
 
   // Filtrar zonas basándose en el término de búsqueda
   const filteredZones = useMemo(() => {
     if (!searchTerm.trim()) return zones
 
     const searchLower = searchTerm.toLowerCase().trim()
-    return zones.filter(
-      (zone) =>
-        zone.name.toLowerCase().includes(searchLower) ||
-        (zone.description && zone.description.toLowerCase().includes(searchLower)),
-    )
+    return zones.filter((zone) => zone.name.toLowerCase().includes(searchLower))
   }, [zones, searchTerm])
-
-  // Usar useEffect con dependencia en retryCount para permitir reintentos
-  useEffect(() => {
-    fetchZones()
-  }, [fetchZones, retryCount])
-
-  const handleRetry = () => {
-    setRetryCount((prev) => prev + 1)
-  }
 
   const clearSearch = () => {
     setSearchTerm("")
   }
 
-  async function handleDeleteZone(id: string, name: string) {
-    if (!confirm(`¿Estás seguro de que deseas eliminar la zona "${name}"? Esta acción no se puede deshacer.`)) {
+  async function handleAddZone() {
+    if (!newZoneName.trim()) {
+      toast({
+        title: "Error",
+        description: "El nombre de la zona no puede estar vacío",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setIsAddingZone(true)
+    try {
+      const { data, error } = await supabase.from("zones").insert({ name: newZoneName.trim() }).select()
+
+      if (error) throw error
+
+      setZones([...zones, data[0]])
+      setNewZoneName("")
+      toast({
+        title: "Zona añadida",
+        description: "La zona ha sido añadida exitosamente",
+      })
+    } catch (error) {
+      console.error("Error al añadir zona:", error)
+      toast({
+        title: "Error",
+        description: "No se pudo añadir la zona",
+        variant: "destructive",
+      })
+    } finally {
+      setIsAddingZone(false)
+      setIsDialogOpen(false)
+    }
+  }
+
+  async function handleUpdateZone() {
+    if (!editingZone || !editingZone.name.trim()) {
+      toast({
+        title: "Error",
+        description: "El nombre de la zona no puede estar vacío",
+        variant: "destructive",
+      })
       return
     }
 
     try {
+      const { error } = await supabase.from("zones").update({ name: editingZone.name.trim() }).eq("id", editingZone.id)
+
+      if (error) throw error
+
+      setZones(zones.map((zone) => (zone.id === editingZone.id ? editingZone : zone)))
+
+      toast({
+        title: "Zona actualizada",
+        description: "La zona ha sido actualizada exitosamente",
+      })
+    } catch (error) {
+      console.error("Error al actualizar zona:", error)
+      toast({
+        title: "Error",
+        description: "No se pudo actualizar la zona",
+        variant: "destructive",
+      })
+    } finally {
+      setEditingZone(null)
+    }
+  }
+
+  async function handleDeleteZone(id: string) {
+    if (!confirm("¿Estás seguro de que deseas eliminar esta zona? Esta acción no se puede deshacer.")) {
+      return
+    }
+
+    try {
+      // Eliminar directamente sin verificar dependencias
       const { error } = await supabase.from("zones").delete().eq("id", id)
 
       if (error) {
+        // Si hay un error, probablemente sea por restricciones de clave foránea
         toast({
           title: "Error",
-          description: "No se pudo eliminar la zona. Asegúrate de que no tenga equipos o usuarios asociados.",
+          description: "No se pudo eliminar la zona. Asegúrate de que no tenga distribuidores o equipos asociados.",
           variant: "destructive",
         })
         return
@@ -113,77 +168,65 @@ export default function ZonasPage() {
       console.error("Error al eliminar zona:", error)
       toast({
         title: "Error",
-        description: "No se pudo eliminar la zona. Asegúrate de que no tenga equipos o usuarios asociados.",
+        description: "No se pudo eliminar la zona. Asegúrate de que no tenga distribuidores o equipos asociados.",
         variant: "destructive",
       })
     }
-  }
-
-  if (loading) {
-    return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div className="h-8 w-48 bg-gray-200 rounded animate-pulse"></div>
-          <div className="h-10 w-36 bg-gray-200 rounded animate-pulse"></div>
-        </div>
-
-        <div className="rounded-lg border">
-          <div className="p-6 space-y-4">
-            <div className="h-6 w-32 bg-gray-200 rounded animate-pulse"></div>
-            <div className="h-4 w-64 bg-gray-200 rounded animate-pulse"></div>
-
-            <div className="space-y-3">
-              {Array.from({ length: 5 }).map((_, i) => (
-                <div key={i} className="flex items-center justify-between p-4 border rounded">
-                  <div className="h-5 w-48 bg-gray-200 rounded animate-pulse"></div>
-                  <div className="h-8 w-16 bg-gray-200 rounded animate-pulse"></div>
-                  <div className="flex gap-2">
-                    <div className="h-8 w-8 bg-gray-200 rounded animate-pulse"></div>
-                    <div className="h-8 w-8 bg-gray-200 rounded animate-pulse"></div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  if (error) {
-    return (
-      <EmptyState
-        icon={MapPin}
-        title="Error al cargar zonas"
-        description={error}
-        actionLabel="Reintentar"
-        onClick={handleRetry}
-        className="py-10"
-      />
-    )
   }
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h2 className="text-3xl font-bold tracking-tight">Gestión de Zonas</h2>
-        <div className="flex gap-2">
-          <Button onClick={handleRetry} variant="outline" size="icon" title="Actualizar datos">
-            <RefreshCw className="h-4 w-4" />
-          </Button>
-          <Button asChild>
-            <Link href="/admin/zonas/nuevo">
+        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+          <DialogTrigger asChild>
+            <Button>
               <PlusCircle className="mr-2 h-4 w-4" />
               Nueva Zona
-            </Link>
-          </Button>
-        </div>
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Añadir Nueva Zona</DialogTitle>
+              <DialogDescription>Ingresa el nombre de la nueva zona geográfica</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="zoneName">Nombre de la zona</Label>
+                <Input
+                  id="zoneName"
+                  value={newZoneName}
+                  onChange={(e) => setNewZoneName(e.target.value)}
+                  placeholder="Ej: Zona Norte"
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
+                Cancelar
+              </Button>
+              <Button onClick={handleAddZone} disabled={isAddingZone}>
+                {isAddingZone ? (
+                  <>
+                    <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent"></div>
+                    Añadiendo...
+                  </>
+                ) : (
+                  <>
+                    <Save className="mr-2 h-4 w-4" />
+                    Guardar
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>Zonas</CardTitle>
-          <CardDescription>Administra las zonas geográficas para la competición</CardDescription>
+          <CardTitle>Zonas Geográficas</CardTitle>
+          <CardDescription>Administra las zonas geográficas para distribuidores y equipos</CardDescription>
         </CardHeader>
         <CardContent>
           {/* Filtro de búsqueda */}
@@ -191,7 +234,7 @@ export default function ZonasPage() {
             <div className="relative max-w-sm">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
               <Input
-                placeholder="Buscar zonas por nombre o descripción..."
+                placeholder="Buscar zonas por nombre..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-10 pr-10"
@@ -216,71 +259,91 @@ export default function ZonasPage() {
             )}
           </div>
 
-          {zones.length === 0 ? (
-            <EmptyState
-              icon={MapPin}
-              title="No hay zonas registradas"
-              description="Crea una nueva zona para comenzar"
-              action={
-                <Button asChild>
-                  <Link href="/admin/zonas/nuevo">
-                    <PlusCircle className="mr-2 h-4 w-4" />
-                    Nueva Zona
-                  </Link>
-                </Button>
-              }
-            />
-          ) : filteredZones.length === 0 && searchTerm ? (
-            <EmptyState
-              icon={Search}
-              title="No se encontraron resultados"
-              description={`No hay zonas que coincidan con "${searchTerm}"`}
-              action={
-                <Button onClick={clearSearch} variant="outline">
-                  <X className="mr-2 h-4 w-4" />
-                  Limpiar búsqueda
-                </Button>
-              }
-            />
+          {loading ? (
+            <div className="flex justify-center py-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-corteva-600"></div>
+            </div>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Nombre</TableHead>
-                  <TableHead>Descripción</TableHead>
+                  <TableHead>Fecha de creación</TableHead>
                   <TableHead className="text-right">Acciones</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredZones.map((zone) => (
-                  <TableRow key={zone.id}>
-                    <TableCell>
-                      <div className="font-medium">{zone.name}</div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="text-sm text-muted-foreground">{zone.description || "Sin descripción"}</div>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        <Button variant="ghost" size="icon" asChild>
-                          <Link href={`/admin/zonas/editar/${zone.id}`}>
-                            <Edit className="h-4 w-4" />
-                            <span className="sr-only">Editar</span>
-                          </Link>
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleDeleteZone(zone.id, zone.name)}
-                          className="text-red-500 hover:text-red-700"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                          <span className="sr-only">Eliminar</span>
-                        </Button>
-                      </div>
+                {filteredZones.length > 0 ? (
+                  filteredZones.map((zone) => (
+                    <TableRow key={zone.id}>
+                      <TableCell>
+                        {editingZone?.id === zone.id ? (
+                          <Input
+                            value={editingZone.name}
+                            onChange={(e) => setEditingZone({ ...editingZone, name: e.target.value })}
+                          />
+                        ) : (
+                          zone.name
+                        )}
+                      </TableCell>
+                      <TableCell>{new Date(zone.created_at).toLocaleDateString()}</TableCell>
+                      <TableCell className="text-right">
+                        {editingZone?.id === zone.id ? (
+                          <>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={handleUpdateZone}
+                              className="text-green-500 hover:text-green-700"
+                            >
+                              <Save className="h-4 w-4" />
+                              <span className="sr-only">Guardar</span>
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setEditingZone(null)}
+                              className="text-gray-500 hover:text-gray-700"
+                            >
+                              Cancelar
+                            </Button>
+                          </>
+                        ) : (
+                          <>
+                            <Button variant="ghost" size="icon" onClick={() => setEditingZone(zone)}>
+                              <Edit className="h-4 w-4" />
+                              <span className="sr-only">Editar</span>
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleDeleteZone(zone.id)}
+                              className="text-red-500 hover:text-red-700"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                              <span className="sr-only">Eliminar</span>
+                            </Button>
+                          </>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))
+                ) : searchTerm ? (
+                  <TableRow>
+                    <TableCell colSpan={3} className="text-center py-8 text-muted-foreground">
+                      No se encontraron zonas que coincidan con "{searchTerm}".
+                      <Button variant="link" onClick={clearSearch} className="ml-2">
+                        Limpiar búsqueda
+                      </Button>
                     </TableCell>
                   </TableRow>
-                ))}
+                ) : (
+                  <TableRow>
+                    <TableCell colSpan={3} className="text-center py-8 text-muted-foreground">
+                      No hay zonas registradas. Crea una nueva zona para comenzar.
+                    </TableCell>
+                  </TableRow>
+                )}
               </TableBody>
             </Table>
           )}
