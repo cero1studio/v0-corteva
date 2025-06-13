@@ -33,7 +33,6 @@ interface Sale {
   quantity: number
   points: number
   price: number
-  kilos: number // Nuevo campo
   sale_date: string
   created_at: string
   products: {
@@ -111,10 +110,16 @@ export default function AdminVentasPage() {
     quantity: "",
     points: "",
     representative_id: "",
-    kilos: "", // Nuevo campo
   })
 
   const [selectedProductPoints, setSelectedProductPoints] = useState<number>(0)
+
+  // Función para calcular kilos basándose en puntos
+  const calculateKilos = (points: number): number => {
+    // 1 gol = 100 puntos = 10 kilos
+    // Por lo tanto: kilos = puntos / 10
+    return points / 10
+  }
 
   useEffect(() => {
     if (formData.product_id && formData.quantity) {
@@ -238,8 +243,8 @@ export default function AdminVentasPage() {
         Equipo: sale.team?.name || "N/A",
         Zona: sale.zone?.name || "N/A",
         Cantidad: sale.quantity,
-        Kilos: sale.kilos || 0, // Nuevo campo
         Puntos: sale.points,
+        Kilos: calculateKilos(sale.points || 0).toFixed(1), // Calcular kilos dinámicamente
         "Fecha de Venta": sale.sale_date ? new Date(sale.sale_date).toLocaleDateString() : "N/A",
         "Fecha de Registro": new Date(sale.created_at).toLocaleDateString(),
       }))
@@ -256,8 +261,8 @@ export default function AdminVentasPage() {
         { wch: 20 }, // Equipo
         { wch: 15 }, // Zona
         { wch: 10 }, // Cantidad
-        { wch: 10 }, // Kilos
         { wch: 10 }, // Puntos
+        { wch: 10 }, // Kilos
         { wch: 15 }, // Fecha de Venta
         { wch: 18 }, // Fecha de Registro
       ]
@@ -340,7 +345,6 @@ export default function AdminVentasPage() {
       form.append("quantity", formData.quantity)
       form.append("points", finalPoints)
       form.append("representative_id", formData.representative_id)
-      form.append("kilos", formData.kilos) // Nuevo campo
 
       const result = await createSale(form)
 
@@ -350,7 +354,7 @@ export default function AdminVentasPage() {
           description: "Venta creada correctamente",
         })
         setIsCreateDialogOpen(false)
-        setFormData({ product_id: "", quantity: "", points: "", representative_id: "", kilos: "" })
+        setFormData({ product_id: "", quantity: "", points: "", representative_id: "" })
         setSelectedProductPoints(0)
         loadData()
       } else {
@@ -392,7 +396,6 @@ export default function AdminVentasPage() {
       form.append("quantity", formData.quantity)
       form.append("points", formData.points)
       form.append("representative_id", formData.representative_id)
-      form.append("kilos", formData.kilos) // Nuevo campo
 
       const result = await updateSale(editingSale.id, form)
 
@@ -459,7 +462,6 @@ export default function AdminVentasPage() {
       quantity: sale.quantity.toString(),
       points: sale.points.toString(),
       representative_id: sale.representative?.id || "",
-      kilos: sale.kilos?.toString() || "", // Nuevo campo
     })
     setIsEditDialogOpen(true)
   }
@@ -547,17 +549,6 @@ export default function AdminVentasPage() {
                   />
                 </div>
                 <div>
-                  <Label htmlFor="kilos">Kilos</Label>
-                  <Input
-                    id="kilos"
-                    type="number"
-                    step="0.01"
-                    value={formData.kilos}
-                    onChange={(e) => setFormData({ ...formData, kilos: e.target.value })}
-                    placeholder="Kilos vendidos"
-                  />
-                </div>
-                <div>
                   <Label htmlFor="points">Puntos Totales</Label>
                   <Input
                     id="points"
@@ -569,9 +560,14 @@ export default function AdminVentasPage() {
                     placeholder="Selecciona producto y cantidad"
                   />
                   {selectedProductPoints > 0 && formData.quantity && (
-                    <p className="text-sm text-muted-foreground mt-1">
-                      {selectedProductPoints} puntos × {formData.quantity} = {formData.points} puntos totales
-                    </p>
+                    <div className="text-sm text-muted-foreground mt-1 space-y-1">
+                      <p>
+                        {selectedProductPoints} puntos × {formData.quantity} = {formData.points} puntos totales
+                      </p>
+                      <p className="text-green-600 font-medium">
+                        Kilos equivalentes: {calculateKilos(Number.parseFloat(formData.points) || 0).toFixed(1)} kg
+                      </p>
+                    </div>
                   )}
                 </div>
                 <Button onClick={handleCreateSale} className="w-full">
@@ -668,8 +664,8 @@ export default function AdminVentasPage() {
                   <TableHead>Equipo</TableHead>
                   <TableHead>Zona</TableHead>
                   <TableHead>Cantidad</TableHead>
-                  <TableHead>Kilos</TableHead>
                   <TableHead>Puntos</TableHead>
+                  <TableHead>Kilos</TableHead>
                   <TableHead>Fecha</TableHead>
                   <TableHead>Acciones</TableHead>
                 </TableRow>
@@ -707,8 +703,10 @@ export default function AdminVentasPage() {
                       <Badge variant="secondary">{sale.zone?.name || "N/A"}</Badge>
                     </TableCell>
                     <TableCell>{sale.quantity}</TableCell>
-                    <TableCell>{sale.kilos?.toLocaleString() || "0"}</TableCell>
                     <TableCell>{sale.points?.toLocaleString() || "0"}</TableCell>
+                    <TableCell className="font-medium text-green-600">
+                      {calculateKilos(sale.points || 0).toFixed(1)} kg
+                    </TableCell>
                     <TableCell>{sale.sale_date ? new Date(sale.sale_date).toLocaleDateString() : "N/A"}</TableCell>
                     <TableCell>
                       <DropdownMenu>
@@ -792,17 +790,6 @@ export default function AdminVentasPage() {
               />
             </div>
             <div>
-              <Label htmlFor="edit-kilos">Kilos</Label>
-              <Input
-                id="edit-kilos"
-                type="number"
-                step="0.01"
-                value={formData.kilos}
-                onChange={(e) => setFormData({ ...formData, kilos: e.target.value })}
-                placeholder="Kilos vendidos"
-              />
-            </div>
-            <div>
               <Label htmlFor="edit-points">Puntos (Calculado automáticamente)</Label>
               <Input
                 id="edit-points"
@@ -814,9 +801,14 @@ export default function AdminVentasPage() {
                 placeholder="Se calculará automáticamente"
               />
               {selectedProductPoints > 0 && formData.quantity && (
-                <p className="text-sm text-muted-foreground mt-1">
-                  {selectedProductPoints} puntos × {formData.quantity} = {formData.points} puntos totales
-                </p>
+                <div className="text-sm text-muted-foreground mt-1 space-y-1">
+                  <p>
+                    {selectedProductPoints} puntos × {formData.quantity} = {formData.points} puntos totales
+                  </p>
+                  <p className="text-green-600 font-medium">
+                    Kilos equivalentes: {calculateKilos(Number.parseFloat(formData.points) || 0).toFixed(1)} kg
+                  </p>
+                </div>
               )}
             </div>
             <Button onClick={handleEditSale} className="w-full">
