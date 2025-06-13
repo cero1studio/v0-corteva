@@ -29,12 +29,96 @@ function DirectorTecnicoRankingContent() {
 
   useEffect(() => {
     loadData()
+
+    // Establecer un timeout para evitar carga infinita
+    const timeout = setTimeout(() => {
+      if (loading) {
+        setLoading(false)
+        toast({
+          title: "Tiempo de carga excedido",
+          description: "La carga está tomando más tiempo de lo esperado. Intente nuevamente.",
+          variant: "destructive",
+        })
+      }
+    }, 30000) // 30 segundos máximo
+
+    return () => clearTimeout(timeout)
   }, [])
+
+  // Función optimizada para calcular puntos de un equipo
+  async function calculateTeamPoints(teamId: string) {
+    try {
+      // 1. Obtener miembros del equipo
+      const { data: teamMembers } = await supabase.from("profiles").select("id").eq("team_id", teamId)
+      const memberIds = teamMembers?.map((member) => member.id) || []
+
+      // 2. Calcular puntos en paralelo
+      const [salesResult, clientsResult, freeKicksResult] = await Promise.all([
+        // Ventas (representantes + equipo)
+        Promise.all([
+          memberIds.length > 0
+            ? supabase.from("sales").select("points").in("representative_id", memberIds)
+            : Promise.resolve({ data: [] }),
+          supabase.from("sales").select("points").eq("team_id", teamId),
+        ]),
+
+        // Clientes (representantes + equipo)
+        Promise.all([
+          memberIds.length > 0
+            ? supabase.from("competitor_clients").select("id, points").in("representative_id", memberIds)
+            : Promise.resolve({ data: [] }),
+          supabase.from("competitor_clients").select("id, points").eq("team_id", teamId),
+        ]),
+
+        // Tiros libres
+        supabase
+          .from("free_kick_goals")
+          .select("points")
+          .eq("team_id", teamId),
+      ])
+
+      // 3. Calcular puntos de ventas
+      const salesByRep = salesResult[0].data || []
+      const salesByTeam = salesResult[1].data || []
+      const totalSalesPoints =
+        salesByRep.reduce((sum, sale) => sum + (sale.points || 0), 0) +
+        salesByTeam.reduce((sum, sale) => sum + (sale.points || 0), 0)
+
+      // 4. Calcular puntos de clientes (evitando duplicados)
+      const clientsByRep = clientsResult[0].data || []
+      const clientsByTeam = clientsResult[1].data || []
+      const countedClientIds = new Set()
+      let totalClientsPoints = 0
+
+      for (const client of clientsByRep) {
+        if (!countedClientIds.has(client.id)) {
+          totalClientsPoints += client.points || 200
+          countedClientIds.add(client.id)
+        }
+      }
+
+      for (const client of clientsByTeam) {
+        if (!countedClientIds.has(client.id)) {
+          totalClientsPoints += client.points || 200
+          countedClientIds.add(client.id)
+        }
+      }
+
+      // 5. Calcular puntos de tiros libres
+      const freeKicks = freeKicksResult.data || []
+      const totalFreeKickPoints = freeKicks.reduce((sum, freeKick) => sum + (freeKick.points || 0), 0)
+
+      // 6. Sumar todos los puntos
+      return totalSalesPoints + totalClientsPoints + totalFreeKickPoints
+    } catch (error) {
+      console.error("Error calculando puntos para equipo", teamId, error)
+      return 0
+    }
+  }
 
   async function loadData() {
     try {
       setLoading(true)
-      console.time("Carga de ranking")
 
       // Obtener el usuario actual
       const {
@@ -75,63 +159,88 @@ function DirectorTecnicoRankingContent() {
         return
       }
 
-      // NUEVA IMPLEMENTACIÓN: Usar la función SQL para obtener el ranking de zona
-      console.time("Ranking de zona")
-      const { data: zoneRankingData, error: zoneRankingError } = await supabase.rpc("get_team_ranking", {
-        zone_id_param: profileData.zone_id,
-      })
-      console.timeEnd("Ranking de zona")
+      // Obtener equipos de la zona (optimizado)
+      const { data: zoneTeamsData, error: zoneTeamsError } = await supabase
+        .from("teams")
+        .select(`
+          id, 
+          name,
+          distributors(name),
+          zones(name)
+        `)
+        .eq("zone_id", profileData.zone_id)
 
-      if (zoneRankingError) {
-        console.error("Error al obtener ranking de zona:", zoneRankingError)
+      if (zoneTeamsError) {
+        console.error("Error al obtener equipos de zona:", zoneTeamsError)
         toast({
           title: "Error",
-          description: "No se pudo cargar el ranking de zona",
+          description: "No se pudieron cargar los equipos de tu zona",
           variant: "destructive",
         })
-      } else {
-        // Transformar datos al formato esperado
-        const formattedZoneRanking = zoneRankingData.map((team) => ({
-          id: team.team_id,
-          name: team.team_name,
-          total_points: Number(team.total_points),
-          goals: Math.floor(Number(team.total_points) / puntosParaGol),
-          distributor_name: team.distributor_name || "Sin distribuidor",
-          zone_name: team.zone_name || "Sin zona",
-        }))
+      } else if (zoneTeamsData && zoneTeamsData.length > 0) {
+        // Calcular puntos para todos los equipos de la zona en paralelo
+        const zoneTeamsWithPoints = await Promise.all(
+          zoneTeamsData.map(async (team) => {
+            const totalPoints = await calculateTeamPoints(team.id)
+            return {
+              id: team.id,
+              name: team.name,
+              total_points: totalPoints,
+              goals: Math.floor(totalPoints / puntosParaGol),
+              distributor_name: team.distributors?.name || "Sin distribuidor",
+              zone_name: team.zones?.name || "Sin zona",
+            }
+          }),
+        )
 
-        setZoneTeams(formattedZoneRanking)
-        console.log("Equipos de zona cargados:", formattedZoneRanking.length)
+        // Ordenar por puntos totales
+        const sortedZoneRanking = zoneTeamsWithPoints.sort((a, b) => b.total_points - a.total_points)
+        setZoneTeams(sortedZoneRanking)
+      } else {
+        setZoneTeams([])
       }
 
-      // NUEVA IMPLEMENTACIÓN: Usar la función SQL para obtener el ranking nacional
-      console.time("Ranking nacional")
-      const { data: nationalRankingData, error: nationalRankingError } = await supabase.rpc("get_team_ranking")
-      console.timeEnd("Ranking nacional")
+      // Obtener ranking nacional (optimizado - limitado a 20 equipos para mejor rendimiento)
+      const { data: nationalTeamsData, error: nationalTeamsError } = await supabase
+        .from("teams")
+        .select(`
+          id, 
+          name,
+          zone_id,
+          distributors(name),
+          zones(name)
+        `)
+        .limit(20)
 
-      if (nationalRankingError) {
-        console.error("Error al obtener ranking nacional:", nationalRankingError)
+      if (nationalTeamsError) {
+        console.error("Error al obtener equipos nacionales:", nationalTeamsError)
         toast({
           title: "Error",
           description: "No se pudo cargar el ranking nacional",
           variant: "destructive",
         })
+      } else if (nationalTeamsData && nationalTeamsData.length > 0) {
+        // Calcular puntos para todos los equipos nacionales en paralelo
+        const nationalTeamsWithPoints = await Promise.all(
+          nationalTeamsData.map(async (team) => {
+            const totalPoints = await calculateTeamPoints(team.id)
+            return {
+              id: team.id,
+              name: team.name,
+              total_points: totalPoints,
+              goals: Math.floor(totalPoints / puntosParaGol),
+              distributor_name: team.distributors?.name || "Sin distribuidor",
+              zone_name: team.zones?.name || "Sin zona",
+            }
+          }),
+        )
+
+        // Ordenar por puntos totales
+        const sortedNationalRanking = nationalTeamsWithPoints.sort((a, b) => b.total_points - a.total_points)
+        setNationalTeams(sortedNationalRanking)
       } else {
-        // Transformar datos al formato esperado
-        const formattedNationalRanking = nationalRankingData.map((team) => ({
-          id: team.team_id,
-          name: team.team_name,
-          total_points: Number(team.total_points),
-          goals: Math.floor(Number(team.total_points) / puntosParaGol),
-          distributor_name: team.distributor_name || "Sin distribuidor",
-          zone_name: team.zone_name || "Sin zona",
-        }))
-
-        setNationalTeams(formattedNationalRanking)
-        console.log("Equipos nacionales cargados:", formattedNationalRanking.length)
+        setNationalTeams([])
       }
-
-      console.timeEnd("Carga de ranking")
     } catch (error: any) {
       console.error("Error al cargar datos:", error)
       toast({
