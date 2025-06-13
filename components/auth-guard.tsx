@@ -1,141 +1,78 @@
 "use client"
 
 import type React from "react"
-import { usePathname, useRouter } from "next/navigation"
-import { useEffect, useState } from "react"
+
 import { useAuth } from "@/components/auth-provider"
+import { useRouter, usePathname } from "next/navigation"
+import { useEffect, useState } from "react"
 import { Loader2 } from "lucide-react"
-import { getCachedSessionForced, getCachedProfileForced } from "@/lib/session-cache"
+import { Button } from "@/components/ui/button"
 
-// Rutas públicas que no requieren autenticación
-const publicRoutes = ["/login", "/primer-acceso", "/ranking-publico"]
+interface AuthGuardProps {
+  children: React.ReactNode
+  allowedRoles?: string[]
+  requireTeam?: boolean
+}
 
-export function AuthGuard({ children }: { children: React.ReactNode }) {
-  const { user, profile, isInitialized, isLoading } = useAuth()
-  const pathname = usePathname()
+export function AuthGuard({ children, allowedRoles, requireTeam = false }: AuthGuardProps) {
+  const { user, profile, isLoading, isInitialized } = useAuth()
   const router = useRouter()
-  const [isAuthorized, setIsAuthorized] = useState(false)
-  const [showFallback, setShowFallback] = useState(false)
-  const [quickResolved, setQuickResolved] = useState(false)
+  const pathname = usePathname()
+  const [showRetry, setShowRetry] = useState(false)
 
-  // Resolución inmediata para URLs directas usando caché
+  // Determinar si el usuario está autorizado
+  const isAuthorized = user && profile && (!allowedRoles || allowedRoles.includes(profile.role))
+
+  // Timeout para mostrar botón de reintento si la carga toma demasiado tiempo
   useEffect(() => {
-    const isPublicRoute = publicRoutes.some((route) => pathname?.startsWith(route))
+    if (isLoading && !isInitialized) {
+      const timer = setTimeout(() => {
+        setShowRetry(true)
+      }, 15000) // 15 segundos
 
-    if (isPublicRoute) {
-      console.log("AUTH-GUARD: Public route, authorizing immediately")
-      setIsAuthorized(true)
-      setQuickResolved(true)
-      return
-    }
-
-    // Para rutas privadas, verificar caché inmediatamente
-    const { session: cachedSession } = getCachedSessionForced()
-    const cachedProfile = getCachedProfileForced()
-
-    if (cachedSession && cachedProfile) {
-      console.log("AUTH-GUARD: Found cache, authorizing immediately")
-      setIsAuthorized(true)
-      setQuickResolved(true)
-      return
-    }
-
-    // Si no hay caché y no es ruta pública, esperar un poco antes de decidir
-    const quickTimeout = setTimeout(() => {
-      if (!isInitialized && !isAuthorized) {
-        console.log("AUTH-GUARD: No cache and not initialized, redirecting to login")
-        router.push("/login")
-      }
-    }, 2000) // Solo 2 segundos para URLs directas sin caché
-
-    return () => clearTimeout(quickTimeout)
-  }, [pathname, router, isInitialized, isAuthorized])
-
-  // Timeout para mostrar fallback solo si no se resolvió r��pido
-  useEffect(() => {
-    if (quickResolved) return
-
-    const timer = setTimeout(() => {
-      if (!isInitialized && !isAuthorized) {
-        setShowFallback(true)
-      }
-    }, 3000)
-
-    return () => clearTimeout(timer)
-  }, [isInitialized, isAuthorized, quickResolved])
-
-  // Lógica normal de autorización cuando el auth provider esté listo
-  useEffect(() => {
-    if (!isInitialized) return
-
-    const isPublicRoute = publicRoutes.some((route) => pathname?.startsWith(route))
-
-    if (isPublicRoute) {
-      setIsAuthorized(true)
-    } else if (!user || !profile) {
-      // Verificar caché una vez más
-      const { session: cachedSession } = getCachedSessionForced()
-      const cachedProfile = getCachedProfileForced()
-
-      if (cachedSession && cachedProfile) {
-        console.log("AUTH-GUARD: Using cache after auth provider ready")
-        setIsAuthorized(true)
-      } else {
-        console.log("AUTH-GUARD: No valid session, redirecting to login")
-        router.push("/login")
-      }
+      return () => clearTimeout(timer)
     } else {
-      setIsAuthorized(true)
+      setShowRetry(false)
     }
-  }, [user, profile, pathname, router, isInitialized])
+  }, [isLoading, isInitialized])
 
-  // Si ya se resolvió rápido, mostrar contenido inmediatamente
-  if (quickResolved && isAuthorized) {
-    return <>{children}</>
+  // Manejo de redirección
+  useEffect(() => {
+    if (isLoading || !isInitialized) {
+      return // No redirigir si aún estamos en el proceso de carga
+    }
+
+    if (!isAuthorized || !profile) {
+      router.push("/login") // Redirigir a login si no está autorizado o perfil no cargado
+      return
+    }
+
+    // Si requiere equipo y el usuario es capitán sin equipo
+    if (requireTeam && profile.role === "capitan" && !profile.team_id) {
+      router.push("/capitan/crear-equipo")
+      return
+    }
+  }, [isLoading, isInitialized, isAuthorized, profile, router, requireTeam])
+
+  const handleRetry = () => {
+    setShowRetry(false)
+    window.location.reload()
   }
 
-  // Si está inicializado y autorizado, mostrar contenido
-  if (isInitialized && isAuthorized) {
-    return <>{children}</>
-  }
-
-  // Mostrar loading solo si no se ha resuelto rápido
-  if (!quickResolved && ((!isInitialized && !isAuthorized) || (isLoading && !isAuthorized))) {
+  // Mostrar loading mientras se inicializa la autenticación
+  if (isLoading || !isInitialized) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50">
-        <div className="w-full max-w-md p-8 space-y-6 bg-white rounded-lg shadow-lg">
-          <div className="flex flex-col items-center space-y-4">
-            <Loader2 className="h-12 w-12 animate-spin text-[#006BA6]" />
-            <h2 className="text-xl font-semibold text-gray-800">Cargando...</h2>
-            <p className="text-center text-gray-600 text-sm">Verificando acceso...</p>
-
-            {showFallback && (
-              <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                <p className="text-blue-800 text-sm mb-3">¿La página no carga?</p>
-                <div className="flex flex-col space-y-2">
-                  <button
-                    onClick={() => {
-                      const { session: cachedSession } = getCachedSessionForced()
-                      const cachedProfile = getCachedProfileForced()
-
-                      if (cachedSession && cachedProfile) {
-                        setIsAuthorized(true)
-                        setQuickResolved(true)
-                      } else {
-                        router.push("/login")
-                      }
-                    }}
-                    className="px-4 py-2 bg-[#006BA6] text-white rounded-md hover:bg-[#005a8b] text-sm font-medium"
-                  >
-                    Continuar
-                  </button>
-                  <button
-                    onClick={() => router.push("/login")}
-                    className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 text-sm font-medium"
-                  >
-                    Ir al inicio de sesión
-                  </button>
-                </div>
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center space-y-4">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto text-blue-600" />
+          <div className="space-y-2">
+            <p className="text-gray-600">Verificando autenticación...</p>
+            {showRetry && (
+              <div className="space-y-2">
+                <p className="text-sm text-gray-500">La carga está tardando más de lo esperado</p>
+                <Button onClick={handleRetry} variant="outline" size="sm">
+                  Reintentar
+                </Button>
               </div>
             )}
           </div>
@@ -144,5 +81,30 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     )
   }
 
-  return null
+  // Si no está autorizado, no mostrar nada (la redirección ya se maneja en useEffect)
+  if (!isAuthorized || !profile) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center space-y-4">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto text-blue-600" />
+          <p className="text-gray-600">Redirigiendo...</p>
+        </div>
+      </div>
+    )
+  }
+
+  // Si requiere equipo y no lo tiene
+  if (requireTeam && profile.role === "capitan" && !profile.team_id) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center space-y-4">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto text-blue-600" />
+          <p className="text-gray-600">Redirigiendo a creación de equipo...</p>
+        </div>
+      </div>
+    )
+  }
+
+  // Usuario autorizado, mostrar contenido
+  return <>{children}</>
 }

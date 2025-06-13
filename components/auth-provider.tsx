@@ -113,7 +113,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       console.log("AUTH: Current path:", currentPath, "Dashboard route:", dashboardRoute)
 
-      // Solo redirigir desde login
+      // Redirigir al dashboard según el rol
       if (currentPath === "/login") {
         console.log("AUTH: Redirecting from login to dashboard")
         router.push(dashboardRoute)
@@ -125,7 +125,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [pathname, getDashboardRoute, router],
   )
 
-  // Inicialización inmediata con caché para URLs directas
+  // Optimización del uso de caché para sesión
+  useEffect(() => {
+    const { session: cachedSession, user: cachedUser } = getCachedSessionForced()
+    const cachedProfile = getCachedProfileForced()
+
+    if (cachedSession && cachedUser && cachedProfile) {
+      setSession(cachedSession)
+      setUser(cachedUser)
+      setProfile(cachedProfile)
+      setIsLoading(false)
+      setIsInitialized(true)
+      refreshCacheTimestamp()
+    }
+  }, [])
+
+  // Inicialización de autenticación
   useEffect(() => {
     let mounted = true
 
@@ -170,7 +185,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               } catch (err) {
                 console.log("AUTH: Background verification error, keeping cache")
               }
-            }, 100) // Verificar muy rápido en segundo plano
+            }, 100)
 
             return
           }
@@ -268,6 +283,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setError(null)
         clearAllCache()
 
+        // Limpiar almacenamiento local y cookies
+        if (typeof window !== "undefined") {
+          localStorage.removeItem("user_data")
+          sessionStorage.removeItem("user_data")
+          // Limpiar cookies adicionales si es necesario
+          document.cookie = "session=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/;"
+        }
+
         if (pathname !== "/login") {
           console.log("AUTH: Signed out, redirecting to login")
           router.push("/login")
@@ -312,6 +335,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(null)
       setProfile(null)
       setError(null)
+
+      // Limpiar almacenamiento local y cookies
+      if (typeof window !== "undefined") {
+        localStorage.removeItem("user_data")
+        sessionStorage.removeItem("user_data")
+        localStorage.clear()
+        sessionStorage.clear()
+
+        // Limpiar cookies adicionales si es necesario
+        document.cookie = "session=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/;"
+        document.cookie = "sb-access-token=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/;"
+        document.cookie = "sb-refresh-token=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/;"
+      }
 
       // Cerrar sesión en Supabase
       const { error } = await supabase.auth.signOut()
