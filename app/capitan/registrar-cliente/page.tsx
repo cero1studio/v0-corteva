@@ -9,10 +9,11 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { ArrowLeft, Users } from "lucide-react"
+import { ArrowLeft, Users, Phone } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 import { supabase } from "@/lib/supabase/client"
 import { ClientGoalCelebration } from "@/components/client-goal-celebration"
+import { formatColombianMobile, getPhoneValidationError, PHONE_INPUT_PROPS } from "@/lib/phone-validation"
 
 export default function RegistrarClientePage() {
   const [loading, setLoading] = useState(false)
@@ -29,6 +30,7 @@ export default function RegistrarClientePage() {
   const [notes, setNotes] = useState("")
   const [userId, setUserId] = useState("")
   const [showCelebration, setShowCelebration] = useState(false)
+  const [phoneError, setPhoneError] = useState<string>("")
 
   const router = useRouter()
   const { toast } = useToast()
@@ -61,6 +63,19 @@ export default function RegistrarClientePage() {
     // Solo permitir números
     if (value === "" || /^\d+$/.test(value)) {
       setVolumenFacturado(value)
+    }
+  }
+
+  // Handle phone input change with validation
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value
+    // Allow only numbers, spaces, hyphens, parentheses, and plus sign
+    const cleanValue = value.replace(/[^\d\s\-$$$$+]/g, "")
+    setContactInfo(cleanValue)
+
+    // Clear phone error when user starts typing
+    if (phoneError) {
+      setPhoneError("")
     }
   }
 
@@ -105,6 +120,20 @@ export default function RegistrarClientePage() {
       return
     }
 
+    // Validar teléfono si se proporciona
+    if (contactInfo) {
+      const phoneValidationError = getPhoneValidationError(contactInfo)
+      if (phoneValidationError) {
+        setPhoneError(phoneValidationError)
+        toast({
+          title: "Error",
+          description: phoneValidationError,
+          variant: "destructive",
+        })
+        return
+      }
+    }
+
     setLoading(true)
 
     try {
@@ -117,6 +146,9 @@ export default function RegistrarClientePage() {
 
       if (profileError) throw new Error(`Error al obtener perfil: ${profileError.message}`)
       if (!profile || !profile.team_id) throw new Error("Usuario sin equipo asignado")
+
+      // Format phone number before saving
+      const formattedPhone = contactInfo ? formatColombianMobile(contactInfo) : ""
 
       // Registrar el cliente
       const { data, error } = await supabase
@@ -133,7 +165,7 @@ export default function RegistrarClientePage() {
           producto_anterior: previousProduct,
           producto_super_ganaderia: superGanaderiaProduct,
           volumen_venta_estimado: volumen,
-          contact_info: contactInfo,
+          contact_info: formattedPhone,
           notes,
           representative_id: userId,
           team_id: profile.team_id,
@@ -214,6 +246,7 @@ export default function RegistrarClientePage() {
     setVolumenFacturado("")
     setContactInfo("")
     setNotes("")
+    setPhoneError("")
     setLoading(false) // Asegurar que loading esté en false
 
     // Redirigir al dashboard
@@ -355,12 +388,18 @@ export default function RegistrarClientePage() {
 
             <div className="space-y-2">
               <Label htmlFor="contactInfo">Celular del Ganadero</Label>
-              <Input
-                id="contactInfo"
-                value={contactInfo}
-                onChange={(e) => setContactInfo(e.target.value)}
-                placeholder="Número de celular del ganadero"
-              />
+              <div className="relative">
+                <Phone className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                <Input
+                  id="contactInfo"
+                  value={contactInfo}
+                  onChange={handlePhoneChange}
+                  className={`pl-10 ${phoneError ? "border-red-500" : ""}`}
+                  {...PHONE_INPUT_PROPS}
+                />
+              </div>
+              {phoneError && <p className="text-red-500 text-sm mt-1">{phoneError}</p>}
+              <p className="text-xs text-gray-500 mt-1">Ejemplo: 3205812587 (número colombiano de 10 dígitos)</p>
             </div>
 
             <div className="space-y-2">

@@ -1,5 +1,7 @@
 "use client"
 
+import type React from "react"
+
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -10,8 +12,9 @@ import { registerCompetitorClient } from "@/app/actions/competitor-clients"
 import { toast } from "@/hooks/use-toast"
 import { useState, useEffect } from "react"
 import Link from "next/link"
-import { ArrowLeft } from "lucide-react"
+import { ArrowLeft, Phone } from "lucide-react"
 import { useRouter } from "next/navigation"
+import { formatColombianMobile, getPhoneValidationError, PHONE_INPUT_PROPS } from "@/lib/phone-validation"
 
 interface Zone {
   id: string
@@ -43,6 +46,7 @@ export function NewClientForm({ zones, teams, captains }: NewClientFormProps) {
   const [selectedTeamId, setSelectedTeamId] = useState<string>("")
   const [tipoVenta, setTipoVenta] = useState<string>("")
   const [nombreAlmacen, setNombreAlmacen] = useState<string>("")
+  const [contactInfo, setContactInfo] = useState<string>("")
   const [isSubmitting, setIsSubmitting] = useState(false)
   const router = useRouter()
 
@@ -62,6 +66,19 @@ export function NewClientForm({ zones, teams, captains }: NewClientFormProps) {
     }
   }, [selectedZoneId, availableTeams, selectedTeamId])
 
+  // Handle phone input change with formatting
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value
+    // Allow only numbers, spaces, hyphens, parentheses, and plus sign
+    const cleanValue = value.replace(/[^\d\s\-$$$$+]/g, "")
+    setContactInfo(cleanValue)
+
+    // Clear phone error when user starts typing
+    if (formErrors.contact_info) {
+      setFormErrors((prev) => ({ ...prev, contact_info: "" }))
+    }
+  }
+
   const handleSubmit = async (formData: FormData) => {
     const newErrors: Record<string, string> = {}
     let isValid = true
@@ -70,6 +87,7 @@ export function NewClientForm({ zones, teams, captains }: NewClientFormProps) {
     const area_finca_hectareas_str = formData.get("area_finca_hectareas") as string
     const points_str = formData.get("points") as string
 
+    // Existing validations
     if (!client_name.trim()) {
       newErrors.client_name = "El nombre del cliente es requerido."
       isValid = false
@@ -99,6 +117,13 @@ export function NewClientForm({ zones, teams, captains }: NewClientFormProps) {
       isValid = false
     }
 
+    // Phone validation
+    const phoneError = getPhoneValidationError(contactInfo)
+    if (phoneError) {
+      newErrors.contact_info = phoneError
+      isValid = false
+    }
+
     setFormErrors(newErrors)
 
     if (!isValid) {
@@ -111,6 +136,10 @@ export function NewClientForm({ zones, teams, captains }: NewClientFormProps) {
     }
 
     setIsSubmitting(true)
+
+    // Format phone number before sending
+    const formattedPhone = formatColombianMobile(contactInfo)
+    formData.set("contact_info", formattedPhone)
 
     // Append additional data to formData for the server action
     formData.append("team_id", selectedTeamId)
@@ -242,8 +271,20 @@ export function NewClientForm({ zones, teams, captains }: NewClientFormProps) {
                 </div>
 
                 <div>
-                  <Label htmlFor="contact_info">Celular del Ganadero</Label>
-                  <Input id="contact_info" name="contact_info" placeholder="Número de celular del ganadero" />
+                  <Label htmlFor="contact_info">Celular del Ganadero *</Label>
+                  <div className="relative">
+                    <Phone className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                    <Input
+                      id="contact_info"
+                      name="contact_info"
+                      value={contactInfo}
+                      onChange={handlePhoneChange}
+                      className={`pl-10 ${formErrors.contact_info ? "border-red-500" : ""}`}
+                      {...PHONE_INPUT_PROPS}
+                    />
+                  </div>
+                  {formErrors.contact_info && <p className="text-red-500 text-sm mt-1">{formErrors.contact_info}</p>}
+                  <p className="text-xs text-gray-500 mt-1">Ejemplo: 3205812587 (número colombiano de 10 dígitos)</p>
                 </div>
               </div>
 
