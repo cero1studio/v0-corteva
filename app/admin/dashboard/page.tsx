@@ -77,6 +77,69 @@ export default function AdminDashboardPage() {
         totalSales: salesResult.count || 0,
       })
 
+      // Cargar top teams de forma simple
+      const topTeamsResult = await supabase
+        .from("teams")
+        .select(`
+          id,
+          name,
+          total_points,
+          zones (name)
+        `)
+        .order("total_points", { ascending: false })
+        .limit(5)
+
+      if (topTeamsResult.data) {
+        const formattedTeams = topTeamsResult.data.map((team) => ({
+          id: team.id,
+          name: team.name,
+          goals: team.total_points || 0,
+          zone: team.zones?.name || "Sin zona",
+        }))
+        setTopTeams(formattedTeams)
+      }
+
+      // También agregar carga de estadísticas de zonas
+      const zoneStatsResult = await supabase.from("zones").select(`
+          id,
+          name,
+          teams (
+            id,
+            total_points
+          )
+        `)
+
+      if (zoneStatsResult.data) {
+        const formattedZones = zoneStatsResult.data.map((zone) => ({
+          id: zone.id,
+          name: zone.name,
+          teams: zone.teams?.length || 0,
+          total_goals: zone.teams?.reduce((sum, team) => sum + (team.total_points || 0), 0) || 0,
+        }))
+        setZoneStats(formattedZones)
+      }
+
+      // Y estadísticas de productos
+      const productStatsResult = await supabase.from("products").select(`
+          id,
+          name,
+          sales (
+            id,
+            quantity,
+            points
+          )
+        `)
+
+      if (productStatsResult.data) {
+        const formattedProducts = productStatsResult.data.map((product) => ({
+          id: product.id,
+          name: product.name,
+          sales: product.sales?.reduce((sum, sale) => sum + (sale.quantity || 0), 0) || 0,
+          totalPoints: product.sales?.reduce((sum, sale) => sum + (sale.points || 0), 0) || 0,
+        }))
+        setProductStats(formattedProducts)
+      }
+
       setLoading(false)
     } catch (error: any) {
       console.error("Error al cargar estadísticas básicas:", error)
