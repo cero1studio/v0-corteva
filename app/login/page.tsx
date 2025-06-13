@@ -24,27 +24,49 @@ export default function LoginPage() {
   useEffect(() => {
     const cleanExistingSession = async () => {
       try {
-        console.log("LOGIN: Cleaning any existing session...")
+        console.log("LOGIN: Starting session cleanup...")
 
-        // Limpiar estado local y caché
-        clearAllCache()
+        // Timeout de seguridad - máximo 3 segundos
+        const timeoutPromise = new Promise((resolve) => {
+          setTimeout(() => {
+            console.log("LOGIN: Session cleanup timeout reached")
+            resolve(true)
+          }, 3000)
+        })
 
-        // Limpiar almacenamiento local y cookies
-        if (typeof window !== "undefined") {
-          localStorage.clear()
-          sessionStorage.clear()
-          document.cookie = "session=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/;"
-          document.cookie = "sb-access-token=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/;"
-          document.cookie = "sb-refresh-token=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/;"
-        }
+        const cleanupPromise = (async () => {
+          // Limpiar estado local y caché
+          clearAllCache()
 
-        // Cerrar sesión en Supabase sin redirigir
-        await supabase.auth.signOut({ scope: "local" })
+          // Limpiar almacenamiento local y cookies
+          if (typeof window !== "undefined") {
+            try {
+              localStorage.clear()
+              sessionStorage.clear()
+              document.cookie = "session=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/;"
+              document.cookie = "sb-access-token=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/;"
+              document.cookie = "sb-refresh-token=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/;"
+            } catch (e) {
+              console.log("LOGIN: Error clearing storage:", e)
+            }
+          }
 
-        console.log("LOGIN: Session cleaned successfully")
+          // Cerrar sesión en Supabase (solo local, sin redirección)
+          try {
+            await supabase.auth.signOut({ scope: "local" })
+          } catch (e) {
+            console.log("LOGIN: Error signing out:", e)
+          }
+
+          console.log("LOGIN: Session cleanup completed")
+        })()
+
+        // Esperar a que termine la limpieza o el timeout
+        await Promise.race([cleanupPromise, timeoutPromise])
       } catch (error) {
-        console.error("LOGIN: Error cleaning session:", error)
+        console.error("LOGIN: Error during session cleanup:", error)
       } finally {
+        console.log("LOGIN: Setting isCleaningSession to false")
         setIsCleaningSession(false)
         setLocalError(null)
         setIsSubmitting(false)
@@ -104,6 +126,7 @@ export default function LoginPage() {
           <CardContent className="flex flex-col items-center justify-center gap-4 p-8">
             <Loader2 className="h-8 w-8 animate-spin text-[#006BA6]" />
             <p className="text-center text-gray-600">Preparando inicio de sesión...</p>
+            <p className="text-center text-xs text-gray-400">Esto solo toma unos segundos</p>
           </CardContent>
         </Card>
       </div>
