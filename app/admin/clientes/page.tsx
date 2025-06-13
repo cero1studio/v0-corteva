@@ -320,58 +320,56 @@ export default function AdminClientesPage() {
 
       const excelData = filteredClients.map((client) => ({
         ID: client.id,
-        "Nombre Cliente": client.client_name || "",
-        "Nombre Ganadero": client.ganadero_name || "",
-        "Cliente Competidora": client.competitor_name || "",
+        "Nombre del Cliente": client.client_name || "",
+        "Nombre del Ganadero": client.ganadero_name || "",
         "Razón Social": client.razon_social || "",
-        "Tipo Venta": client.tipo_venta || "",
-        "Ubicación Finca": client.ubicacion_finca || "",
+        "Cliente en Competidora": client.competitor_name || "",
+        "Tipo de Venta": client.tipo_venta || "",
+        "Nombre del Almacén": client.nombre_almacen || "",
+        "Ubicación de Finca": client.ubicacion_finca || "",
         "Área Finca (Hectáreas)": client.area_finca_hectareas || "",
         "Producto Anterior": client.producto_anterior || "",
         "Producto Súper Ganadería": client.producto_super_ganaderia || "",
-        "Volumen Venta Estimado": client.volumen_venta_estimado || "",
-        "Información Contacto": client.contact_info || "",
-        Notas: client.notes || "",
-        "Nombre Almacén": client.nombre_almacen || "",
-        Puntos: client.points,
-        Capitán: client.representative_profile?.full_name || "",
-        "ID Capitán": client.representative_profile?.id || "",
+        "Volumen de Venta Real": client.volumen_venta_estimado || "",
+        "Información de Contacto": client.contact_info || "",
+        "Notas Adicionales": client.notes || "",
+        "Puntos Asignados": client.points,
+        "Capitán Responsable": client.representative_profile?.full_name || "",
+        "ID del Capitán": client.representative_profile?.id || "",
         Equipo: client.team?.name || "",
-        "ID Equipo": client.team?.id || "",
+        "ID del Equipo": client.team?.id || "",
         Zona: client.team?.zone?.name || "",
-        "ID Zona": client.team?.zone?.id || "",
-        "Fecha Registro": new Date(client.created_at).toLocaleDateString(),
-        "Fecha Registro (ISO)": client.created_at,
-        "Hora Registro": new Date(client.created_at).toLocaleTimeString(),
+        "ID de la Zona": client.team?.zone?.id || "",
+        "Fecha de Registro": new Date(client.created_at).toLocaleDateString(),
+        "Hora de Registro": new Date(client.created_at).toLocaleTimeString(),
       }))
 
       XLSX.utils.sheet_add_json(ws, excelData, { origin: "A1", skipHeader: false })
 
       const colWidths = [
-        { wch: 10 },
-        { wch: 25 },
-        { wch: 25 },
-        { wch: 25 },
-        { wch: 30 },
-        { wch: 15 },
-        { wch: 35 },
-        { wch: 15 },
-        { wch: 25 },
-        { wch: 25 },
-        { wch: 20 },
-        { wch: 30 },
-        { wch: 40 },
-        { wch: 25 },
-        { wch: 10 },
-        { wch: 20 },
-        { wch: 15 },
-        { wch: 20 },
-        { wch: 15 },
-        { wch: 15 },
-        { wch: 15 },
-        { wch: 15 },
-        { wch: 20 },
-        { wch: 15 },
+        { wch: 10 }, // ID
+        { wch: 25 }, // Nombre del Cliente
+        { wch: 25 }, // Nombre del Ganadero
+        { wch: 30 }, // Razón Social
+        { wch: 25 }, // Cliente en Competidora
+        { wch: 15 }, // Tipo de Venta
+        { wch: 25 }, // Nombre del Almacén
+        { wch: 35 }, // Ubicación de Finca
+        { wch: 15 }, // Área Finca
+        { wch: 25 }, // Producto Anterior
+        { wch: 25 }, // Producto Súper Ganadería
+        { wch: 20 }, // Volumen de Venta Real
+        { wch: 30 }, // Información de Contacto
+        { wch: 40 }, // Notas Adicionales
+        { wch: 10 }, // Puntos Asignados
+        { wch: 20 }, // Capitán Responsable
+        { wch: 15 }, // ID del Capitán
+        { wch: 20 }, // Equipo
+        { wch: 15 }, // ID del Equipo
+        { wch: 15 }, // Zona
+        { wch: 15 }, // ID de la Zona
+        { wch: 15 }, // Fecha de Registro
+        { wch: 15 }, // Hora de Registro
       ]
       ws["!cols"] = colWidths
 
