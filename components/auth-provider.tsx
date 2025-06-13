@@ -113,7 +113,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       console.log("AUTH: Current path:", currentPath, "Dashboard route:", dashboardRoute)
 
-      // Redirigir al dashboard según el rol
+      // Solo redirigir desde login
       if (currentPath === "/login") {
         console.log("AUTH: Redirecting from login to dashboard")
         router.push(dashboardRoute)
@@ -125,21 +125,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [pathname, getDashboardRoute, router],
   )
 
-  // Optimización del uso de caché para sesión
-  useEffect(() => {
-    const { session: cachedSession, user: cachedUser } = getCachedSessionForced()
-    const cachedProfile = getCachedProfileForced()
-
-    if (cachedSession && cachedUser && cachedProfile) {
-      setSession(cachedSession)
-      setUser(cachedUser)
-      setProfile(cachedProfile)
-      setIsLoading(false)
-      setIsInitialized(true)
-      refreshCacheTimestamp()
-    }
-  }, [])
-
   // Inicialización de autenticación
   useEffect(() => {
     let mounted = true
@@ -150,50 +135,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         const isPublicRoute = publicRoutes.some((route) => pathname?.startsWith(route))
 
-        // Para URLs directas no públicas, usar caché inmediatamente
-        if (!isPublicRoute && pathname !== "/login") {
-          const { session: cachedSession, user: cachedUser } = getCachedSessionForced()
-          const cachedProfile = getCachedProfileForced()
-
-          if (cachedSession && cachedUser && cachedProfile) {
-            console.log("AUTH: Using cached session immediately for direct URL")
-            setSession(cachedSession)
-            setUser(cachedUser)
-            setProfile(cachedProfile)
-            setIsLoading(false)
-            setIsInitialized(true)
-            refreshCacheTimestamp()
-
-            // Verificar sesión real en segundo plano sin bloquear
-            setTimeout(async () => {
-              try {
-                const { data, error } = await supabase.auth.getSession()
-                if (!error && data.session && mounted) {
-                  console.log("AUTH: Background session verification successful")
-                  setSession(data.session)
-                  setUser(data.session.user)
-                  cacheSession(data.session, data.session.user)
-
-                  const userProfile = await fetchUserProfile(data.session.user.id, data.session.user.email)
-                  if (userProfile && mounted) {
-                    setProfile(userProfile)
-                    cacheProfile(userProfile)
-                  }
-                } else if (error) {
-                  console.log("AUTH: Background session verification failed, keeping cache")
-                }
-              } catch (err) {
-                console.log("AUTH: Background verification error, keeping cache")
-              }
-            }, 100)
-
-            return
-          }
+        // Para rutas públicas, no hacer nada especial
+        if (isPublicRoute) {
+          console.log("AUTH: Public route, skipping auth check")
+          setIsLoading(false)
+          setIsInitialized(true)
+          return
         }
 
-        // Para login y rutas públicas, o si no hay caché, verificar sesión normalmente
-        console.log("AUTH: No cache or public route, checking session normally")
+        // Para rutas privadas, verificar caché primero
+        const { session: cachedSession, user: cachedUser } = getCachedSessionForced()
+        const cachedProfile = getCachedProfileForced()
 
+        if (cachedSession && cachedUser && cachedProfile) {
+          console.log("AUTH: Using cached session")
+          setSession(cachedSession)
+          setUser(cachedUser)
+          setProfile(cachedProfile)
+          setIsLoading(false)
+          setIsInitialized(true)
+          refreshCacheTimestamp()
+          return
+        }
+
+        // Si no hay caché, verificar sesión en Supabase
+        console.log("AUTH: No cache, checking session")
         const {
           data: { session },
           error,
@@ -206,7 +172,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setSession(null)
           setUser(null)
           setProfile(null)
-          if (isPublicRoute) clearAllCache()
+          clearAllCache()
         } else if (session) {
           console.log("AUTH: Session found")
           setSession(session)
@@ -227,15 +193,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setSession(null)
           setUser(null)
           setProfile(null)
-
-          if (isPublicRoute || pathname === "/login") {
-            clearAllCache()
-          }
-
-          if (!isPublicRoute && pathname !== "/login") {
-            console.log("AUTH: Redirecting to login")
-            router.push("/login")
-          }
+          clearAllCache()
         }
       } catch (err) {
         console.error("AUTH Init Error:", err)
@@ -252,7 +210,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => {
       mounted = false
     }
-  }, [fetchUserProfile, handleRedirection, pathname, router])
+  }, [fetchUserProfile, handleRedirection, pathname])
 
   useEffect(() => {
     const {
@@ -285,12 +243,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         // Limpiar almacenamiento local y cookies
         if (typeof window !== "undefined") {
-          localStorage.removeItem("user_data")
-          sessionStorage.removeItem("user_data")
-          // Limpiar cookies adicionales si es necesario
+          localStorage.clear()
+          sessionStorage.clear()
           document.cookie = "session=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/;"
+          document.cookie = "sb-access-token=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/;"
+          document.cookie = "sb-refresh-token=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/;"
         }
 
+        // Solo redirigir si no estamos ya en login
         if (pathname !== "/login") {
           console.log("AUTH: Signed out, redirecting to login")
           router.push("/login")
@@ -338,12 +298,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       // Limpiar almacenamiento local y cookies
       if (typeof window !== "undefined") {
-        localStorage.removeItem("user_data")
-        sessionStorage.removeItem("user_data")
         localStorage.clear()
         sessionStorage.clear()
-
-        // Limpiar cookies adicionales si es necesario
         document.cookie = "session=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/;"
         document.cookie = "sb-access-token=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/;"
         document.cookie = "sb-refresh-token=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/;"
@@ -353,7 +309,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const { error } = await supabase.auth.signOut()
       if (error) {
         console.error("AUTH: Error signing out from Supabase:", error)
-        // Aún así continuar con la redirección
       } else {
         console.log("AUTH: Successfully signed out from Supabase")
       }
@@ -378,13 +333,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     }
   }
-
-  useEffect(() => {
-    // Resetear loading state cuando estamos en login
-    if (pathname === "/login") {
-      setIsLoading(false)
-    }
-  }, [pathname])
 
   const refreshProfile = useCallback(async () => {
     if (!user) return
