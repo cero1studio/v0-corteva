@@ -353,7 +353,15 @@ export default function AdminDashboardPage() {
             ) : (
               <div className="text-2xl font-bold">{stats.totalSales}</div>
             )}
-            <p className="text-xs text-muted-foreground">Ventas registradas</p>
+            <div className="space-y-1">
+              <p className="text-xs text-muted-foreground">Ventas registradas</p>
+              {!loading && dataLoaded.productStats && (
+                <p className="text-xs text-green-600 font-medium">
+                  {Math.round((productStats.reduce((sum, product) => sum + product.totalPoints, 0) / 10) * 10) / 10}{" "}
+                  kilos totales
+                </p>
+              )}
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -519,7 +527,10 @@ export default function AdminDashboardPage() {
                       </div>
                       <div className="flex justify-between text-xs text-muted-foreground">
                         <span>{product.sales} unidades</span>
-                        <span>{product.totalPoints} goles</span>
+                        <div className="text-right">
+                          <div>{product.totalPoints} puntos</div>
+                          <div>{Math.round((product.totalPoints / 10) * 10) / 10} kilos</div>
+                        </div>
                       </div>
                     </div>
                   ))}
