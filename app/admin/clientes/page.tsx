@@ -85,7 +85,7 @@ const columns: ColumnDef<CompetitorClient>[] = [
   },
   {
     accessorKey: "volumen_venta_estimado",
-    header: "Volumen de Venta Estimado",
+    header: "Volumen de Venta Real",
     cell: ({ row }) => {
       return row.original.volumen_venta_estimado || "N/A"
     },

@@ -51,7 +51,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     return () => clearTimeout(quickTimeout)
   }, [pathname, router, isInitialized, isAuthorized])
 
-  // Timeout para mostrar fallback solo si no se resolvió rápido
+  // Timeout para mostrar fallback solo si no se resolvió r��pido
   useEffect(() => {
     if (quickResolved) return
 
