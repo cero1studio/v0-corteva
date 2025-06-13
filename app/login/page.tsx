@@ -8,6 +8,8 @@ import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { useAuth } from "@/components/auth-provider"
 import { Loader2, Eye, EyeOff } from "lucide-react"
+import { supabase } from "@/lib/supabase/client"
+import { clearAllCache } from "@/lib/session-cache"
 
 export default function LoginPage() {
   const [email, setEmail] = useState("")
@@ -15,12 +17,41 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [localError, setLocalError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isCleaningSession, setIsCleaningSession] = useState(true)
   const { signIn, isLoading, error: authError } = useAuth()
 
+  // Limpiar cualquier sesión existente al acceder a login
   useEffect(() => {
-    // Resetear estados cuando se monta el componente
-    setLocalError(null)
-    setIsSubmitting(false)
+    const cleanExistingSession = async () => {
+      try {
+        console.log("LOGIN: Cleaning any existing session...")
+
+        // Limpiar estado local y caché
+        clearAllCache()
+
+        // Limpiar almacenamiento local y cookies
+        if (typeof window !== "undefined") {
+          localStorage.clear()
+          sessionStorage.clear()
+          document.cookie = "session=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/;"
+          document.cookie = "sb-access-token=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/;"
+          document.cookie = "sb-refresh-token=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/;"
+        }
+
+        // Cerrar sesión en Supabase sin redirigir
+        await supabase.auth.signOut({ scope: "local" })
+
+        console.log("LOGIN: Session cleaned successfully")
+      } catch (error) {
+        console.error("LOGIN: Error cleaning session:", error)
+      } finally {
+        setIsCleaningSession(false)
+        setLocalError(null)
+        setIsSubmitting(false)
+      }
+    }
+
+    cleanExistingSession()
   }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -64,6 +95,20 @@ export default function LoginPage() {
 
   // Mostrar error de autenticación o error local
   const displayError = localError || authError
+
+  // Mostrar loading mientras se limpia la sesión
+  if (isCleaningSession) {
+    return (
+      <div className="min-h-screen flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
+        <Card className="w-full max-w-md">
+          <CardContent className="flex flex-col items-center justify-center gap-4 p-8">
+            <Loader2 className="h-8 w-8 animate-spin text-[#006BA6]" />
+            <p className="text-center text-gray-600">Preparando inicio de sesión...</p>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">

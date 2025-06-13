@@ -135,7 +135,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         const isPublicRoute = publicRoutes.some((route) => pathname?.startsWith(route))
 
-        // Para rutas públicas, no hacer nada especial
+        // Para la página de login, no hacer verificación de sesión
+        // La página de login se encarga de limpiar cualquier sesión existente
+        if (pathname === "/login") {
+          console.log("AUTH: Login page, skipping auth check")
+          setIsLoading(false)
+          setIsInitialized(true)
+          return
+        }
+
+        // Para otras rutas públicas
         if (isPublicRoute) {
           console.log("AUTH: Public route, skipping auth check")
           setIsLoading(false)
@@ -173,6 +182,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setUser(null)
           setProfile(null)
           clearAllCache()
+          router.push("/login")
         } else if (session) {
           console.log("AUTH: Session found")
           setSession(session)
@@ -183,20 +193,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           if (mounted && userProfile) {
             setProfile(userProfile)
             cacheProfile(userProfile)
-
-            if (pathname === "/login") {
-              handleRedirection(userProfile)
-            }
           }
         } else {
-          console.log("AUTH: No session found")
+          console.log("AUTH: No session found, redirecting to login")
           setSession(null)
           setUser(null)
           setProfile(null)
           clearAllCache()
+          router.push("/login")
         }
       } catch (err) {
         console.error("AUTH Init Error:", err)
+        router.push("/login")
       } finally {
         if (mounted) {
           setIsLoading(false)
@@ -210,7 +218,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => {
       mounted = false
     }
-  }, [fetchUserProfile, handleRedirection, pathname])
+  }, [fetchUserProfile, handleRedirection, pathname, router])
 
   useEffect(() => {
     const {
