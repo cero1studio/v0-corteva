@@ -83,13 +83,34 @@ export function NewClientForm({ zones, teams, captains }: NewClientFormProps) {
     const newErrors: Record<string, string> = {}
     let isValid = true
 
+    // Obtener todos los valores del formulario
     const client_name = formData.get("client_name") as string
+    const ganadero_name = formData.get("ganadero_name") as string
+    const razon_social = formData.get("razon_social") as string
+    const competitor_name = formData.get("competitor_name") as string
+    const ubicacion_finca = formData.get("ubicacion_finca") as string
+    const volumen_venta_real = formData.get("volumen_venta_real") as string
     const area_finca_hectareas_str = formData.get("area_finca_hectareas") as string
+    const producto_anterior = formData.get("producto_anterior") as string
+    const producto_super_ganaderia = formData.get("producto_super_ganaderia") as string
     const points_str = formData.get("points") as string
+    const notes = formData.get("notes") as string
 
-    // Existing validations
-    if (!client_name.trim()) {
+    // Validaciones obligatorias
+    if (!client_name?.trim()) {
       newErrors.client_name = "El nombre del cliente es requerido."
+      isValid = false
+    }
+    if (!ganadero_name?.trim()) {
+      newErrors.ganadero_name = "El nombre del ganadero es requerido."
+      isValid = false
+    }
+    if (!razon_social?.trim()) {
+      newErrors.razon_social = "La razón social es requerida."
+      isValid = false
+    }
+    if (!competitor_name?.trim()) {
+      newErrors.competitor_name = "El nombre en empresa competidora es requerido."
       isValid = false
     }
     if (!selectedZoneId) {
@@ -104,16 +125,51 @@ export function NewClientForm({ zones, teams, captains }: NewClientFormProps) {
       newErrors.team = "El equipo seleccionado no tiene un Capitán asignado."
       isValid = false
     }
+    if (!ubicacion_finca?.trim()) {
+      newErrors.ubicacion_finca = "La ubicación de la finca es requerida."
+      isValid = false
+    }
+    if (!tipoVenta) {
+      newErrors.tipo_venta = "El tipo de venta es requerido."
+      isValid = false
+    }
+    // Validación condicional para almacén
     if (tipoVenta === "distribuidor" && !nombreAlmacen.trim()) {
       newErrors.nombre_almacen = "El nombre del almacén es requerido para este tipo de venta."
       isValid = false
     }
-    if (area_finca_hectareas_str && isNaN(Number(area_finca_hectareas_str))) {
+    if (!volumen_venta_real?.trim()) {
+      newErrors.volumen_venta_real = "El volumen de venta real es requerido."
+      isValid = false
+    }
+    if (!area_finca_hectareas_str?.trim()) {
+      newErrors.area_finca_hectareas = "El área de la finca es requerida."
+      isValid = false
+    } else if (isNaN(Number(area_finca_hectareas_str))) {
       newErrors.area_finca_hectareas = "El área de la finca debe ser un número válido."
       isValid = false
     }
-    if (points_str && isNaN(Number(points_str))) {
+    if (!producto_anterior?.trim()) {
+      newErrors.producto_anterior = "El producto anterior es requerido."
+      isValid = false
+    }
+    if (!producto_super_ganaderia?.trim()) {
+      newErrors.producto_super_ganaderia = "El producto de Súper Ganadería es requerido."
+      isValid = false
+    }
+    if (!contactInfo?.trim()) {
+      newErrors.contact_info = "El celular del ganadero es requerido."
+      isValid = false
+    }
+    if (!points_str?.trim()) {
+      newErrors.points = "Los puntos asignados son requeridos."
+      isValid = false
+    } else if (isNaN(Number(points_str))) {
       newErrors.points = "Los puntos deben ser un número válido."
+      isValid = false
+    }
+    if (!notes?.trim()) {
+      newErrors.notes = "Las notas adicionales son requeridas."
       isValid = false
     }
 
@@ -129,7 +185,7 @@ export function NewClientForm({ zones, teams, captains }: NewClientFormProps) {
     if (!isValid) {
       toast({
         title: "Error de validación",
-        description: "Por favor, corrige los errores en el formulario.",
+        description: "Por favor, completa todos los campos obligatorios.",
         variant: "destructive",
       })
       return
@@ -186,7 +242,7 @@ export function NewClientForm({ zones, teams, captains }: NewClientFormProps) {
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Registrar Nuevo Cliente</h1>
           <p className="text-muted-foreground">
-            Completa los detalles para agregar un nuevo cliente de la competencia.
+            Completa todos los detalles para agregar un nuevo cliente de la competencia.
           </p>
         </div>
       </div>
@@ -194,7 +250,7 @@ export function NewClientForm({ zones, teams, captains }: NewClientFormProps) {
       <Card>
         <CardHeader>
           <CardTitle>Información del Cliente</CardTitle>
-          <CardDescription>Detalles básicos y de contacto del cliente.</CardDescription>
+          <CardDescription>Todos los campos son obligatorios.</CardDescription>
         </CardHeader>
         <CardContent>
           <form action={handleSubmit} className="space-y-6">
@@ -256,18 +312,28 @@ export function NewClientForm({ zones, teams, captains }: NewClientFormProps) {
                 </div>
 
                 <div>
-                  <Label htmlFor="ganadero_name">Nombre del Ganadero</Label>
-                  <Input id="ganadero_name" name="ganadero_name" placeholder="Nombre del ganadero" />
+                  <Label htmlFor="ganadero_name">Nombre del Ganadero *</Label>
+                  <Input id="ganadero_name" name="ganadero_name" placeholder="Nombre del ganadero" required />
+                  {formErrors.ganadero_name && <p className="text-red-500 text-sm mt-1">{formErrors.ganadero_name}</p>}
                 </div>
 
                 <div>
-                  <Label htmlFor="razon_social">Razón Social</Label>
-                  <Input id="razon_social" name="razon_social" placeholder="Razón social" />
+                  <Label htmlFor="razon_social">Razón Social *</Label>
+                  <Input id="razon_social" name="razon_social" placeholder="Razón social" required />
+                  {formErrors.razon_social && <p className="text-red-500 text-sm mt-1">{formErrors.razon_social}</p>}
                 </div>
 
                 <div>
-                  <Label htmlFor="competitor_name">Cliente en Competidora</Label>
-                  <Input id="competitor_name" name="competitor_name" placeholder="Nombre en empresa competidora" />
+                  <Label htmlFor="competitor_name">Cliente en Competidora *</Label>
+                  <Input
+                    id="competitor_name"
+                    name="competitor_name"
+                    placeholder="Nombre en empresa competidora"
+                    required
+                  />
+                  {formErrors.competitor_name && (
+                    <p className="text-red-500 text-sm mt-1">{formErrors.competitor_name}</p>
+                  )}
                 </div>
 
                 <div>
@@ -280,6 +346,7 @@ export function NewClientForm({ zones, teams, captains }: NewClientFormProps) {
                       value={contactInfo}
                       onChange={handlePhoneChange}
                       className={`pl-10 ${formErrors.contact_info ? "border-red-500" : ""}`}
+                      required
                       {...PHONE_INPUT_PROPS}
                     />
                   </div>
@@ -289,13 +356,17 @@ export function NewClientForm({ zones, teams, captains }: NewClientFormProps) {
               </div>
 
               <div>
-                <Label htmlFor="ubicacion_finca">Ubicación de la Finca</Label>
+                <Label htmlFor="ubicacion_finca">Ubicación de la Finca *</Label>
                 <Textarea
                   id="ubicacion_finca"
                   name="ubicacion_finca"
                   placeholder="Dirección o ubicación de la finca"
                   rows={2}
+                  required
                 />
+                {formErrors.ubicacion_finca && (
+                  <p className="text-red-500 text-sm mt-1">{formErrors.ubicacion_finca}</p>
+                )}
               </div>
             </div>
 
@@ -305,7 +376,7 @@ export function NewClientForm({ zones, teams, captains }: NewClientFormProps) {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <Label htmlFor="tipo_venta">Tipo de Venta</Label>
+                  <Label htmlFor="tipo_venta">Tipo de Venta *</Label>
                   <Select value={tipoVenta} onValueChange={setTipoVenta}>
                     <SelectTrigger>
                       <SelectValue placeholder="Seleccionar tipo de venta" />
@@ -317,6 +388,7 @@ export function NewClientForm({ zones, teams, captains }: NewClientFormProps) {
                       <SelectItem value="venta_contado">Venta de Contado</SelectItem>
                     </SelectContent>
                   </Select>
+                  {formErrors.tipo_venta && <p className="text-red-500 text-sm mt-1">{formErrors.tipo_venta}</p>}
                 </div>
 
                 {tipoVenta === "distribuidor" && (
@@ -337,22 +409,27 @@ export function NewClientForm({ zones, teams, captains }: NewClientFormProps) {
                 )}
 
                 <div>
-                  <Label htmlFor="volumen_venta_estimado">Volumen de Venta Estimado</Label>
+                  <Label htmlFor="volumen_venta_real">Volumen de Venta Real *</Label>
                   <Input
-                    id="volumen_venta_estimado"
-                    name="volumen_venta_estimado"
+                    id="volumen_venta_real"
+                    name="volumen_venta_real"
                     placeholder="Ej: 50 bultos, 2 toneladas"
+                    required
                   />
+                  {formErrors.volumen_venta_real && (
+                    <p className="text-red-500 text-sm mt-1">{formErrors.volumen_venta_real}</p>
+                  )}
                 </div>
 
                 <div>
-                  <Label htmlFor="area_finca_hectareas">Área de Finca (Hectáreas)</Label>
+                  <Label htmlFor="area_finca_hectareas">Área de Finca (Hectáreas) *</Label>
                   <Input
                     id="area_finca_hectareas"
                     name="area_finca_hectareas"
                     type="number"
                     step="0.01"
                     placeholder="Área en hectáreas"
+                    required
                   />
                   {formErrors.area_finca_hectareas && (
                     <p className="text-red-500 text-sm mt-1">{formErrors.area_finca_hectareas}</p>
@@ -360,13 +437,14 @@ export function NewClientForm({ zones, teams, captains }: NewClientFormProps) {
                 </div>
 
                 <div>
-                  <Label htmlFor="points">Puntos Asignados</Label>
+                  <Label htmlFor="points">Puntos Asignados *</Label>
                   <Input
                     id="points"
                     name="points"
                     type="number"
                     defaultValue="5" // Default value as per schema
                     placeholder="Puntos asignados"
+                    required
                   />
                   {formErrors.points && <p className="text-red-500 text-sm mt-1">{formErrors.points}</p>}
                 </div>
@@ -374,16 +452,20 @@ export function NewClientForm({ zones, teams, captains }: NewClientFormProps) {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <Label htmlFor="producto_anterior">Producto Anterior</Label>
+                  <Label htmlFor="producto_anterior">Producto Anterior *</Label>
                   <Input
                     id="producto_anterior"
                     name="producto_anterior"
                     placeholder="Producto que usaba anteriormente"
+                    required
                   />
+                  {formErrors.producto_anterior && (
+                    <p className="text-red-500 text-sm mt-1">{formErrors.producto_anterior}</p>
+                  )}
                 </div>
 
                 <div>
-                  <Label htmlFor="producto_super_ganaderia">Producto Súper Ganadería</Label>
+                  <Label htmlFor="producto_super_ganaderia">Producto Súper Ganadería *</Label>
                   <Select name="producto_super_ganaderia">
                     <SelectTrigger>
                       <SelectValue placeholder="Seleccionar producto" />
@@ -393,14 +475,24 @@ export function NewClientForm({ zones, teams, captains }: NewClientFormProps) {
                       <SelectItem value="Pastar D">Pastar D</SelectItem>
                     </SelectContent>
                   </Select>
+                  {formErrors.producto_super_ganaderia && (
+                    <p className="text-red-500 text-sm mt-1">{formErrors.producto_super_ganaderia}</p>
+                  )}
                 </div>
               </div>
             </div>
 
             {/* Notas */}
             <div className="space-y-2">
-              <Label htmlFor="notes">Notas Adicionales</Label>
-              <Textarea id="notes" name="notes" placeholder="Cualquier nota relevante sobre el cliente" rows={3} />
+              <Label htmlFor="notes">Notas Adicionales *</Label>
+              <Textarea
+                id="notes"
+                name="notes"
+                placeholder="Cualquier nota relevante sobre el cliente"
+                rows={3}
+                required
+              />
+              {formErrors.notes && <p className="text-red-500 text-sm mt-1">{formErrors.notes}</p>}
             </div>
 
             <div className="flex justify-end space-x-2 pt-4">

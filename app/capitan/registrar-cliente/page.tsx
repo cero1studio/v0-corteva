@@ -82,25 +82,30 @@ export default function RegistrarClientePage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
+    // Validar todos los campos obligatorios
     if (
-      !farmerName ||
+      !farmerName.trim() ||
+      !businessName.trim() ||
       !saleType ||
-      !farmLocation ||
-      !previousProduct ||
+      !farmLocation.trim() ||
+      !farmAreaHectares.trim() ||
+      !previousProduct.trim() ||
       !superGanaderiaProduct ||
       !volumenFacturado ||
+      !contactInfo.trim() ||
+      !notes.trim() ||
       !userId
     ) {
       toast({
         title: "Error",
-        description: "Por favor completa los campos requeridos",
+        description: "Por favor completa todos los campos obligatorios",
         variant: "destructive",
       })
       return
     }
 
     // Validar que se ingrese nombre de almacén si el tipo de venta es por almacén
-    if (saleType === "Venta por Almacén" && !storeName) {
+    if (saleType === "Venta por Almacén" && !storeName.trim()) {
       toast({
         title: "Error",
         description: "Por favor ingresa el nombre del almacén",
@@ -120,18 +125,27 @@ export default function RegistrarClientePage() {
       return
     }
 
-    // Validar teléfono si se proporciona
-    if (contactInfo) {
-      const phoneValidationError = getPhoneValidationError(contactInfo)
-      if (phoneValidationError) {
-        setPhoneError(phoneValidationError)
-        toast({
-          title: "Error",
-          description: phoneValidationError,
-          variant: "destructive",
-        })
-        return
-      }
+    // Validar área de finca
+    const areaFinca = Number.parseFloat(farmAreaHectares)
+    if (isNaN(areaFinca) || areaFinca <= 0) {
+      toast({
+        title: "Error",
+        description: "Por favor ingresa un área de finca válida",
+        variant: "destructive",
+      })
+      return
+    }
+
+    // Validar teléfono
+    const phoneValidationError = getPhoneValidationError(contactInfo)
+    if (phoneValidationError) {
+      setPhoneError(phoneValidationError)
+      toast({
+        title: "Error",
+        description: phoneValidationError,
+        variant: "destructive",
+      })
+      return
     }
 
     setLoading(true)
@@ -148,7 +162,7 @@ export default function RegistrarClientePage() {
       if (!profile || !profile.team_id) throw new Error("Usuario sin equipo asignado")
 
       // Format phone number before saving
-      const formattedPhone = contactInfo ? formatColombianMobile(contactInfo) : ""
+      const formattedPhone = formatColombianMobile(contactInfo)
 
       // Registrar el cliente
       const { data, error } = await supabase
@@ -161,7 +175,7 @@ export default function RegistrarClientePage() {
           tipo_venta: saleType,
           nombre_almacen: saleType === "Venta por Almacén" ? storeName : null,
           ubicacion_finca: farmLocation,
-          area_finca_hectareas: farmAreaHectares ? Number.parseFloat(farmAreaHectares) : null,
+          area_finca_hectareas: areaFinca,
           producto_anterior: previousProduct,
           producto_super_ganaderia: superGanaderiaProduct,
           volumen_venta_estimado: volumen,
@@ -268,7 +282,9 @@ export default function RegistrarClientePage() {
             <Users className="h-5 w-5" />
             Nuevo Cliente
           </CardTitle>
-          <CardDescription>Registra un nuevo cliente captado de la competencia (+2 goles)</CardDescription>
+          <CardDescription>
+            Registra un nuevo cliente captado de la competencia (+2 goles). Todos los campos son obligatorios.
+          </CardDescription>
         </CardHeader>
         <form onSubmit={handleSubmit}>
           <CardContent className="space-y-4">
@@ -284,12 +300,13 @@ export default function RegistrarClientePage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="businessName">Razón Social</Label>
+              <Label htmlFor="businessName">Razón Social *</Label>
               <Input
                 id="businessName"
                 value={businessName}
                 onChange={(e) => setBusinessName(e.target.value)}
-                placeholder="Nombre legal de la empresa, si aplica"
+                placeholder="Nombre legal de la empresa"
+                required
               />
             </div>
 
@@ -333,7 +350,7 @@ export default function RegistrarClientePage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="farmAreaHectares">Área de la Finca (hectáreas)</Label>
+              <Label htmlFor="farmAreaHectares">Área de la Finca (hectáreas) *</Label>
               <Input
                 id="farmAreaHectares"
                 type="number"
@@ -341,6 +358,7 @@ export default function RegistrarClientePage() {
                 value={farmAreaHectares}
                 onChange={(e) => setFarmAreaHectares(e.target.value)}
                 placeholder="Número de hectáreas dedicadas a la actividad ganadera"
+                required
               />
             </div>
 
@@ -371,7 +389,7 @@ export default function RegistrarClientePage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="volumenFacturado">Volumen de Venta Facturado (litros) *</Label>
+              <Label htmlFor="volumenFacturado">Volumen de Venta Real (litros) *</Label>
               <Input
                 id="volumenFacturado"
                 type="number"
@@ -387,7 +405,7 @@ export default function RegistrarClientePage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="contactInfo">Celular del Ganadero</Label>
+              <Label htmlFor="contactInfo">Celular del Ganadero *</Label>
               <div className="relative">
                 <Phone className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
                 <Input
@@ -395,6 +413,7 @@ export default function RegistrarClientePage() {
                   value={contactInfo}
                   onChange={handlePhoneChange}
                   className={`pl-10 ${phoneError ? "border-red-500" : ""}`}
+                  required
                   {...PHONE_INPUT_PROPS}
                 />
               </div>
@@ -403,13 +422,14 @@ export default function RegistrarClientePage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="notes">Notas</Label>
+              <Label htmlFor="notes">Notas *</Label>
               <Textarea
                 id="notes"
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 placeholder="Detalles adicionales sobre el cliente"
                 rows={3}
+                required
               />
             </div>
           </CardContent>
