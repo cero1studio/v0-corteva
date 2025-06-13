@@ -15,34 +15,13 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [localError, setLocalError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const { signIn, isLoading, error: authError, user, profile } = useAuth()
+  const { signIn, isLoading, error: authError } = useAuth()
 
-  // Si ya hay usuario logueado, redirigir al dashboard
   useEffect(() => {
-    if (user && profile) {
-      const getDashboardRoute = (role: string, teamId?: string | null) => {
-        switch (role) {
-          case "admin":
-            return "/admin/dashboard"
-          case "capitan":
-            return teamId ? "/capitan/dashboard" : "/capitan/crear-equipo"
-          case "director_tecnico":
-            return "/director-tecnico/dashboard"
-          case "supervisor":
-            return "/supervisor/dashboard"
-          case "representante":
-            return "/representante/dashboard"
-          case "arbitro":
-            return "/arbitro/dashboard"
-          default:
-            return "/login"
-        }
-      }
-
-      const dashboardRoute = getDashboardRoute(profile.role, profile.team_id)
-      window.location.href = dashboardRoute
-    }
-  }, [user, profile])
+    // Resetear estados cuando se monta el componente
+    setLocalError(null)
+    setIsSubmitting(false)
+  }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -55,24 +34,35 @@ export default function LoginPage() {
 
     try {
       setIsSubmitting(true)
+      console.log("LOGIN: Attempting sign in for:", email)
+
       const result = await signIn(email, password)
 
       if (result?.error) {
+        console.error("LOGIN: Sign in error:", result.error)
+        // Traducir mensajes de error comunes
         if (result.error.includes("Invalid login")) {
           setLocalError("Correo o contraseña incorrectos")
         } else if (result.error.includes("too many requests")) {
           setLocalError("Demasiados intentos fallidos. Intenta más tarde.")
+        } else if (result.error.includes("timeout")) {
+          setLocalError("La conexión está tardando mucho. Intenta nuevamente.")
         } else {
-          setLocalError("Error al iniciar sesión. Verifica tus credenciales.")
+          setLocalError(result.error)
         }
         setIsSubmitting(false)
+      } else {
+        console.log("LOGIN: Sign in successful, waiting for redirection...")
+        // No resetear isSubmitting aquí, dejar que AuthGuard maneje la redirección
       }
     } catch (error: any) {
+      console.error("LOGIN: Error en inicio de sesión:", error)
       setLocalError("Error al iniciar sesión. Intenta nuevamente.")
       setIsSubmitting(false)
     }
   }
 
+  // Mostrar error de autenticación o error local
   const displayError = localError || authError
 
   return (
