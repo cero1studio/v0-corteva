@@ -3,12 +3,13 @@
 import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Trophy, TrendingUp } from "lucide-react"
+import { Trophy, TrendingUp, RefreshCw } from "lucide-react"
 import { supabase } from "@/lib/supabase/client"
 import { useToast } from "@/hooks/use-toast"
 import { EmptyState } from "@/components/empty-state"
 import { AuthGuard } from "@/components/auth-guard"
 import { TeamLevelBadge } from "@/components/team-level-badge"
+import { Button } from "@/components/ui/button"
 
 interface TeamRanking {
   id: string
@@ -30,72 +31,10 @@ function DirectorTecnicoRankingContent() {
     loadData()
   }, [])
 
-  async function calculateTeamPoints(teamId: string, memberIds: string[]) {
-    // 1. CALCULAR PUNTOS DE VENTAS
-    let totalSalesPoints = 0
-
-    // Buscar ventas por representative_id (miembros del equipo)
-    if (memberIds.length > 0) {
-      const { data: salesByRep } = await supabase.from("sales").select("points").in("representative_id", memberIds)
-
-      if (salesByRep) {
-        totalSalesPoints += salesByRep.reduce((sum, sale) => sum + (sale.points || 0), 0)
-      }
-    }
-
-    // Buscar ventas directas por team_id
-    const { data: salesByTeam } = await supabase.from("sales").select("points").eq("team_id", teamId)
-
-    if (salesByTeam) {
-      totalSalesPoints += salesByTeam.reduce((sum, sale) => sum + (sale.points || 0), 0)
-    }
-
-    // 2. CALCULAR PUNTOS DE CLIENTES (evitar duplicados)
-    let totalClientsPoints = 0
-    const countedClientIds = new Set()
-
-    if (memberIds.length > 0) {
-      const { data: clientsByRep } = await supabase
-        .from("competitor_clients")
-        .select("id, points")
-        .in("representative_id", memberIds)
-
-      if (clientsByRep) {
-        for (const client of clientsByRep) {
-          if (!countedClientIds.has(client.id)) {
-            totalClientsPoints += client.points || 200
-            countedClientIds.add(client.id)
-          }
-        }
-      }
-    }
-
-    // Clientes directos por team_id
-    const { data: clientsByTeam } = await supabase.from("competitor_clients").select("id, points").eq("team_id", teamId)
-
-    if (clientsByTeam) {
-      for (const client of clientsByTeam) {
-        if (!countedClientIds.has(client.id)) {
-          totalClientsPoints += client.points || 200
-          countedClientIds.add(client.id)
-        }
-      }
-    }
-
-    // 3. CALCULAR PUNTOS DE TIROS LIBRES
-    const { data: freeKicks } = await supabase.from("free_kick_goals").select("points").eq("team_id", teamId)
-
-    let totalFreeKickPoints = 0
-    if (freeKicks) {
-      totalFreeKickPoints = freeKicks.reduce((sum, freeKick) => sum + (freeKick.points || 0), 0)
-    }
-
-    return totalSalesPoints + totalClientsPoints + totalFreeKickPoints
-  }
-
   async function loadData() {
     try {
       setLoading(true)
+      console.time("Carga de ranking")
 
       // Obtener el usuario actual
       const {
@@ -132,88 +71,67 @@ function DirectorTecnicoRankingContent() {
           description: "No tienes una zona asignada",
           variant: "destructive",
         })
+        setLoading(false)
         return
       }
 
-      // Obtener equipos de la zona
-      const { data: zoneTeamsData, error: zoneTeamsError } = await supabase
-        .from("teams")
-        .select(`
-          id, 
-          name,
-          distributors(name),
-          zones(name)
-        `)
-        .eq("zone_id", profileData.zone_id)
+      // NUEVA IMPLEMENTACIÓN: Usar la función SQL para obtener el ranking de zona
+      console.time("Ranking de zona")
+      const { data: zoneRankingData, error: zoneRankingError } = await supabase.rpc("get_team_ranking", {
+        zone_id_param: profileData.zone_id,
+      })
+      console.timeEnd("Ranking de zona")
 
-      if (zoneTeamsError) {
-        console.error("Error al obtener equipos de zona:", zoneTeamsError)
+      if (zoneRankingError) {
+        console.error("Error al obtener ranking de zona:", zoneRankingError)
+        toast({
+          title: "Error",
+          description: "No se pudo cargar el ranking de zona",
+          variant: "destructive",
+        })
       } else {
-        // Calcular puntos reales para cada equipo de la zona
-        const zoneRanking: TeamRanking[] = []
+        // Transformar datos al formato esperado
+        const formattedZoneRanking = zoneRankingData.map((team) => ({
+          id: team.team_id,
+          name: team.team_name,
+          total_points: Number(team.total_points),
+          goals: Math.floor(Number(team.total_points) / puntosParaGol),
+          distributor_name: team.distributor_name || "Sin distribuidor",
+          zone_name: team.zone_name || "Sin zona",
+        }))
 
-        for (const team of zoneTeamsData || []) {
-          // Obtener miembros del equipo
-          const { data: teamMembers } = await supabase.from("profiles").select("id").eq("team_id", team.id)
-
-          const memberIds = teamMembers?.map((member) => member.id) || []
-          const totalPoints = await calculateTeamPoints(team.id, memberIds)
-          const goals = Math.floor(totalPoints / puntosParaGol)
-
-          zoneRanking.push({
-            id: team.id,
-            name: team.name,
-            total_points: totalPoints,
-            goals: goals,
-            distributor_name: team.distributors?.name || "Sin distribuidor",
-            zone_name: team.zones?.name || "Sin zona",
-          })
-        }
-
-        // Ordenar por puntos totales
-        const sortedZoneRanking = zoneRanking.sort((a, b) => b.total_points - a.total_points)
-        setZoneTeams(sortedZoneRanking)
-        console.log("Equipos de zona cargados:", sortedZoneRanking.length)
+        setZoneTeams(formattedZoneRanking)
+        console.log("Equipos de zona cargados:", formattedZoneRanking.length)
       }
 
-      // Obtener ranking nacional (todos los equipos)
-      const { data: nationalTeamsData, error: nationalTeamsError } = await supabase.from("teams").select(`
-          id, 
-          name,
-          zone_id,
-          distributors(name),
-          zones(name)
-        `)
+      // NUEVA IMPLEMENTACIÓN: Usar la función SQL para obtener el ranking nacional
+      console.time("Ranking nacional")
+      const { data: nationalRankingData, error: nationalRankingError } = await supabase.rpc("get_team_ranking")
+      console.timeEnd("Ranking nacional")
 
-      if (nationalTeamsError) {
-        console.error("Error al obtener equipos nacionales:", nationalTeamsError)
+      if (nationalRankingError) {
+        console.error("Error al obtener ranking nacional:", nationalRankingError)
+        toast({
+          title: "Error",
+          description: "No se pudo cargar el ranking nacional",
+          variant: "destructive",
+        })
       } else {
-        // Calcular puntos reales para cada equipo nacional
-        const nationalRanking: TeamRanking[] = []
+        // Transformar datos al formato esperado
+        const formattedNationalRanking = nationalRankingData.map((team) => ({
+          id: team.team_id,
+          name: team.team_name,
+          total_points: Number(team.total_points),
+          goals: Math.floor(Number(team.total_points) / puntosParaGol),
+          distributor_name: team.distributor_name || "Sin distribuidor",
+          zone_name: team.zone_name || "Sin zona",
+        }))
 
-        for (const team of nationalTeamsData || []) {
-          // Obtener miembros del equipo
-          const { data: teamMembers } = await supabase.from("profiles").select("id").eq("team_id", team.id)
-
-          const memberIds = teamMembers?.map((member) => member.id) || []
-          const totalPoints = await calculateTeamPoints(team.id, memberIds)
-          const goals = Math.floor(totalPoints / puntosParaGol)
-
-          nationalRanking.push({
-            id: team.id,
-            name: team.name,
-            total_points: totalPoints,
-            goals: goals,
-            distributor_name: team.distributors?.name || "Sin distribuidor",
-            zone_name: team.zones?.name || "Sin zona",
-          })
-        }
-
-        // Ordenar por puntos totales
-        const sortedNationalRanking = nationalRanking.sort((a, b) => b.total_points - a.total_points)
-        setNationalTeams(sortedNationalRanking)
-        console.log("Equipos nacionales cargados:", sortedNationalRanking.length)
+        setNationalTeams(formattedNationalRanking)
+        console.log("Equipos nacionales cargados:", formattedNationalRanking.length)
       }
+
+      console.timeEnd("Carga de ranking")
     } catch (error: any) {
       console.error("Error al cargar datos:", error)
       toast({
@@ -226,19 +144,23 @@ function DirectorTecnicoRankingContent() {
     }
   }
 
-  if (loading) {
-    return (
-      <div className="flex justify-center items-center h-full">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-corteva-600"></div>
-      </div>
-    )
-  }
-
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-3xl font-bold tracking-tight">Rankings</h2>
-        <p className="text-muted-foreground">Clasificación de equipos por puntos</p>
+      <div className="flex justify-between items-center">
+        <div>
+          <h2 className="text-3xl font-bold tracking-tight">Rankings</h2>
+          <p className="text-muted-foreground">Clasificación de equipos por puntos</p>
+        </div>
+        <Button
+          onClick={() => loadData()}
+          variant="outline"
+          size="sm"
+          disabled={loading}
+          className="flex items-center gap-2"
+        >
+          <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+          Actualizar
+        </Button>
       </div>
 
       <Tabs defaultValue="zona" className="space-y-4">
@@ -257,7 +179,11 @@ function DirectorTecnicoRankingContent() {
               <CardDescription>Posiciones de los equipos en tu zona</CardDescription>
             </CardHeader>
             <CardContent>
-              {zoneTeams && zoneTeams.length > 0 ? (
+              {loading ? (
+                <div className="flex justify-center items-center py-8">
+                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-corteva-600"></div>
+                </div>
+              ) : zoneTeams && zoneTeams.length > 0 ? (
                 <div className="rounded-md border">
                   <table className="min-w-full divide-y divide-gray-200">
                     <thead className="bg-gray-50">
@@ -327,7 +253,11 @@ function DirectorTecnicoRankingContent() {
               <CardDescription>Los mejores equipos a nivel nacional</CardDescription>
             </CardHeader>
             <CardContent>
-              {nationalTeams && nationalTeams.length > 0 ? (
+              {loading ? (
+                <div className="flex justify-center items-center py-8">
+                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-corteva-600"></div>
+                </div>
+              ) : nationalTeams && nationalTeams.length > 0 ? (
                 <div className="rounded-md border">
                   <table className="min-w-full divide-y divide-gray-200">
                     <thead className="bg-gray-50">
