@@ -1,11 +1,13 @@
 "use client"
 
-import { useEffect, useState } from "react"
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
+import { useEffect, useState, useCallback } from "react"
+import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis, LabelList } from "recharts"
 import { supabase } from "@/lib/supabase/client"
 import { Skeleton } from "@/components/ui/skeleton"
-import { AlertCircle, MapPin } from "lucide-react"
+import { AlertCircle, MapPin, RefreshCw } from "lucide-react"
 import { EmptyState } from "./empty-state"
+import { Button } from "./ui/button"
+import { Card, CardContent, CardFooter } from "./ui/card"
 
 type AdminZonesChartProps = {
   zonesData?: any[] // Optional prop to pass pre-calculated zone data from parent
@@ -16,18 +18,11 @@ export function AdminZonesChart({ zonesData: propZonesData }: AdminZonesChartPro
   const [loading, setLoading] = useState(true)
   const [data, setData] = useState<any[]>([])
   const [error, setError] = useState<string | null>(null)
+  const [totalGoles, setTotalGoles] = useState(0)
+  const [totalPuntos, setTotalPuntos] = useState(0)
+  const [totalKilos, setTotalKilos] = useState(0)
 
-  useEffect(() => {
-    setIsMounted(true)
-    if (propZonesData) {
-      setData(propZonesData)
-      setLoading(false)
-    } else {
-      fetchData()
-    }
-  }, [propZonesData])
-
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       setLoading(true)
       setError(null)
@@ -114,6 +109,9 @@ export function AdminZonesChart({ zonesData: propZonesData }: AdminZonesChartPro
       })
 
       // Agregación de puntos por zona
+      let allTotalPoints = 0
+      let allTotalGoles = 0
+
       const zoneStatsData = zones.map((zone) => {
         let totalZonePoints = 0
         let totalZoneTeamsCount = 0
@@ -130,15 +128,28 @@ export function AdminZonesChart({ zonesData: propZonesData }: AdminZonesChartPro
 
         const totalZoneGoals = Math.floor(totalZonePoints / puntosParaGol)
 
+        // Acumular totales generales
+        allTotalPoints += totalZonePoints
+        allTotalGoles += totalZoneGoals
+
         return {
           id: zone.id,
           name: zone.name,
           teams: totalZoneTeamsCount,
-          goles: totalZoneGoals, // Used by BarChart
-          total_goals: totalZoneGoals, // For consistency and clarity
-          total_points: totalZonePoints, // For consistency and clarity
+          goles: totalZoneGoals,
+          puntos: totalZonePoints,
+          kilos: Math.floor(totalZonePoints / 10),
+          fill: getRandomColor(zone.id), // Color único para cada zona
         }
       })
+
+      // Ordenar por goles (mayor a menor)
+      zoneStatsData.sort((a, b) => b.goles - a.goles)
+
+      // Actualizar totales
+      setTotalGoles(allTotalGoles)
+      setTotalPuntos(allTotalPoints)
+      setTotalKilos(Math.floor(allTotalPoints / 10))
 
       setData(zoneStatsData)
     } catch (err: any) {
@@ -147,6 +158,65 @@ export function AdminZonesChart({ zonesData: propZonesData }: AdminZonesChartPro
     } finally {
       setLoading(false)
     }
+  }, [])
+
+  useEffect(() => {
+    setIsMounted(true)
+    if (propZonesData) {
+      setData(propZonesData)
+      setLoading(false)
+    } else {
+      fetchData()
+    }
+
+    return () => {
+      // Cleanup
+    }
+  }, [propZonesData, fetchData])
+
+  // Función para generar colores aleatorios pero consistentes basados en ID
+  const getRandomColor = (id: string) => {
+    // Lista de colores predefinidos vibrantes
+    const colors = [
+      "#f59e0b", // amber-500
+      "#10b981", // emerald-500
+      "#3b82f6", // blue-500
+      "#8b5cf6", // violet-500
+      "#ec4899", // pink-500
+      "#ef4444", // red-500
+      "#14b8a6", // teal-500
+      "#f97316", // orange-500
+      "#6366f1", // indigo-500
+      "#84cc16", // lime-500
+      "#06b6d4", // cyan-500
+      "#a855f7", // purple-500
+      "#f43f5e", // rose-500
+      "#22c55e", // green-500
+      "#0ea5e9", // sky-500
+      "#d946ef", // fuchsia-500
+    ]
+
+    // Usar el ID para seleccionar un color de manera consistente
+    const hash = id.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0)
+    return colors[hash % colors.length]
+  }
+
+  const CustomTooltip = ({ active, payload }: any) => {
+    if (active && payload && payload.length) {
+      const data = payload[0].payload
+      return (
+        <div className="bg-white p-4 border rounded-md shadow-md">
+          <p className="font-bold text-lg">{data.name}</p>
+          <p className="text-sm text-gray-600">{data.teams} equipos</p>
+          <div className="mt-2">
+            <p className="font-medium">🏆 Goles: {data.goles}</p>
+            <p className="font-medium">📊 Puntos: {data.puntos.toLocaleString()}</p>
+            <p className="font-medium">⚖️ Kilos: {data.kilos.toLocaleString()}</p>
+          </div>
+        </div>
+      )
+    }
+    return null
   }
 
   if (!isMounted) {
@@ -185,17 +255,60 @@ export function AdminZonesChart({ zonesData: propZonesData }: AdminZonesChartPro
   }
 
   return (
-    <ResponsiveContainer width="100%" height={400}>
-      <BarChart data={data}>
-        <CartesianGrid strokeDasharray="3 3" vertical={false} />
-        <XAxis dataKey="name" />
-        <YAxis />
-        <Tooltip
-          formatter={(value) => [`${value} goles`, "Goles Totales"]}
-          labelFormatter={(label) => `Zona: ${label}`}
-        />
-        <Bar dataKey="goles" name="Goles Totales" fill="#f59e0b" />
-      </BarChart>
-    </ResponsiveContainer>
+    <Card>
+      <CardContent className="pt-6">
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="text-lg font-medium">Rendimiento por zona geográfica</h3>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={fetchData}
+            disabled={loading}
+            className="flex items-center gap-1"
+          >
+            <RefreshCw className="h-4 w-4" />
+            Actualizar
+          </Button>
+        </div>
+
+        <div className="h-[400px]">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={data} margin={{ top: 20, right: 30, left: 20, bottom: 70 }} barSize={60}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} />
+              <XAxis dataKey="name" angle={-45} textAnchor="end" height={70} interval={0} />
+              <YAxis
+                label={{
+                  value: "Goles",
+                  angle: -90,
+                  position: "insideLeft",
+                  style: { textAnchor: "middle" },
+                }}
+              />
+              <Tooltip content={<CustomTooltip />} />
+              <Bar dataKey="goles" name="Goles" radius={[4, 4, 0, 0]} isAnimationActive={false}>
+                <LabelList dataKey="goles" position="top" />
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </CardContent>
+
+      <CardFooter className="border-t pt-4 flex flex-col items-start">
+        <div className="grid grid-cols-3 gap-4 w-full text-center">
+          <div>
+            <p className="text-sm text-gray-500">Total Goles</p>
+            <p className="text-xl font-bold">{totalGoles}</p>
+          </div>
+          <div>
+            <p className="text-sm text-gray-500">Total Puntos</p>
+            <p className="text-xl font-bold">{totalPuntos.toLocaleString()}</p>
+          </div>
+          <div>
+            <p className="text-sm text-gray-500">Total Kilos</p>
+            <p className="text-xl font-bold">{totalKilos.toLocaleString()}</p>
+          </div>
+        </div>
+      </CardFooter>
+    </Card>
   )
 }
