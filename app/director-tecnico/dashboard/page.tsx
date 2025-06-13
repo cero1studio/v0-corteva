@@ -141,208 +141,140 @@ function DirectorTecnicoDashboardContent() {
 
   async function loadZoneData(zoneId: string) {
     try {
-      console.log("Cargando datos de la zona:", zoneId)
+      console.log("Cargando datos de la zona (Director Técnico):", zoneId)
 
-      // Obtener todos los equipos de la zona
-      const { data: teams, error: teamsError } = await supabase
-        .from("teams")
-        .select(`
-          *,
-          distributors:distributor_id(*)
-        `)
-        .eq("zone_id", zoneId)
-        .order("total_points", { ascending: false })
+      const [
+        teamsResult,
+        profilesResult,
+        salesResult,
+        clientsResult,
+        freeKicksResult,
+        puntosConfigResult,
+        zoneRankingResult,
+        nationalRankingResult,
+      ] = await Promise.all([
+        supabase.from("teams").select(`*, distributors:distributor_id(*)`).eq("zone_id", zoneId),
+        supabase.from("profiles").select(`id, full_name, team_id, teams:team_id(*, distributors:distributor_id(*))`),
+        supabase.from("sales").select(`*, products(id, name, image_url)`),
+        supabase.from("competitor_clients").select(`*`),
+        supabase.from("free_kick_goals").select(`*, teams(id, name)`),
+        supabase.from("system_config").select("value").eq("key", "puntos_para_gol").maybeSingle(),
+        getTeamRankingByZone(zoneId),
+        getTeamRankingByZone(), // National ranking
+      ])
 
-      if (teamsError) {
-        console.error("Error al obtener equipos:", teamsError)
-      } else {
-        console.log("Equipos cargados:", teams?.length || 0)
-      }
+      if (teamsResult.error) throw teamsResult.error
+      if (profilesResult.error) throw profilesResult.error
+      if (salesResult.error) throw salesResult.error
+      if (clientsResult.error) throw clientsResult.error
+      if (freeKicksResult.error) throw freeKicksResult.error
+      if (puntosConfigResult.error) throw puntosConfigResult.error
+      if (zoneRankingResult.error) throw zoneRankingResult.error
+      if (nationalRankingResult.error) throw nationalRankingResult.error
 
-      // Obtener todos los miembros de los equipos de la zona
-      const teamIds = teams?.map((team) => team.id) || []
+      const teams = teamsResult.data || []
+      const profiles = profilesResult.data || []
+      const sales = salesResult.data || []
+      const clients = clientsResult.data || []
+      const freeKicks = freeKicksResult.data || []
+      const puntosParaGol = puntosConfigResult.data?.value ? Number(puntosConfigResult.data.value) : PUNTOS_POR_GOL
 
-      if (teamIds.length > 0) {
-        const { data: teamMembers, error: membersError } = await supabase
-          .from("profiles")
-          .select(`
-            id, 
-            full_name, 
-            team_id,
-            teams:team_id(
-              *,
-              distributors:distributor_id(*)
-            )
-          `)
-          .in("team_id", teamIds)
+      const profileMap = new Map(profiles.map((p) => [p.id, p]))
+      const teamMap = new Map(teams.map((t) => [t.id, t]))
 
-        if (membersError) {
-          console.error("Error al obtener miembros:", membersError)
-        } else {
-          const memberIds = teamMembers?.map((member) => member.id) || []
-
-          // Cargar ventas de todos los miembros de la zona
-          const { data: salesDataFromDb, error: salesError } = await supabase
-            .from("sales")
-            .select(`
-             *,
-             products(id, name, image_url)
-           `)
-            .in("representative_id", memberIds)
-            .order("created_at", { ascending: false })
-
-          if (salesError) {
-            console.error("Error cargando ventas:", salesError)
-          } else {
-            console.log("Ventas cargadas:", salesDataFromDb?.length || 0)
-
-            // Enriquecer los datos de ventas con información de perfiles y equipos
-            const enrichedSales =
-              salesDataFromDb?.map((sale) => {
-                const representative = teamMembers?.find((member) => member.id === sale.representative_id)
-                const team = teams?.find((team) => team.id === representative?.team_id)
-
-                return {
-                  ...sale,
-                  representative_name: representative?.full_name || "Representante",
-                  team_name: team?.name || "Equipo",
-                  team_id: team?.id,
-                  distributor_data: representative?.teams?.distributors,
-                }
-              }) || []
-
-            setSalesData(enrichedSales)
-
-            // Cargar clientes de todos los miembros de la zona
-            const { data: clientsDataFromDb, error: clientsError } = await supabase
-              .from("competitor_clients")
-              .select(`*`)
-              .in("representative_id", memberIds)
-              .order("created_at", { ascending: false })
-
-            if (clientsError) {
-              console.error("Error cargando clientes:", clientsError)
-            } else {
-              console.log("Clientes cargados:", clientsDataFromDb?.length || 0)
-
-              // Enriquecer los datos de clientes con información de perfiles y equipos
-              const enrichedClients =
-                clientsDataFromDb?.map((client) => {
-                  const representative = teamMembers?.find((member) => member.id === client.representative_id)
-                  const team = teams?.find((team) => team.id === representative?.team_id)
-
-                  return {
-                    ...client,
-                    representative_name: representative?.full_name || "Representante",
-                    team_name: team?.name || "Equipo",
-                    team_id: team?.id,
-                    distributor_data: representative?.teams?.distributors,
-                  }
-                }) || []
-
-              setClientsData(enrichedClients)
-
-              // Cargar tiros libres de todos los equipos de la zona
-              const { data: freeKickDataFromDb, error: freeKickError } = await supabase
-                .from("free_kick_goals")
-                .select(`
-                  *,
-                  teams(id, name)
-                `)
-                .in("team_id", teamIds)
-                .order("created_at", { ascending: false })
-
-              if (freeKickError) {
-                console.error("Error cargando tiros libres:", freeKickError)
-              } else {
-                console.log("Tiros libres cargados:", freeKickDataFromDb?.length || 0)
-
-                // Enriquecer los datos de tiros libres
-                const enrichedFreeKicks =
-                  freeKickDataFromDb?.map((freeKick) => {
-                    const team = teams?.find((team) => team.id === freeKick.team_id)
-
-                    return {
-                      ...freeKick,
-                      team_name: team?.name || "Equipo",
-                      distributor_data: team?.distributors,
-                    }
-                  }) || []
-
-                setFreeKickData(enrichedFreeKicks)
-              }
-
-              // Calcular puntos totales por equipo (ventas + clientes + tiros libres)
-              const teamsWithTotalGoals =
-                teams?.map((team) => {
-                  // Obtener ventas del equipo
-                  const teamSales = enrichedSales?.filter((sale) => sale.team_id === team.id) || []
-                  const salesPoints = teamSales.reduce((sum, sale) => sum + (sale.points || 0), 0)
-
-                  // Obtener clientes del equipo
-                  const teamClients = enrichedClients?.filter((client) => client.team_id === team.id) || []
-                  const clientsPoints = teamClients.length * 200 // 200 puntos por cliente
-
-                  // Obtener tiros libres del equipo
-                  const teamFreeKicks =
-                    freeKickData.map((freeKick) => {
-                      const team = teams?.find((team) => team.id === freeKick.team_id)
-
-                      return {
-                        ...freeKick,
-                        team_name: team?.name || "Equipo",
-                        distributor_data: team?.distributors,
-                      }
-                    }) || []
-                  const freeKickPoints = teamFreeKicks.reduce((sum, freeKick) => sum + (freeKick.points || 0), 0)
-
-                  // Total de puntos y goles
-                  const totalPoints = salesPoints + clientsPoints + freeKickPoints
-                  const totalGoals = Math.floor(totalPoints / puntosParaGol)
-
-                  return {
-                    ...team,
-                    calculated_total_points: totalPoints,
-                    calculated_total_goals: totalGoals,
-                    sales_points: salesPoints,
-                    clients_points: clientsPoints,
-                    free_kick_points: freeKickPoints,
-                    sales_count: teamSales.length,
-                    clients_count: teamClients.length,
-                    free_kick_count: teamFreeKicks.length,
-                  }
-                }) || []
-
-              // Ordenar por puntos calculados
-              teamsWithTotalGoals.sort((a, b) => (b.calculated_total_points || 0) - (a.calculated_total_points || 0))
-
-              setTeamsData(teamsWithTotalGoals)
-            }
+      // Enriquecer ventas
+      const enrichedSales = sales
+        .map((sale) => {
+          const representative = profileMap.get(sale.representative_id)
+          const team = representative?.team_id ? teamMap.get(representative.team_id) : null
+          return {
+            ...sale,
+            representative_name: representative?.full_name || "Representante",
+            team_name: team?.name || "Equipo",
+            team_id: team?.id,
+            distributor_data: team?.distributors,
           }
-        }
-      }
+        })
+        .filter((sale) => sale.team_id && teamMap.has(sale.team_id)) // Filter sales relevant to this zone's teams
 
-      // Cargar ranking de la zona
-      try {
-        const rankingResult = await getTeamRankingByZone(zoneId)
-        if (rankingResult.success && rankingResult.data) {
-          setZoneRanking(rankingResult.data)
-        }
-      } catch (rankingError) {
-        console.error("Error al cargar ranking de zona:", rankingError)
-      }
+      // Enriquecer clientes
+      const enrichedClients = clients
+        .map((client) => {
+          const representative = profileMap.get(client.representative_id)
+          const team = representative?.team_id ? teamMap.get(representative.team_id) : null
+          return {
+            ...client,
+            representative_name: representative?.full_name || "Representante",
+            team_name: team?.name || "Equipo",
+            team_id: team?.id,
+            distributor_data: team?.distributors,
+          }
+        })
+        .filter((client) => client.team_id && teamMap.has(client.team_id)) // Filter clients relevant to this zone's teams
 
-      // Cargar ranking nacional
-      try {
-        const nationalRankingResult = await getTeamRankingByZone()
-        if (nationalRankingResult.success && nationalRankingResult.data) {
-          setNationalRanking(nationalRankingResult.data)
+      // Enriquecer tiros libres
+      const enrichedFreeKicks = freeKicks
+        .map((freeKick) => {
+          const team = teamMap.get(freeKick.team_id)
+          return {
+            ...freeKick,
+            team_name: team?.name || "Equipo",
+            distributor_data: team?.distributors,
+          }
+        })
+        .filter((freeKick) => freeKick.team_id && teamMap.has(freeKick.team_id)) // Filter free kicks relevant to this zone's teams
+
+      // Calcular puntos totales por equipo (ventas + clientes + tiros libres)
+      const teamsWithTotalGoals = teams.map((team) => {
+        const teamSales = enrichedSales.filter((sale) => sale.team_id === team.id)
+        const salesPoints = teamSales.reduce((sum, sale) => sum + (sale.points || 0), 0)
+
+        const teamClients = enrichedClients.filter((client) => client.team_id === team.id)
+        const clientsPoints = teamClients.length * 200 // 200 puntos por cliente
+
+        const teamFreeKicks = enrichedFreeKicks.filter((freeKick) => freeKick.team_id === team.id)
+        const freeKickPoints = teamFreeKicks.reduce((sum, freeKick) => sum + (freeKick.points || 0), 0)
+
+        const totalPoints = salesPoints + clientsPoints + freeKickPoints
+        const totalGoals = Math.floor(totalPoints / puntosParaGol)
+
+        return {
+          ...team,
+          calculated_total_points: totalPoints,
+          calculated_total_goals: totalGoals,
+          sales_points: salesPoints,
+          clients_points: clientsPoints,
+          free_kick_points: freeKickPoints,
+          sales_count: teamSales.length,
+          clients_count: teamClients.length,
+          free_kick_count: teamFreeKicks.length,
         }
-      } catch (rankingError) {
-        console.error("Error al cargar ranking nacional:", rankingError)
-      }
-    } catch (error) {
-      console.error("Error al cargar datos de la zona:", error)
+      })
+
+      teamsWithTotalGoals.sort((a, b) => (b.calculated_total_points || 0) - (a.calculated_total_points || 0))
+
+      setSalesData(enrichedSales)
+      setClientsData(enrichedClients)
+      setFreeKickData(enrichedFreeKicks)
+      setTeamsData(teamsWithTotalGoals)
+      setZoneRanking(zoneRankingResult.data || [])
+      setNationalRanking(nationalRankingResult.data || [])
+
+      console.log("Datos de zona cargados (Director Técnico):", {
+        sales: enrichedSales.length,
+        clients: enrichedClients.length,
+        freeKicks: enrichedFreeKicks.length,
+        teams: teamsWithTotalGoals.length,
+        zoneRanking: zoneRankingResult.data?.length,
+        nationalRanking: nationalRankingResult.data?.length,
+      })
+    } catch (error: any) {
+      console.error("Error al cargar datos de la zona (Director Técnico):", error)
+      toast({
+        title: "Error",
+        description: "Error al cargar datos de la zona: " + (error as Error).message,
+        variant: "destructive",
+      })
     }
   }
 

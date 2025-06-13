@@ -25,6 +25,8 @@ import { getAllZones } from "@/app/actions/zones"
 import { getAllTeams } from "@/app/actions/teams"
 import { getAllProducts } from "@/app/actions/products"
 import { getAllUsers } from "@/app/actions/users"
+import { getAllDistributors } from "@/app/actions/distributors"
+import * as XLSX from "xlsx" // Importar la librería XLSX
 
 interface Sale {
   id: string
@@ -112,6 +114,13 @@ export default function AdminVentasPage() {
 
   const [selectedProductPoints, setSelectedProductPoints] = useState<number>(0)
 
+  // Función para calcular kilos basándose en puntos
+  const calculateKilos = (points: number): number => {
+    // 1 gol = 100 puntos = 10 kilos
+    // Por lo tanto: kilos = puntos / 10
+    return points / 10
+  }
+
   useEffect(() => {
     if (formData.product_id && formData.quantity) {
       const selectedProduct = products.find((p) => p.id === formData.product_id)
@@ -135,12 +144,13 @@ export default function AdminVentasPage() {
     try {
       setLoading(true)
 
-      const [salesResult, zonesData, teamsResult, productsResult, usersResult] = await Promise.all([
+      const [salesResult, zonesData, teamsResult, productsResult, usersResult, distributorsData] = await Promise.all([
         getAllSales(),
         getAllZones(),
         getAllTeams(),
         getAllProducts(),
         getAllUsers(),
+        getAllDistributors(),
       ])
 
       if (salesResult.success) {
@@ -177,6 +187,12 @@ export default function AdminVentasPage() {
       } else {
         setUsers([])
       }
+
+      if (distributorsData && Array.isArray(distributorsData)) {
+        setDistributors(distributorsData)
+      } else {
+        setDistributors([])
+      }
     } catch (error) {
       console.error("Error loading data:", error)
       toast({
@@ -210,82 +226,16 @@ export default function AdminVentasPage() {
 
   const downloadExcel = () => {
     try {
-      // Importar la librería xlsx dinámicamente
-      import("xlsx")
-        .then((XLSX) => {
-          // Preparar datos filtrados para Excel
-          const excelData = filteredSales.map((sale) => ({
-            Producto: sale.products?.name || "N/A",
-            Capitán: sale.representative?.full_name || "N/A",
-            Distribuidor: sale.distributor?.name || "N/A",
-            Equipo: sale.team?.name || "N/A",
-            Zona: sale.zone?.name || "N/A",
-            Cantidad: sale.quantity,
-            Puntos: sale.points,
-            "Precio Total": (sale.price || 0).toLocaleString("es-CO", { style: "currency", currency: "COP" }),
-            "Fecha de Venta": sale.sale_date ? new Date(sale.sale_date).toLocaleDateString("es-CO") : "N/A",
-            "Fecha de Registro": new Date(sale.created_at).toLocaleDateString("es-CO"),
-          }))
-
-          // Crear workbook y worksheet
-          const wb = XLSX.utils.book_new()
-          const ws = XLSX.utils.json_to_sheet(excelData)
-
-          // Configurar ancho de columnas
-          const colWidths = [
-            { wch: 25 }, // Producto
-            { wch: 20 }, // Capitán
-            { wch: 20 }, // Distribuidor
-            { wch: 15 }, // Equipo
-            { wch: 15 }, // Zona
-            { wch: 10 }, // Cantidad
-            { wch: 12 }, // Puntos
-            { wch: 15 }, // Precio Total
-            { wch: 15 }, // Fecha de Venta
-            { wch: 18 }, // Fecha de Registro
-          ]
-          ws["!cols"] = colWidths
-
-          // Agregar worksheet al workbook
-          XLSX.utils.book_append_sheet(wb, ws, "Ventas")
-
-          // Generar nombre de archivo con filtros aplicados
-          let fileName = "ventas"
-          if (selectedZone !== "all") {
-            const zoneName = zones.find((z) => z.id === selectedZone)?.name || "zona"
-            fileName += `_${zoneName.toLowerCase().replace(/\s+/g, "_")}`
-          }
-          if (searchTerm) {
-            fileName += `_busqueda`
-          }
-          fileName += `_${new Date().toISOString().split("T")[0]}.xlsx`
-
-          // Descargar archivo
-          XLSX.writeFile(wb, fileName)
-
-          toast({
-            title: "Éxito",
-            description: `Archivo Excel descargado: ${filteredSales.length} registros exportados`,
-          })
+      if (filteredSales.length === 0) {
+        toast({
+          title: "Error",
+          description: "No hay datos para exportar",
+          variant: "destructive",
         })
-        .catch((error) => {
-          console.error("Error loading xlsx library:", error)
-          // Fallback a CSV si no se puede cargar xlsx
-          downloadCSVFallback()
-        })
-    } catch (error) {
-      console.error("Error downloading Excel:", error)
-      toast({
-        title: "Error",
-        description: "Error al descargar el archivo Excel",
-        variant: "destructive",
-      })
-    }
-  }
+        return
+      }
 
-  // Función de respaldo para CSV
-  const downloadCSVFallback = () => {
-    try {
+      // Preparar datos para Excel
       const excelData = filteredSales.map((sale) => ({
         Producto: sale.products?.name || "N/A",
         Capitán: sale.representative?.full_name || "N/A",
@@ -294,40 +244,68 @@ export default function AdminVentasPage() {
         Zona: sale.zone?.name || "N/A",
         Cantidad: sale.quantity,
         Puntos: sale.points,
-        "Precio Total": (sale.price || 0).toLocaleString("es-CO", { style: "currency", currency: "COP" }),
-        "Fecha de Venta": sale.sale_date ? new Date(sale.sale_date).toLocaleDateString("es-CO") : "N/A",
-        "Fecha de Registro": new Date(sale.created_at).toLocaleDateString("es-CO"),
+        Kilos: calculateKilos(sale.points || 0).toFixed(1), // Calcular kilos dinámicamente
+        "Fecha de Venta": sale.sale_date ? new Date(sale.sale_date).toLocaleDateString() : "N/A",
+        "Fecha de Registro": new Date(sale.created_at).toLocaleDateString(),
       }))
 
-      // Crear CSV con BOM para caracteres especiales
-      const headers = Object.keys(excelData[0] || {})
-      const csvContent =
-        "\uFEFF" +
-        [
-          headers.join(","),
-          ...excelData.map((row) => headers.map((header) => `"${row[header as keyof typeof row]}"`).join(",")),
-        ].join("\n")
+      // Crear workbook y worksheet
+      const wb = XLSX.utils.book_new()
+      const ws = XLSX.utils.json_to_sheet(excelData)
 
-      // Descargar archivo CSV
-      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" })
-      const link = document.createElement("a")
+      // Configurar anchos de columna
+      const colWidths = [
+        { wch: 25 }, // Producto
+        { wch: 20 }, // Capitán
+        { wch: 20 }, // Distribuidor
+        { wch: 20 }, // Equipo
+        { wch: 15 }, // Zona
+        { wch: 10 }, // Cantidad
+        { wch: 10 }, // Puntos
+        { wch: 10 }, // Kilos
+        { wch: 15 }, // Fecha de Venta
+        { wch: 18 }, // Fecha de Registro
+      ]
+      ws["!cols"] = colWidths
+
+      // Agregar worksheet al workbook
+      XLSX.utils.book_append_sheet(wb, ws, "Ventas")
+
+      // Generar archivo en formato binario
+      const excelBuffer = XLSX.write(wb, { bookType: "xlsx", type: "array" })
+
+      // Convertir a Blob
+      const blob = new Blob([excelBuffer], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      })
+
+      // Crear URL para el blob
       const url = URL.createObjectURL(blob)
-      link.setAttribute("href", url)
-      link.setAttribute("download", `ventas_filtradas_${new Date().toISOString().split("T")[0]}.csv`)
-      link.style.visibility = "hidden"
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
+
+      // Crear elemento de enlace para descargar
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `ventas_${new Date().toISOString().split("T")[0]}.xlsx`
+
+      // Simular clic para iniciar descarga
+      document.body.appendChild(a)
+      a.click()
+
+      // Limpiar
+      setTimeout(() => {
+        document.body.removeChild(a)
+        URL.revokeObjectURL(url)
+      }, 0)
 
       toast({
         title: "Éxito",
-        description: `Archivo CSV descargado: ${filteredSales.length} registros exportados`,
+        description: "Archivo Excel descargado correctamente",
       })
     } catch (error) {
-      console.error("Error downloading CSV:", error)
+      console.error("Error downloading Excel:", error)
       toast({
         title: "Error",
-        description: "Error al descargar el archivo",
+        description: "Error al descargar el archivo Excel",
         variant: "destructive",
       })
     }
@@ -509,7 +487,7 @@ export default function AdminVentasPage() {
         <div className="flex gap-2">
           <Button variant="outline" onClick={downloadExcel} disabled={filteredSales.length === 0}>
             <Download className="mr-2 h-4 w-4" />
-            Exportar Excel ({filteredSales.length})
+            Descargar Excel
           </Button>
           <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
             <DialogTrigger asChild>
@@ -582,9 +560,14 @@ export default function AdminVentasPage() {
                     placeholder="Selecciona producto y cantidad"
                   />
                   {selectedProductPoints > 0 && formData.quantity && (
-                    <p className="text-sm text-muted-foreground mt-1">
-                      {selectedProductPoints} puntos × {formData.quantity} = {formData.points} puntos totales
-                    </p>
+                    <div className="text-sm text-muted-foreground mt-1 space-y-1">
+                      <p>
+                        {selectedProductPoints} puntos × {formData.quantity} = {formData.points} puntos totales
+                      </p>
+                      <p className="text-green-600 font-medium">
+                        Kilos equivalentes: {calculateKilos(Number.parseFloat(formData.points) || 0).toFixed(1)} kg
+                      </p>
+                    </div>
                   )}
                 </div>
                 <Button onClick={handleCreateSale} className="w-full">
@@ -612,7 +595,7 @@ export default function AdminVentasPage() {
                 <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                 <Input
                   id="search"
-                  placeholder="Buscar por producto, equipo o zona..."
+                  placeholder="Buscar por producto, equipo, capitán..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="pl-10"
@@ -682,6 +665,7 @@ export default function AdminVentasPage() {
                   <TableHead>Zona</TableHead>
                   <TableHead>Cantidad</TableHead>
                   <TableHead>Puntos</TableHead>
+                  <TableHead>Kilos</TableHead>
                   <TableHead>Fecha</TableHead>
                   <TableHead>Acciones</TableHead>
                 </TableRow>
@@ -720,6 +704,9 @@ export default function AdminVentasPage() {
                     </TableCell>
                     <TableCell>{sale.quantity}</TableCell>
                     <TableCell>{sale.points?.toLocaleString() || "0"}</TableCell>
+                    <TableCell className="font-medium text-green-600">
+                      {calculateKilos(sale.points || 0).toFixed(1)} kg
+                    </TableCell>
                     <TableCell>{sale.sale_date ? new Date(sale.sale_date).toLocaleDateString() : "N/A"}</TableCell>
                     <TableCell>
                       <DropdownMenu>
@@ -814,9 +801,14 @@ export default function AdminVentasPage() {
                 placeholder="Se calculará automáticamente"
               />
               {selectedProductPoints > 0 && formData.quantity && (
-                <p className="text-sm text-muted-foreground mt-1">
-                  {selectedProductPoints} puntos × {formData.quantity} = {formData.points} puntos totales
-                </p>
+                <div className="text-sm text-muted-foreground mt-1 space-y-1">
+                  <p>
+                    {selectedProductPoints} puntos × {formData.quantity} = {formData.points} puntos totales
+                  </p>
+                  <p className="text-green-600 font-medium">
+                    Kilos equivalentes: {calculateKilos(Number.parseFloat(formData.points) || 0).toFixed(1)} kg
+                  </p>
+                </div>
               )}
             </div>
             <Button onClick={handleEditSale} className="w-full">

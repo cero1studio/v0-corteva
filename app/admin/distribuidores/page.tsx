@@ -1,13 +1,13 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { useToast } from "@/components/ui/use-toast"
-import { PlusCircle, Edit, Trash2, Building } from "lucide-react"
+import { PlusCircle, Edit, Trash2, Building, RefreshCw } from "lucide-react"
 import { EmptyState } from "@/components/empty-state"
 import Link from "next/link"
 import { getDistributorLogoUrl } from "@/lib/utils/image"
@@ -23,30 +23,50 @@ export default function DistribuidoresPage() {
   const router = useRouter()
   const [distributors, setDistributors] = useState<Distributor[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [retryCount, setRetryCount] = useState(0)
   const { toast } = useToast()
 
-  useEffect(() => {
-    fetchDistributors()
-  }, [])
-
-  async function fetchDistributors() {
+  const fetchDistributors = useCallback(async () => {
     setLoading(true)
+    setError(null)
+
     try {
-      const { data, error } = await supabase.from("distributors").select("*").order("name")
+      // Establecer un timeout para evitar carga infinita
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("La consulta está tardando demasiado")), 8000),
+      )
 
-      if (error) throw error
+      // Consulta a Supabase
+      const fetchPromise = supabase.from("distributors").select("*").order("name")
 
-      setDistributors(data || [])
-    } catch (error) {
+      // Race entre el timeout y la consulta
+      const result = (await Promise.race([fetchPromise, timeoutPromise])) as any
+
+      if (result.error) throw result.error
+
+      setDistributors(result.data || [])
+      setLoading(false)
+    } catch (error: any) {
       console.error("Error al cargar distribuidores:", error)
+      setError(error.message || "Error al cargar distribuidores")
+      setLoading(false)
+
       toast({
         title: "Error",
-        description: "No se pudieron cargar los distribuidores",
+        description: "No se pudieron cargar los distribuidores. " + error.message,
         variant: "destructive",
       })
-    } finally {
-      setLoading(false)
     }
+  }, [toast])
+
+  // Usar useEffect con dependencia en retryCount para permitir reintentos
+  useEffect(() => {
+    fetchDistributors()
+  }, [fetchDistributors, retryCount])
+
+  const handleRetry = () => {
+    setRetryCount((prev) => prev + 1)
   }
 
   async function handleDeleteDistributor(id: string, name: string) {
@@ -113,16 +133,34 @@ export default function DistribuidoresPage() {
     )
   }
 
+  if (error) {
+    return (
+      <EmptyState
+        icon={Building}
+        title="Error al cargar distribuidores"
+        description={error}
+        actionLabel="Reintentar"
+        onClick={handleRetry}
+        className="py-10"
+      />
+    )
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h2 className="text-3xl font-bold tracking-tight">Gestión de Distribuidores</h2>
-        <Button asChild>
-          <Link href="/admin/distribuidores/nuevo">
-            <PlusCircle className="mr-2 h-4 w-4" />
-            Nuevo Distribuidor
-          </Link>
-        </Button>
+        <div className="flex gap-2">
+          <Button onClick={handleRetry} variant="outline" size="icon" title="Actualizar datos">
+            <RefreshCw className="h-4 w-4" />
+          </Button>
+          <Button asChild>
+            <Link href="/admin/distribuidores/nuevo">
+              <PlusCircle className="mr-2 h-4 w-4" />
+              Nuevo Distribuidor
+            </Link>
+          </Button>
+        </div>
       </div>
 
       <Card>
