@@ -8,8 +8,6 @@ import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { useAuth } from "@/components/auth-provider"
 import { Loader2, Eye, EyeOff } from "lucide-react"
-import { supabase } from "@/lib/supabase/client"
-import { clearAllCache } from "@/lib/session-cache"
 
 export default function LoginPage() {
   const [email, setEmail] = useState("")
@@ -17,64 +15,34 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [localError, setLocalError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [isCleaningSession, setIsCleaningSession] = useState(true)
-  const { signIn, isLoading, error: authError } = useAuth()
+  const { signIn, isLoading, error: authError, user, profile } = useAuth()
 
-  // Limpiar cualquier sesión existente al acceder a login
+  // Si ya hay usuario logueado, redirigir al dashboard
   useEffect(() => {
-    const cleanExistingSession = async () => {
-      try {
-        console.log("LOGIN: Starting session cleanup...")
-
-        // Timeout de seguridad - máximo 3 segundos
-        const timeoutPromise = new Promise((resolve) => {
-          setTimeout(() => {
-            console.log("LOGIN: Session cleanup timeout reached")
-            resolve(true)
-          }, 3000)
-        })
-
-        const cleanupPromise = (async () => {
-          // Limpiar estado local y caché
-          clearAllCache()
-
-          // Limpiar almacenamiento local y cookies
-          if (typeof window !== "undefined") {
-            try {
-              localStorage.clear()
-              sessionStorage.clear()
-              document.cookie = "session=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/;"
-              document.cookie = "sb-access-token=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/;"
-              document.cookie = "sb-refresh-token=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/;"
-            } catch (e) {
-              console.log("LOGIN: Error clearing storage:", e)
-            }
-          }
-
-          // Cerrar sesión en Supabase (solo local, sin redirección)
-          try {
-            await supabase.auth.signOut({ scope: "local" })
-          } catch (e) {
-            console.log("LOGIN: Error signing out:", e)
-          }
-
-          console.log("LOGIN: Session cleanup completed")
-        })()
-
-        // Esperar a que termine la limpieza o el timeout
-        await Promise.race([cleanupPromise, timeoutPromise])
-      } catch (error) {
-        console.error("LOGIN: Error during session cleanup:", error)
-      } finally {
-        console.log("LOGIN: Setting isCleaningSession to false")
-        setIsCleaningSession(false)
-        setLocalError(null)
-        setIsSubmitting(false)
+    if (user && profile) {
+      const getDashboardRoute = (role: string, teamId?: string | null) => {
+        switch (role) {
+          case "admin":
+            return "/admin/dashboard"
+          case "capitan":
+            return teamId ? "/capitan/dashboard" : "/capitan/crear-equipo"
+          case "director_tecnico":
+            return "/director-tecnico/dashboard"
+          case "supervisor":
+            return "/supervisor/dashboard"
+          case "representante":
+            return "/representante/dashboard"
+          case "arbitro":
+            return "/arbitro/dashboard"
+          default:
+            return "/login"
+        }
       }
-    }
 
-    cleanExistingSession()
-  }, [])
+      const dashboardRoute = getDashboardRoute(profile.role, profile.team_id)
+      window.location.href = dashboardRoute
+    }
+  }, [user, profile])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -87,51 +55,25 @@ export default function LoginPage() {
 
     try {
       setIsSubmitting(true)
-      console.log("LOGIN: Attempting sign in for:", email)
-
       const result = await signIn(email, password)
 
       if (result?.error) {
-        console.error("LOGIN: Sign in error:", result.error)
-        // Traducir mensajes de error comunes
         if (result.error.includes("Invalid login")) {
           setLocalError("Correo o contraseña incorrectos")
         } else if (result.error.includes("too many requests")) {
           setLocalError("Demasiados intentos fallidos. Intenta más tarde.")
-        } else if (result.error.includes("timeout")) {
-          setLocalError("La conexión está tardando mucho. Intenta nuevamente.")
         } else {
-          setLocalError(result.error)
+          setLocalError("Error al iniciar sesión. Verifica tus credenciales.")
         }
         setIsSubmitting(false)
-      } else {
-        console.log("LOGIN: Sign in successful, waiting for redirection...")
-        // No resetear isSubmitting aquí, dejar que AuthGuard maneje la redirección
       }
     } catch (error: any) {
-      console.error("LOGIN: Error en inicio de sesión:", error)
       setLocalError("Error al iniciar sesión. Intenta nuevamente.")
       setIsSubmitting(false)
     }
   }
 
-  // Mostrar error de autenticación o error local
   const displayError = localError || authError
-
-  // Mostrar loading mientras se limpia la sesión
-  if (isCleaningSession) {
-    return (
-      <div className="min-h-screen flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
-        <Card className="w-full max-w-md">
-          <CardContent className="flex flex-col items-center justify-center gap-4 p-8">
-            <Loader2 className="h-8 w-8 animate-spin text-[#006BA6]" />
-            <p className="text-center text-gray-600">Preparando inicio de sesión...</p>
-            <p className="text-center text-xs text-gray-400">Esto solo toma unos segundos</p>
-          </CardContent>
-        </Card>
-      </div>
-    )
-  }
 
   return (
     <div className="min-h-screen flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">

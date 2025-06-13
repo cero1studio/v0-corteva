@@ -6,12 +6,10 @@ import { supabase } from "@/lib/supabase/client"
 import { useRouter, usePathname } from "next/navigation"
 import type { Session, User } from "@supabase/supabase-js"
 
-// Importar las funciones de caché
 import {
   cacheSession,
   cacheProfile,
   clearAllCache,
-  refreshCacheTimestamp,
   getCachedSessionForced,
   getCachedProfileForced,
   type UserProfile,
@@ -35,39 +33,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
   const [user, setUser] = useState<User | null>(null)
   const [profile, setProfile] = useState<UserProfile | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
+  const [isLoading, setIsLoading] = useState(false)
   const [isInitialized, setIsInitialized] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const router = useRouter()
   const pathname = usePathname()
 
-  const publicRoutes = [
-    "/login",
-    "/register",
-    "/forgot-password",
-    "/reset-password",
-    "/primer-acceso",
-    "/ranking-publico",
-  ]
-
-  const getDashboardRoute = useCallback((role: string, teamId?: string | null) => {
-    switch (role) {
-      case "admin":
-        return "/admin/dashboard"
-      case "capitan":
-        return teamId ? "/capitan/dashboard" : "/capitan/crear-equipo"
-      case "director_tecnico":
-        return "/director-tecnico/dashboard"
-      case "supervisor":
-        return "/supervisor/dashboard"
-      case "representante":
-        return "/representante/dashboard"
-      case "arbitro":
-        return "/arbitro/dashboard"
-      default:
-        return "/login"
-    }
-  }, [])
+  const publicRoutes = ["/login", "/primer-acceso", "/ranking-publico"]
 
   const fetchUserProfile = useCallback(async (userId: string, userEmail?: string): Promise<UserProfile | null> => {
     try {
@@ -78,7 +50,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         .single()
 
       if (profileError || !data) {
-        setError(profileError?.message || "Perfil no encontrado")
         return null
       }
 
@@ -101,178 +72,79 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         distributor_id: data.distributor_id,
       }
     } catch (err: any) {
-      setError(err.message)
       return null
     }
   }, [])
 
-  const handleRedirection = useCallback(
-    (userProfile: UserProfile) => {
-      const currentPath = pathname || "/"
-      const dashboardRoute = getDashboardRoute(userProfile.role, userProfile.team_id)
-
-      console.log("AUTH: Current path:", currentPath, "Dashboard route:", dashboardRoute)
-
-      // Solo redirigir desde login
-      if (currentPath === "/login") {
-        console.log("AUTH: Redirecting from login to dashboard")
-        router.push(dashboardRoute)
-      } else if (userProfile.role === "capitan" && !userProfile.team_id && currentPath !== "/capitan/crear-equipo") {
-        console.log("AUTH: Captain without team, redirecting to create team")
-        router.push("/capitan/crear-equipo")
-      }
-    },
-    [pathname, getDashboardRoute, router],
-  )
-
-  // Inicialización de autenticación
+  // Inicialización simple
   useEffect(() => {
-    let mounted = true
-
-    const initializeAuth = async () => {
+    const initAuth = async () => {
       try {
-        console.log("AUTH: Initializing authentication...")
-
-        const isPublicRoute = publicRoutes.some((route) => pathname?.startsWith(route))
-
-        // Para la página de login, no hacer verificación de sesión
-        // La página de login se encarga de limpiar cualquier sesión existente
-        if (pathname === "/login") {
-          console.log("AUTH: Login page, skipping auth check")
-          setIsLoading(false)
-          setIsInitialized(true)
-          return
-        }
-
-        // Para otras rutas públicas
-        if (isPublicRoute) {
-          console.log("AUTH: Public route, skipping auth check")
-          setIsLoading(false)
-          setIsInitialized(true)
-          return
-        }
-
-        // Para rutas privadas, verificar caché primero
+        // Verificar caché primero
         const { session: cachedSession, user: cachedUser } = getCachedSessionForced()
         const cachedProfile = getCachedProfileForced()
 
         if (cachedSession && cachedUser && cachedProfile) {
-          console.log("AUTH: Using cached session")
           setSession(cachedSession)
           setUser(cachedUser)
           setProfile(cachedProfile)
-          setIsLoading(false)
           setIsInitialized(true)
-          refreshCacheTimestamp()
           return
         }
 
-        // Si no hay caché, verificar sesión en Supabase
-        console.log("AUTH: No cache, checking session")
+        // Si no hay caché, verificar sesión
         const {
           data: { session },
-          error,
         } = await supabase.auth.getSession()
 
-        if (!mounted) return
-
-        if (error) {
-          console.error("AUTH: Session error:", error)
-          setSession(null)
-          setUser(null)
-          setProfile(null)
-          clearAllCache()
-          router.push("/login")
-        } else if (session) {
-          console.log("AUTH: Session found")
+        if (session) {
           setSession(session)
           setUser(session.user)
           cacheSession(session, session.user)
 
           const userProfile = await fetchUserProfile(session.user.id, session.user.email)
-          if (mounted && userProfile) {
+          if (userProfile) {
             setProfile(userProfile)
             cacheProfile(userProfile)
           }
-        } else {
-          console.log("AUTH: No session found, redirecting to login")
-          setSession(null)
-          setUser(null)
-          setProfile(null)
-          clearAllCache()
-          router.push("/login")
         }
       } catch (err) {
-        console.error("AUTH Init Error:", err)
-        router.push("/login")
+        console.error("Auth init error:", err)
       } finally {
-        if (mounted) {
-          setIsLoading(false)
-          setIsInitialized(true)
-        }
+        setIsInitialized(true)
       }
     }
 
-    initializeAuth()
+    initAuth()
+  }, [fetchUserProfile])
 
-    return () => {
-      mounted = false
-    }
-  }, [fetchUserProfile, handleRedirection, pathname, router])
-
+  // Listener de cambios de autenticación
   useEffect(() => {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log("AUTH: State change event:", event)
-
       if (event === "SIGNED_IN" && session) {
         setSession(session)
         setUser(session.user)
         setError(null)
+        cacheSession(session, session.user)
 
         const userProfile = await fetchUserProfile(session.user.id, session.user.email)
         if (userProfile) {
           setProfile(userProfile)
-          cacheSession(session, session.user)
           cacheProfile(userProfile)
-
-          if (pathname === "/login") {
-            handleRedirection(userProfile)
-          }
         }
       } else if (event === "SIGNED_OUT") {
-        console.log("AUTH: SIGNED_OUT event received")
         setSession(null)
         setUser(null)
         setProfile(null)
         setError(null)
         clearAllCache()
-
-        // Limpiar almacenamiento local y cookies
-        if (typeof window !== "undefined") {
-          localStorage.clear()
-          sessionStorage.clear()
-          document.cookie = "session=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/;"
-          document.cookie = "sb-access-token=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/;"
-          document.cookie = "sb-refresh-token=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/;"
-        }
-
-        // Solo redirigir si no estamos ya en login
-        if (pathname !== "/login") {
-          console.log("AUTH: Signed out, redirecting to login")
-          router.push("/login")
-        }
-      } else if (event === "TOKEN_REFRESHED" && session) {
-        console.log("AUTH: Token refreshed")
-        setSession(session)
-        setUser(session.user)
-        cacheSession(session, session.user)
       }
     })
 
     return () => subscription.unsubscribe()
-  }, [fetchUserProfile, handleRedirection, pathname, router])
+  }, [fetchUserProfile])
 
   const signIn = async (email: string, password: string) => {
     try {
@@ -280,12 +152,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setError(null)
       const { error: signInError } = await supabase.auth.signInWithPassword({ email, password })
       if (signInError) {
-        setError(signInError.message)
         return { error: signInError.message }
       }
       return { error: null }
     } catch (err: any) {
-      setError(err.message)
       return { error: err.message }
     } finally {
       setIsLoading(false)
@@ -294,63 +164,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = async () => {
     try {
-      console.log("AUTH: Starting sign out process...")
-      setIsLoading(true)
-
-      // Limpiar caché y estado local ANTES de llamar a Supabase
       clearAllCache()
       setSession(null)
       setUser(null)
       setProfile(null)
       setError(null)
 
-      // Limpiar almacenamiento local y cookies
       if (typeof window !== "undefined") {
         localStorage.clear()
         sessionStorage.clear()
-        document.cookie = "session=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/;"
-        document.cookie = "sb-access-token=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/;"
-        document.cookie = "sb-refresh-token=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/;"
       }
 
-      // Cerrar sesión en Supabase
-      const { error } = await supabase.auth.signOut()
-      if (error) {
-        console.error("AUTH: Error signing out from Supabase:", error)
-      } else {
-        console.log("AUTH: Successfully signed out from Supabase")
-      }
-
-      setIsLoading(false)
-
-      // Forzar redirección a login
-      if (typeof window !== "undefined") {
-        window.location.href = "/login"
-      } else {
-        router.push("/login")
-      }
+      await supabase.auth.signOut()
+      window.location.href = "/login"
     } catch (err: any) {
-      console.error("AUTH: Error during sign out:", err)
-      setIsLoading(false)
-
-      // En caso de error, forzar redirección de todas formas
-      if (typeof window !== "undefined") {
-        window.location.href = "/login"
-      } else {
-        router.push("/login")
-      }
+      window.location.href = "/login"
     }
   }
 
   const refreshProfile = useCallback(async () => {
     if (!user) return
-    setIsLoading(true)
     const userProfile = await fetchUserProfile(user.id, user.email)
     if (userProfile) {
       setProfile(userProfile)
       cacheProfile(userProfile)
     }
-    setIsLoading(false)
   }, [user, fetchUserProfile])
 
   return (
