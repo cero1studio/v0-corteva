@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
@@ -27,48 +27,60 @@ export default function DistribuidoresPage() {
   const [retryCount, setRetryCount] = useState(0)
   const { toast } = useToast()
 
-  const fetchDistributors = useCallback(async () => {
-    setLoading(true)
-    setError(null)
+  useEffect(() => {
+    let mounted = true
+    let timeoutId: NodeJS.Timeout
 
-    const abortController = new AbortController()
+    const loadDistributors = async () => {
+      setLoading(true)
+      setError(null)
 
-    try {
-      const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error("Timeout: La consulta tardó demasiado")), 5000),
-      )
+      // Timeout de seguridad para evitar loading infinito
+      timeoutId = setTimeout(() => {
+        if (mounted) {
+          console.log("DISTRIBUIDORES: Timeout reached, forcing loading to false")
+          setLoading(false)
+        }
+      }, 10000)
 
-      const fetchPromise = supabase.from("distributors").select("*").order("name").abortSignal(abortController.signal)
+      try {
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error("Timeout: La consulta tardó demasiado")), 5000),
+        )
 
-      const result = (await Promise.race([fetchPromise, timeoutPromise])) as any
+        const fetchPromise = supabase.from("distributors").select("*").order("name")
 
-      if (result.error) throw result.error
-      if (!abortController.signal.aborted) {
-        setDistributors(result.data || [])
-      }
-    } catch (error: any) {
-      if (!abortController.signal.aborted) {
-        console.error("Error al cargar distribuidores:", error)
-        setError(error.message || "Error al cargar distribuidores")
-        toast({
-          title: "Error",
-          description: "No se pudieron cargar los distribuidores. " + error.message,
-          variant: "destructive",
-        })
-      }
-    } finally {
-      if (!abortController.signal.aborted) {
-        setLoading(false)
+        const result = (await Promise.race([fetchPromise, timeoutPromise])) as any
+
+        if (result.error) throw result.error
+
+        if (mounted) {
+          setDistributors(result.data || [])
+        }
+      } catch (error: any) {
+        if (mounted) {
+          console.error("Error al cargar distribuidores:", error)
+          setError(error.message || "Error al cargar distribuidores")
+          toast({
+            title: "Error",
+            description: "No se pudieron cargar los distribuidores. " + error.message,
+            variant: "destructive",
+          })
+        }
+      } finally {
+        if (mounted) {
+          setLoading(false)
+        }
       }
     }
 
-    return () => abortController.abort()
-  }, [toast])
+    loadDistributors()
 
-  useEffect(() => {
-    const cleanup = fetchDistributors()
-    return cleanup
-  }, [fetchDistributors, retryCount])
+    return () => {
+      mounted = false
+      clearTimeout(timeoutId)
+    }
+  }, [retryCount, toast])
 
   const handleRetry = () => {
     setRetryCount((prev) => prev + 1)
