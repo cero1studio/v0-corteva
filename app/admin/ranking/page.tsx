@@ -87,7 +87,7 @@ export default function RankingAdminPage() {
 
         const teamsData = rankingResult.data || []
 
-        console.log("DEBUG: Teams data for ranking page:", teamsData) // Log de depuración
+        console.log("DEBUG: Teams data for ranking page:", teamsData)
 
         // Inicializar zonas con contadores en cero
         const zoneMap = new Map<string, Zone>()
@@ -126,7 +126,7 @@ export default function RankingAdminPage() {
           setDebugInfo(debug)
         }
 
-        console.log("DEBUG: Processed zones for ranking page (after aggregation):", processedZones) // Log de depuración
+        console.log("DEBUG: Processed zones for ranking page (after aggregation):", processedZones)
 
         // Encontrar zona ganadora - ordenar por goles totales
         const sortedZones = [...processedZones].sort((a, b) => {
@@ -136,11 +136,11 @@ export default function RankingAdminPage() {
           return b.total_points - a.total_points
         })
 
-        console.log("DEBUG: Sorted zones for winning zone:", sortedZones) // Log de depuración
+        console.log("DEBUG: Sorted zones for winning zone:", sortedZones)
 
         // Seleccionar la zona con más goles (si hay empate, la que tenga más puntos)
         const winner = sortedZones.length > 0 ? sortedZones[0] : null
-        console.log("DEBUG: Winning zone selected:", winner) // Log de depuración
+        console.log("DEBUG: Winning zone selected:", winner)
 
         if (mounted) {
           setTeams(teamsData)
@@ -184,7 +184,7 @@ export default function RankingAdminPage() {
         const rankingResult = await getTeamRankingByZone(selectedZone)
         if (rankingResult.success && rankingResult.data && mounted) {
           setTeamsInZone(rankingResult.data)
-          console.log("DEBUG: Teams in selected zone:", rankingResult.data) // Log de depuración
+          console.log("DEBUG: Teams in selected zone:", rankingResult.data)
         }
       } catch (error) {
         console.error("Error cargando equipos de zona:", error)

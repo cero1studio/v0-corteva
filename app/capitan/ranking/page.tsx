@@ -32,80 +32,84 @@ export default function CapitanRankingPage() {
   const [error, setError] = useState<string | null>(null)
 
   const loadData = async () => {
-    const mounted = true
-    let timeoutId: NodeJS.Timeout
-
-    // Timeout de seguridad para evitar loading infinito
-    timeoutId = setTimeout(() => {
-      if (mounted) {
-        console.log("CAPITAN RANKING: Timeout reached, forcing loading to false")
-        setLoading(false)
-      }
-    }, 12000)
-
-    try {
-      setLoading(true)
-      setError(null)
-
-      // Cargar información del equipo del usuario (requerido)
-      const userInfoResult = await getUserTeamInfo(user!.id)
-      if (!userInfoResult.success) {
-        throw new Error(userInfoResult.error || "Error al cargar información del equipo")
-      }
-
-      if (mounted) {
-        setUserTeamInfo(userInfoResult.data!)
-      }
-
-      const userZoneId = userInfoResult.data!.zone_id
-
-      // Cargar todos los rankings de la zona del usuario
-      const [teamRankingResult, salesRankingResult, clientsRankingResult, productsResult] = await Promise.all([
-        getTeamRankingByZone(userZoneId),
-        getSalesRankingByZone(userZoneId),
-        getClientsRankingByZone(userZoneId),
-        getProducts(),
-      ])
-
-      if (mounted) {
-        if (teamRankingResult.success) {
-          setTeamRanking(teamRankingResult.data || [])
-        }
-
-        if (salesRankingResult.success) {
-          setSalesRanking(salesRankingResult.data || [])
-        }
-
-        if (clientsRankingResult.success) {
-          setClientsRanking(clientsRankingResult.data || [])
-        }
-
-        if (productsResult.success) {
-          setProducts(productsResult.data || [])
-        }
-      }
-    } catch (error) {
-      console.error("Error loading ranking data:", error)
-      if (mounted) {
-        setError(error instanceof Error ? error.message : "Error al cargar los datos")
-      }
-    } finally {
-      if (mounted) {
-        setLoading(false)
-      }
-    }
-  }
-
-  useEffect(() => {
     let mounted = true
 
+    const load = async () => {
+      let timeoutId: NodeJS.Timeout
+
+      // Timeout de seguridad para evitar loading infinito
+      timeoutId = setTimeout(() => {
+        if (mounted) {
+          console.log("CAPITAN RANKING: Timeout reached, forcing loading to false")
+          setLoading(false)
+        }
+      }, 12000)
+
+      try {
+        setLoading(true)
+        setError(null)
+
+        // Cargar información del equipo del usuario (requerido)
+        const userInfoResult = await getUserTeamInfo(user!.id)
+        if (!userInfoResult.success) {
+          throw new Error(userInfoResult.error || "Error al cargar información del equipo")
+        }
+
+        if (mounted) {
+          setUserTeamInfo(userInfoResult.data!)
+        }
+
+        const userZoneId = userInfoResult.data!.zone_id
+
+        // Cargar todos los rankings de la zona del usuario
+        const [teamRankingResult, salesRankingResult, clientsRankingResult, productsResult] = await Promise.all([
+          getTeamRankingByZone(userZoneId),
+          getSalesRankingByZone(userZoneId),
+          getClientsRankingByZone(userZoneId),
+          getProducts(),
+        ])
+
+        if (mounted) {
+          if (teamRankingResult.success) {
+            setTeamRanking(teamRankingResult.data || [])
+          }
+
+          if (salesRankingResult.success) {
+            setSalesRanking(salesRankingResult.data || [])
+          }
+
+          if (clientsRankingResult.success) {
+            setClientsRanking(clientsRankingResult.data || [])
+          }
+
+          if (productsResult.success) {
+            setProducts(productsResult.data || [])
+          }
+        }
+      } catch (error) {
+        console.error("Error loading ranking data:", error)
+        if (mounted) {
+          setError(error instanceof Error ? error.message : "Error al cargar los datos")
+        }
+      } finally {
+        if (mounted) {
+          setLoading(false)
+        }
+        clearTimeout(timeoutId)
+      }
+    }
+
     if (user?.id) {
-      loadData()
+      load()
     }
 
     return () => {
       mounted = false
     }
+  }
+
+  useEffect(() => {
+    loadData()
   }, [user?.id])
 
   const getPositionIcon = (position: number) => {

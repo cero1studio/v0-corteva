@@ -46,8 +46,6 @@ function CapitanDashboardContent() {
 
   const [showCelebration, setShowCelebration] = useState(false)
 
-  const mounted = true
-
   useEffect(() => {
     let mounted = true
     let timeoutId: NodeJS.Timeout
@@ -162,7 +160,7 @@ function CapitanDashboardContent() {
 
       console.log("CAPITAN DASHBOARD: Profile data:", profileData)
 
-      if (mounted) {
+      if (userData) {
         setUser(profileData)
         setUserData(profileData)
 
@@ -202,7 +200,7 @@ function CapitanDashboardContent() {
 
         console.log("CAPITAN DASHBOARD: Team data:", teamData)
 
-        if (mounted) {
+        if (teamData) {
           setTeam(teamData)
           setTeamData(teamData)
           setHasTeam(true)
@@ -223,7 +221,7 @@ function CapitanDashboardContent() {
       }
     } catch (error: any) {
       console.error("CAPITAN DASHBOARD: Error checking user and team:", error)
-      if (mounted) {
+      if (userData) {
         toast({
           title: "Error",
           description: error?.message || "No se pudo cargar la información del usuario o equipo",
@@ -254,8 +252,7 @@ function CapitanDashboardContent() {
       if (teamMembersResult.error) throw teamMembersResult.error
       if (salesResult.error) throw salesResult.error
       if (clientsResult.error) throw clientsResult.error
-      if (freeKickResult.error) throw freeKickResult.error
-      if (rankingResult.error) throw rankingResult.error
+      if (freeKickResult.error) throw rankingResult.error
       if (puntosConfigResult.error) throw puntosConfigResult.error
 
       const teamMembers = teamMembersResult.data || []
@@ -265,7 +262,7 @@ function CapitanDashboardContent() {
       const zoneRanking = rankingResult.data || []
       const puntosParaGol = puntosConfigResult.data?.value ? Number(puntosConfigResult.data.value) : PUNTOS_POR_GOL
 
-      if (mounted) {
+      if (userData) {
         setSalesData(salesData)
         setClientsData(clientsData)
         setFreeKickData(freeKickData)
@@ -282,7 +279,7 @@ function CapitanDashboardContent() {
       console.log("CAPITAN DASHBOARD: Zone ranking loaded:", zoneRanking.length)
     } catch (error) {
       console.error("CAPITAN DASHBOARD: Error loading team data:", error)
-      if (mounted) {
+      if (userData) {
         toast({
           title: "Error",
           description: "Error al cargar datos del equipo: " + (error as Error).message,
