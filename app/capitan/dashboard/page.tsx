@@ -46,6 +46,8 @@ function CapitanDashboardContent() {
 
   const [showCelebration, setShowCelebration] = useState(false)
 
+  const mounted = true
+
   useEffect(() => {
     let mounted = true
     let timeoutId: NodeJS.Timeout
@@ -160,12 +162,14 @@ function CapitanDashboardContent() {
 
       console.log("CAPITAN DASHBOARD: Profile data:", profileData)
 
-      setUser(profileData)
-      setUserData(profileData)
+      if (mounted) {
+        setUser(profileData)
+        setUserData(profileData)
 
-      // Guardar datos de zona del perfil del usuario
-      if (profileData.zones) {
-        setZoneData(profileData.zones)
+        // Guardar datos de zona del perfil del usuario
+        if (profileData.zones) {
+          setZoneData(profileData.zones)
+        }
       }
 
       // Verificar si el usuario tiene un equipo
@@ -198,18 +202,20 @@ function CapitanDashboardContent() {
 
         console.log("CAPITAN DASHBOARD: Team data:", teamData)
 
-        setTeam(teamData)
-        setTeamData(teamData)
-        setHasTeam(true)
+        if (mounted) {
+          setTeam(teamData)
+          setTeamData(teamData)
+          setHasTeam(true)
 
-        // Actualizar datos de zona con los del equipo si están disponibles
-        if (teamData.zones) {
-          setZoneData(teamData.zones)
-        }
+          // Actualizar datos de zona con los del equipo si están disponibles
+          if (teamData.zones) {
+            setZoneData(teamData.zones)
+          }
 
-        // Guardar datos del distribuidor del equipo
-        if (teamData.distributors) {
-          setDistributorData(teamData.distributors)
+          // Guardar datos del distribuidor del equipo
+          if (teamData.distributors) {
+            setDistributorData(teamData.distributors)
+          }
         }
 
         // Cargar datos adicionales del equipo
@@ -217,11 +223,13 @@ function CapitanDashboardContent() {
       }
     } catch (error: any) {
       console.error("CAPITAN DASHBOARD: Error checking user and team:", error)
-      toast({
-        title: "Error",
-        description: error?.message || "No se pudo cargar la información del usuario o equipo",
-        variant: "destructive",
-      })
+      if (mounted) {
+        toast({
+          title: "Error",
+          description: error?.message || "No se pudo cargar la información del usuario o equipo",
+          variant: "destructive",
+        })
+      }
     }
   }
 
@@ -257,14 +265,16 @@ function CapitanDashboardContent() {
       const zoneRanking = rankingResult.data || []
       const puntosParaGol = puntosConfigResult.data?.value ? Number(puntosConfigResult.data.value) : PUNTOS_POR_GOL
 
-      setSalesData(salesData)
-      setClientsData(clientsData)
-      setFreeKickData(freeKickData)
-      setZoneRanking(zoneRanking)
-      setPuntosParaGol(puntosParaGol)
+      if (mounted) {
+        setSalesData(salesData)
+        setClientsData(clientsData)
+        setFreeKickData(freeKickData)
+        setZoneRanking(zoneRanking)
+        setPuntosParaGol(puntosParaGol)
 
-      const position = zoneRanking.findIndex((t: any) => t.team_id === teamId) + 1
-      setRankingPosition(position > 0 ? position : null)
+        const position = zoneRanking.findIndex((t: any) => t.team_id === teamId) + 1
+        setRankingPosition(position > 0 ? position : null)
+      }
 
       console.log("CAPITAN DASHBOARD: Sales loaded:", salesData.length)
       console.log("CAPITAN DASHBOARD: Clients loaded:", clientsData.length)
@@ -272,11 +282,13 @@ function CapitanDashboardContent() {
       console.log("CAPITAN DASHBOARD: Zone ranking loaded:", zoneRanking.length)
     } catch (error) {
       console.error("CAPITAN DASHBOARD: Error loading team data:", error)
-      toast({
-        title: "Error",
-        description: "Error al cargar datos del equipo: " + (error as Error).message,
-        variant: "destructive",
-      })
+      if (mounted) {
+        toast({
+          title: "Error",
+          description: "Error al cargar datos del equipo: " + (error as Error).message,
+          variant: "destructive",
+        })
+      }
     }
   }
 

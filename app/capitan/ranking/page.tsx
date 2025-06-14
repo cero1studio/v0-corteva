@@ -31,13 +31,18 @@ export default function CapitanRankingPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (user?.id) {
-      loadData()
-    }
-  }, [user?.id])
-
   const loadData = async () => {
+    const mounted = true
+    let timeoutId: NodeJS.Timeout
+
+    // Timeout de seguridad para evitar loading infinito
+    timeoutId = setTimeout(() => {
+      if (mounted) {
+        console.log("CAPITAN RANKING: Timeout reached, forcing loading to false")
+        setLoading(false)
+      }
+    }, 12000)
+
     try {
       setLoading(true)
       setError(null)
@@ -47,7 +52,10 @@ export default function CapitanRankingPage() {
       if (!userInfoResult.success) {
         throw new Error(userInfoResult.error || "Error al cargar información del equipo")
       }
-      setUserTeamInfo(userInfoResult.data!)
+
+      if (mounted) {
+        setUserTeamInfo(userInfoResult.data!)
+      }
 
       const userZoneId = userInfoResult.data!.zone_id
 
@@ -59,28 +67,46 @@ export default function CapitanRankingPage() {
         getProducts(),
       ])
 
-      if (teamRankingResult.success) {
-        setTeamRanking(teamRankingResult.data || [])
-      }
+      if (mounted) {
+        if (teamRankingResult.success) {
+          setTeamRanking(teamRankingResult.data || [])
+        }
 
-      if (salesRankingResult.success) {
-        setSalesRanking(salesRankingResult.data || [])
-      }
+        if (salesRankingResult.success) {
+          setSalesRanking(salesRankingResult.data || [])
+        }
 
-      if (clientsRankingResult.success) {
-        setClientsRanking(clientsRankingResult.data || [])
-      }
+        if (clientsRankingResult.success) {
+          setClientsRanking(clientsRankingResult.data || [])
+        }
 
-      if (productsResult.success) {
-        setProducts(productsResult.data || [])
+        if (productsResult.success) {
+          setProducts(productsResult.data || [])
+        }
       }
     } catch (error) {
       console.error("Error loading ranking data:", error)
-      setError(error instanceof Error ? error.message : "Error al cargar los datos")
+      if (mounted) {
+        setError(error instanceof Error ? error.message : "Error al cargar los datos")
+      }
     } finally {
-      setLoading(false)
+      if (mounted) {
+        setLoading(false)
+      }
     }
   }
+
+  useEffect(() => {
+    let mounted = true
+
+    if (user?.id) {
+      loadData()
+    }
+
+    return () => {
+      mounted = false
+    }
+  }, [user?.id])
 
   const getPositionIcon = (position: number) => {
     switch (position) {

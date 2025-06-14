@@ -52,6 +52,17 @@ export default function RankingAdminPage() {
 
   // Cargar datos iniciales
   useEffect(() => {
+    let mounted = true
+    let timeoutId: NodeJS.Timeout
+
+    // Timeout de seguridad para evitar loading infinito
+    timeoutId = setTimeout(() => {
+      if (mounted) {
+        console.log("ADMIN RANKING: Timeout reached, forcing loading to false")
+        setIsLoading(false)
+      }
+    }, 15000) // 15 segundos para consultas complejas
+
     async function loadData() {
       setIsLoading(true)
       setError(null)
@@ -110,7 +121,10 @@ export default function RankingAdminPage() {
         processedZones.forEach((zone) => {
           debug += `${zone.name}: ${zone.total_goals} goles, ${zone.teams_count} equipos, ${zone.total_points} puntos\n`
         })
-        setDebugInfo(debug)
+
+        if (mounted) {
+          setDebugInfo(debug)
+        }
 
         console.log("DEBUG: Processed zones for ranking page (after aggregation):", processedZones) // Log de depuración
 
@@ -128,34 +142,47 @@ export default function RankingAdminPage() {
         const winner = sortedZones.length > 0 ? sortedZones[0] : null
         console.log("DEBUG: Winning zone selected:", winner) // Log de depuración
 
-        setTeams(teamsData)
-        setZones(processedZones)
-        setDistributors(distributorsData)
-        setWinningZone(winner)
+        if (mounted) {
+          setTeams(teamsData)
+          setZones(processedZones)
+          setDistributors(distributorsData)
+          setWinningZone(winner)
 
-        // Establecer zona seleccionada por defecto si hay zonas
-        if (processedZones.length > 0 && !selectedZone) {
-          setSelectedZone(processedZones[0].id)
+          // Establecer zona seleccionada por defecto si hay zonas
+          if (processedZones.length > 0 && !selectedZone) {
+            setSelectedZone(processedZones[0].id)
+          }
         }
       } catch (error: any) {
         console.error("Error cargando datos:", error)
-        setError(error.message)
+        if (mounted) {
+          setError(error.message)
+        }
       } finally {
-        setIsLoading(false)
+        if (mounted) {
+          setIsLoading(false)
+        }
       }
     }
 
     loadData()
+
+    return () => {
+      mounted = false
+      clearTimeout(timeoutId)
+    }
   }, [supabase])
 
   // Cargar equipos de zona específica cuando cambia selectedZone
   useEffect(() => {
+    let mounted = true
+
     async function loadZoneTeams() {
       if (!selectedZone) return
 
       try {
         const rankingResult = await getTeamRankingByZone(selectedZone)
-        if (rankingResult.success && rankingResult.data) {
+        if (rankingResult.success && rankingResult.data && mounted) {
           setTeamsInZone(rankingResult.data)
           console.log("DEBUG: Teams in selected zone:", rankingResult.data) // Log de depuración
         }
@@ -165,6 +192,10 @@ export default function RankingAdminPage() {
     }
 
     loadZoneTeams()
+
+    return () => {
+      mounted = false
+    }
   }, [selectedZone])
 
   // Filtrar equipos
