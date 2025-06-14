@@ -34,30 +34,51 @@ export default function ZonasPage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")
   const { toast } = useToast()
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    fetchZones()
-  }, [])
+    const abortController = new AbortController()
 
-  async function fetchZones() {
-    setLoading(true)
-    try {
-      const { data, error } = await supabase.from("zones").select("*").order("name")
+    const fetchZonesWithCleanup = async () => {
+      setLoading(true)
+      setError(null)
 
-      if (error) throw error
+      try {
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error("Timeout: La consulta tardó demasiado")), 5000),
+        )
 
-      setZones(data || [])
-    } catch (error) {
-      console.error("Error al cargar zonas:", error)
-      toast({
-        title: "Error",
-        description: "No se pudieron cargar las zonas",
-        variant: "destructive",
-      })
-    } finally {
-      setLoading(false)
+        const fetchPromise = supabase.from("zones").select("*").order("name").abortSignal(abortController.signal)
+
+        const result = (await Promise.race([fetchPromise, timeoutPromise])) as any
+
+        if (result.error) throw result.error
+        if (!abortController.signal.aborted) {
+          setZones(result.data || [])
+        }
+      } catch (error: any) {
+        if (!abortController.signal.aborted) {
+          console.error("Error al cargar zonas:", error)
+          setError(error.message || "Error al cargar zonas")
+          toast({
+            title: "Error",
+            description: "No se pudieron cargar las zonas. " + error.message,
+            variant: "destructive",
+          })
+        }
+      } finally {
+        if (!abortController.signal.aborted) {
+          setLoading(false)
+        }
+      }
     }
-  }
+
+    fetchZonesWithCleanup()
+
+    return () => {
+      abortController.abort()
+    }
+  }, [toast])
 
   // Filtrar zonas basándose en el término de búsqueda
   const filteredZones = useMemo(() => {
@@ -82,22 +103,34 @@ export default function ZonasPage() {
     }
 
     setIsAddingZone(true)
+    const abortController = new AbortController()
+
     try {
-      const { data, error } = await supabase.from("zones").insert({ name: newZoneName.trim() }).select()
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("Timeout al crear zona")), 3000),
+      )
 
-      if (error) throw error
+      const insertPromise = supabase
+        .from("zones")
+        .insert({ name: newZoneName.trim() })
+        .select()
+        .abortSignal(abortController.signal)
 
-      setZones([...zones, data[0]])
+      const result = (await Promise.race([insertPromise, timeoutPromise])) as any
+
+      if (result.error) throw result.error
+
+      setZones((prev) => [...prev, result.data[0]])
       setNewZoneName("")
       toast({
         title: "Zona añadida",
         description: "La zona ha sido añadida exitosamente",
       })
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error al añadir zona:", error)
       toast({
         title: "Error",
-        description: "No se pudo añadir la zona",
+        description: "No se pudo añadir la zona: " + error.message,
         variant: "destructive",
       })
     } finally {

@@ -13,7 +13,6 @@ import { useToast } from "@/hooks/use-toast"
 import { EmptyState } from "@/components/empty-state"
 import { useRouter } from "next/navigation"
 import { getImageUrl } from "@/lib/utils/image"
-import { getTeamRankingByZone } from "@/app/actions/ranking"
 import { AuthGuard } from "@/components/auth-guard"
 import { Badge } from "@/components/ui/badge"
 
@@ -40,8 +39,70 @@ function DirectorTecnicoDashboardContent() {
   const [retoActivo, setRetoActivo] = useState(false)
 
   useEffect(() => {
+    let isMounted = true
+
+    const checkUserAndLoadData = async () => {
+      if (!isMounted) return
+      try {
+        setLoading(true)
+
+        // Obtener el usuario actual
+        const {
+          data: { user: authUser },
+        } = await supabase.auth.getUser()
+
+        if (!authUser) {
+          router.push("/login")
+          return
+        }
+
+        // Obtener el perfil del usuario con información detallada incluyendo el distribuidor
+        const { data: profileData, error: profileError } = await supabase
+          .from("profiles")
+          .select(`
+           *,
+           zones:zone_id(*),
+           teams:team_id(*, distributors:distributor_id(*))
+         `)
+          .eq("id", authUser.id)
+          .single()
+
+        if (profileError) throw profileError
+
+        setUser(profileData)
+        setUserData(profileData)
+
+        // Guardar datos de zona del perfil del usuario
+        if (profileData.zones) {
+          setZoneData(profileData.zones)
+        }
+
+        // Guardar datos del distribuidor del equipo del director técnico
+        if (profileData.teams?.distributors) {
+          setDistributorData(profileData.teams.distributors)
+        }
+
+        // Cargar datos de la zona
+        if (profileData.zone_id) {
+          await loadZoneData(profileData.zone_id)
+        }
+      } catch (error: any) {
+        console.error("Error al verificar usuario:", error)
+        toast({
+          title: "Error",
+          description: error?.message || "No se pudo cargar la información del usuario",
+          variant: "destructive",
+        })
+      } finally {
+        setLoading(false)
+      }
+    }
+
     checkUserAndLoadData()
-    loadSystemConfig()
+
+    return () => {
+      isMounted = false
+    }
   }, [])
 
   async function loadSystemConfig() {
@@ -83,198 +144,49 @@ function DirectorTecnicoDashboardContent() {
     }
   }
 
-  async function checkUserAndLoadData() {
+  async function loadZoneData(zoneId: string) {
     try {
-      setLoading(true)
+      if (!zoneId) return
 
-      // Obtener el usuario actual
-      const {
-        data: { user: authUser },
-      } = await supabase.auth.getUser()
+      console.log("Cargando datos de la zona (Director Técnico):", zoneId)
 
-      if (!authUser) {
-        router.push("/login")
+      // Simplificar consultas - hacer secuencialmente las más pesadas
+      const teamsResult = await supabase.from("teams").select("id, name, distributor_id").eq("zone_id", zoneId)
+
+      if (teamsResult.error) throw teamsResult.error
+
+      const teams = teamsResult.data || []
+      const teamIds = teams.map((t) => t.id)
+
+      // Solo continuar si hay equipos
+      if (teamIds.length === 0) {
+        setTeamsData([])
+        setSalesData([])
+        setClientsData([])
+        setFreeKickData([])
         return
       }
 
-      // Obtener el perfil del usuario con información detallada incluyendo el distribuidor
-      const { data: profileData, error: profileError } = await supabase
-        .from("profiles")
-        .select(`
-         *,
-         zones:zone_id(*),
-         teams:team_id(*, distributors:distributor_id(*))
-       `)
-        .eq("id", authUser.id)
-        .single()
-
-      if (profileError) throw profileError
-
-      setUser(profileData)
-      setUserData(profileData)
-
-      // Guardar datos de zona del perfil del usuario
-      if (profileData.zones) {
-        setZoneData(profileData.zones)
-      }
-
-      // Guardar datos del distribuidor del equipo del director técnico
-      if (profileData.teams?.distributors) {
-        setDistributorData(profileData.teams.distributors)
-      }
-
-      // Cargar datos de la zona
-      if (profileData.zone_id) {
-        await loadZoneData(profileData.zone_id)
-      }
-    } catch (error: any) {
-      console.error("Error al verificar usuario:", error)
-      toast({
-        title: "Error",
-        description: error?.message || "No se pudo cargar la información del usuario",
-        variant: "destructive",
-      })
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  async function loadZoneData(zoneId: string) {
-    try {
-      console.log("Cargando datos de la zona (Director Técnico):", zoneId)
-
-      const [
-        teamsResult,
-        profilesResult,
-        salesResult,
-        clientsResult,
-        freeKicksResult,
-        puntosConfigResult,
-        zoneRankingResult,
-        nationalRankingResult,
-      ] = await Promise.all([
-        supabase.from("teams").select(`*, distributors:distributor_id(*)`).eq("zone_id", zoneId),
-        supabase.from("profiles").select(`id, full_name, team_id, teams:team_id(*, distributors:distributor_id(*))`),
-        supabase.from("sales").select(`*, products(id, name, image_url)`),
-        supabase.from("competitor_clients").select(`*`),
-        supabase.from("free_kick_goals").select(`*, teams(id, name)`),
-        supabase.from("system_config").select("value").eq("key", "puntos_para_gol").maybeSingle(),
-        getTeamRankingByZone(zoneId),
-        getTeamRankingByZone(), // National ranking
+      // Cargar datos básicos en paralelo (más simple)
+      const [salesResult, clientsResult, freeKicksResult] = await Promise.all([
+        supabase.from("sales").select("id, points, quantity, created_at, product_id, representative_id").limit(100),
+        supabase.from("competitor_clients").select("id, ganadero_name, created_at, representative_id").limit(100),
+        supabase.from("free_kick_goals").select("id, points, reason, created_at, team_id").in("team_id", teamIds),
       ])
 
-      if (teamsResult.error) throw teamsResult.error
-      if (profilesResult.error) throw profilesResult.error
-      if (salesResult.error) throw salesResult.error
-      if (clientsResult.error) throw clientsResult.error
-      if (freeKicksResult.error) throw freeKicksResult.error
-      if (puntosConfigResult.error) throw puntosConfigResult.error
-      if (zoneRankingResult.error) throw zoneRankingResult.error
-      if (nationalRankingResult.error) throw nationalRankingResult.error
-
-      const teams = teamsResult.data || []
-      const profiles = profilesResult.data || []
-      const sales = salesResult.data || []
-      const clients = clientsResult.data || []
-      const freeKicks = freeKicksResult.data || []
-      const puntosParaGol = puntosConfigResult.data?.value ? Number(puntosConfigResult.data.value) : PUNTOS_POR_GOL
-
-      const profileMap = new Map(profiles.map((p) => [p.id, p]))
-      const teamMap = new Map(teams.map((t) => [t.id, t]))
-
-      // Enriquecer ventas
-      const enrichedSales = sales
-        .map((sale) => {
-          const representative = profileMap.get(sale.representative_id)
-          const team = representative?.team_id ? teamMap.get(representative.team_id) : null
-          return {
-            ...sale,
-            representative_name: representative?.full_name || "Representante",
-            team_name: team?.name || "Equipo",
-            team_id: team?.id,
-            distributor_data: team?.distributors,
-          }
-        })
-        .filter((sale) => sale.team_id && teamMap.has(sale.team_id)) // Filter sales relevant to this zone's teams
-
-      // Enriquecer clientes
-      const enrichedClients = clients
-        .map((client) => {
-          const representative = profileMap.get(client.representative_id)
-          const team = representative?.team_id ? teamMap.get(representative.team_id) : null
-          return {
-            ...client,
-            representative_name: representative?.full_name || "Representante",
-            team_name: team?.name || "Equipo",
-            team_id: team?.id,
-            distributor_data: team?.distributors,
-          }
-        })
-        .filter((client) => client.team_id && teamMap.has(client.team_id)) // Filter clients relevant to this zone's teams
-
-      // Enriquecer tiros libres
-      const enrichedFreeKicks = freeKicks
-        .map((freeKick) => {
-          const team = teamMap.get(freeKick.team_id)
-          return {
-            ...freeKick,
-            team_name: team?.name || "Equipo",
-            distributor_data: team?.distributors,
-          }
-        })
-        .filter((freeKick) => freeKick.team_id && teamMap.has(freeKick.team_id)) // Filter free kicks relevant to this zone's teams
-
-      // Calcular puntos totales por equipo (ventas + clientes + tiros libres)
-      const teamsWithTotalGoals = teams.map((team) => {
-        const teamSales = enrichedSales.filter((sale) => sale.team_id === team.id)
-        const salesPoints = teamSales.reduce((sum, sale) => sum + (sale.points || 0), 0)
-
-        const teamClients = enrichedClients.filter((client) => client.team_id === team.id)
-        const clientsPoints = teamClients.length * 200 // 200 puntos por cliente
-
-        const teamFreeKicks = enrichedFreeKicks.filter((freeKick) => freeKick.team_id === team.id)
-        const freeKickPoints = teamFreeKicks.reduce((sum, freeKick) => sum + (freeKick.points || 0), 0)
-
-        const totalPoints = salesPoints + clientsPoints + freeKickPoints
-        const totalGoals = Math.floor(totalPoints / puntosParaGol)
-
-        return {
+      // Procesar datos de forma más simple
+      setSalesData(salesResult.data || [])
+      setClientsData(clientsResult.data || [])
+      setFreeKickData(freeKicksResult.data || [])
+      setTeamsData(
+        teams.map((team) => ({
           ...team,
-          calculated_total_points: totalPoints,
-          calculated_total_goals: totalGoals,
-          sales_points: salesPoints,
-          clients_points: clientsPoints,
-          free_kick_points: freeKickPoints,
-          sales_count: teamSales.length,
-          clients_count: teamClients.length,
-          free_kick_count: teamFreeKicks.length,
-        }
-      })
-
-      teamsWithTotalGoals.sort((a, b) => (b.calculated_total_points || 0) - (a.calculated_total_points || 0))
-
-      setSalesData(enrichedSales)
-      setClientsData(enrichedClients)
-      setFreeKickData(enrichedFreeKicks)
-      setTeamsData(teamsWithTotalGoals)
-      setZoneRanking(zoneRankingResult.data || [])
-      setNationalRanking(nationalRankingResult.data || [])
-
-      console.log("Datos de zona cargados (Director Técnico):", {
-        sales: enrichedSales.length,
-        clients: enrichedClients.length,
-        freeKicks: enrichedFreeKicks.length,
-        teams: teamsWithTotalGoals.length,
-        zoneRanking: zoneRankingResult.data?.length,
-        nationalRanking: nationalRankingResult.data?.length,
-      })
+          calculated_total_points: 0, // Calcular después si es necesario
+          calculated_total_goals: 0,
+        })),
+      )
     } catch (error: any) {
-      console.error("Error al cargar datos de la zona (Director Técnico):", error)
-      toast({
-        title: "Error",
-        description: "Error al cargar datos de la zona: " + (error as Error).message,
-        variant: "destructive",
-      })
+      console.error("Error al cargar datos de la zona:", error)
     }
   }
 

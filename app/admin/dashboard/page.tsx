@@ -52,32 +52,23 @@ export default function AdminDashboardPage() {
   // Función para obtener estadísticas básicas
   const fetchBasicStats = useCallback(async () => {
     try {
-      // Usar consultas simples y separadas en lugar de Promise.all
-      const capitanesResult = await supabase
-        .from("profiles")
-        .select("*", { count: "exact", head: true })
-        .eq("role", "capitan")
-
-      const directoresResult = await supabase
-        .from("profiles")
-        .select("*", { count: "exact", head: true })
-        .eq("role", "director_tecnico")
-
-      const teamsResult = await supabase.from("teams").select("*", { count: "exact", head: true })
-
-      const zonesResult = await supabase.from("zones").select("*", { count: "exact", head: true })
-
-      const productsResult = await supabase.from("products").select("*", { count: "exact", head: true })
-
-      const salesResult = await supabase.from("sales").select("*", { count: "exact", head: true })
+      // Usar consultas más simples y secuenciales en lugar de paralelas
+      const [capitanes, directores, teams, zones, products, sales] = await Promise.all([
+        supabase.from("profiles").select("*", { count: "exact", head: true }).eq("role", "capitan"),
+        supabase.from("profiles").select("*", { count: "exact", head: true }).eq("role", "director_tecnico"),
+        supabase.from("teams").select("*", { count: "exact", head: true }),
+        supabase.from("zones").select("*", { count: "exact", head: true }),
+        supabase.from("products").select("*", { count: "exact", head: true }),
+        supabase.from("sales").select("*", { count: "exact", head: true }),
+      ])
 
       setStats({
-        totalCapitanes: capitanesResult.count || 0,
-        totalDirectores: directoresResult.count || 0,
-        totalTeams: teamsResult.count || 0,
-        totalZones: zonesResult.count || 0,
-        totalProducts: productsResult.count || 0,
-        totalSales: salesResult.count || 0,
+        totalCapitanes: capitanes.count || 0,
+        totalDirectores: directores.count || 0,
+        totalTeams: teams.count || 0,
+        totalZones: zones.count || 0,
+        totalProducts: products.count || 0,
+        totalSales: sales.count || 0,
       })
 
       setDataLoaded((prev) => ({ ...prev, basicStats: true }))
@@ -213,30 +204,30 @@ export default function AdminDashboardPage() {
       setLoading(true)
       setError(null)
 
-      // Establecer un timeout para evitar carga infinita
+      // Timeout más corto
       timeoutId = setTimeout(() => {
         if (isMounted && loading) {
           setLoading(false)
-          // Solo mostrar error si realmente no se han cargado los datos
           if (!dataLoaded.basicStats) {
-            setError("La carga está tardando demasiado. Por favor, intenta nuevamente.")
+            setError("Timeout - intenta nuevamente")
           }
         }
-      }, 15000) // 15 segundos máximo
+      }, 10000) // Reducir a 10 segundos
 
-      // Cargar datos de forma secuencial
+      // Cargar solo estadísticas básicas primero
       const basicStatsSuccess = await fetchBasicStats()
 
-      // Cargar el resto de datos en paralelo
       if (basicStatsSuccess && isMounted) {
-        // Usar Promise.allSettled para que un error no detenga las otras consultas
-        await Promise.allSettled([fetchTopTeams(), fetchZoneStats(), fetchProductStats()])
+        // Cargar el resto con delay para no sobrecargar
+        setTimeout(() => {
+          if (isMounted) {
+            Promise.allSettled([fetchTopTeams(), fetchZoneStats(), fetchProductStats()])
+          }
+        }, 100)
       }
 
-      // Marcar como completado solo si el componente sigue montado
       if (isMounted) {
         setLoading(false)
-        // Limpiar el timeout ya que terminamos
         if (timeoutId) clearTimeout(timeoutId)
       }
     }
@@ -247,7 +238,7 @@ export default function AdminDashboardPage() {
       isMounted = false
       if (timeoutId) clearTimeout(timeoutId)
     }
-  }, [fetchBasicStats, fetchTopTeams, fetchZoneStats, fetchProductStats, retryCount])
+  }, [retryCount])
 
   const handleRetry = () => {
     setError(null)

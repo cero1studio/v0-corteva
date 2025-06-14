@@ -31,38 +31,43 @@ export default function DistribuidoresPage() {
     setLoading(true)
     setError(null)
 
+    const abortController = new AbortController()
+
     try {
-      // Establecer un timeout para evitar carga infinita
       const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error("La consulta está tardando demasiado")), 8000),
+        setTimeout(() => reject(new Error("Timeout: La consulta tardó demasiado")), 5000),
       )
 
-      // Consulta a Supabase
-      const fetchPromise = supabase.from("distributors").select("*").order("name")
+      const fetchPromise = supabase.from("distributors").select("*").order("name").abortSignal(abortController.signal)
 
-      // Race entre el timeout y la consulta
       const result = (await Promise.race([fetchPromise, timeoutPromise])) as any
 
       if (result.error) throw result.error
-
-      setDistributors(result.data || [])
-      setLoading(false)
+      if (!abortController.signal.aborted) {
+        setDistributors(result.data || [])
+      }
     } catch (error: any) {
-      console.error("Error al cargar distribuidores:", error)
-      setError(error.message || "Error al cargar distribuidores")
-      setLoading(false)
-
-      toast({
-        title: "Error",
-        description: "No se pudieron cargar los distribuidores. " + error.message,
-        variant: "destructive",
-      })
+      if (!abortController.signal.aborted) {
+        console.error("Error al cargar distribuidores:", error)
+        setError(error.message || "Error al cargar distribuidores")
+        toast({
+          title: "Error",
+          description: "No se pudieron cargar los distribuidores. " + error.message,
+          variant: "destructive",
+        })
+      }
+    } finally {
+      if (!abortController.signal.aborted) {
+        setLoading(false)
+      }
     }
+
+    return () => abortController.abort()
   }, [toast])
 
-  // Usar useEffect con dependencia en retryCount para permitir reintentos
   useEffect(() => {
-    fetchDistributors()
+    const cleanup = fetchDistributors()
+    return cleanup
   }, [fetchDistributors, retryCount])
 
   const handleRetry = () => {
@@ -74,10 +79,18 @@ export default function DistribuidoresPage() {
       return
     }
 
-    try {
-      const { error } = await supabase.from("distributors").delete().eq("id", id)
+    const abortController = new AbortController()
 
-      if (error) {
+    try {
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("Timeout al eliminar distribuidor")), 3000),
+      )
+
+      const deletePromise = supabase.from("distributors").delete().eq("id", id).abortSignal(abortController.signal)
+
+      const result = (await Promise.race([deletePromise, timeoutPromise])) as any
+
+      if (result.error) {
         toast({
           title: "Error",
           description: "No se pudo eliminar el distribuidor. Asegúrate de que no tenga equipos o usuarios asociados.",
@@ -86,17 +99,17 @@ export default function DistribuidoresPage() {
         return
       }
 
-      setDistributors(distributors.filter((distributor) => distributor.id !== id))
+      setDistributors((prev) => prev.filter((distributor) => distributor.id !== id))
 
       toast({
         title: "Distribuidor eliminado",
         description: "El distribuidor ha sido eliminado exitosamente",
       })
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error al eliminar distribuidor:", error)
       toast({
         title: "Error",
-        description: "No se pudo eliminar el distribuidor. Asegúrate de que no tenga equipos o usuarios asociados.",
+        description: "No se pudo eliminar el distribuidor: " + error.message,
         variant: "destructive",
       })
     }
