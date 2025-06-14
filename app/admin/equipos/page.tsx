@@ -66,12 +66,18 @@ export default function EquiposPage() {
   const { toast } = useToast()
 
   useEffect(() => {
+    let isMounted = true
+
     const loadData = async () => {
-      console.log("🔄 Iniciando carga de datos...")
+      if (!isMounted) return
       await Promise.all([fetchZones(), fetchDistributors(), fetchTeams()])
     }
 
     loadData()
+
+    return () => {
+      isMounted = false
+    }
   }, [])
 
   async function fetchZones() {
@@ -122,61 +128,47 @@ export default function EquiposPage() {
     setLoading(true)
     setError(null)
     try {
-      console.log("👥 Cargando equipos...")
-
-      // Usar LEFT JOIN para incluir equipos sin zona o distribuidor
-      const { data, error } = await supabase
+      // Consulta simple sin JOINs complejos
+      const { data: teamsData, error } = await supabase
         .from("teams")
-        .select(`
-          id, 
-          name, 
-          distributor_id,
-          zone_id,
-          created_at,
-          zones (
-            id,
-            name
-          ),
-          distributors (
-            id,
-            name,
-            logo_url
-          )
-        `)
+        .select("id, name, distributor_id, zone_id, created_at")
         .order("name")
 
-      if (error) {
-        console.error("❌ Error al cargar equipos:", error)
-        throw error
-      }
+      if (error) throw error
 
-      console.log("✅ Equipos cargados (raw):", data?.length || 0)
-      console.log("📊 Primer equipo:", data?.[0])
+      // Obtener distribuidores y zonas por separado
+      const distributorIds = [...new Set(teamsData?.map((t) => t.distributor_id).filter(Boolean))]
+      const zoneIds = [...new Set(teamsData?.map((t) => t.zone_id).filter(Boolean))]
 
-      // Formatear datos manejando valores NULL
-      const formattedData = (data || []).map((team: any) => ({
+      const [distributorsData, zonesData] = await Promise.all([
+        distributorIds.length > 0
+          ? supabase.from("distributors").select("id, name, logo_url").in("id", distributorIds)
+          : Promise.resolve({ data: [] }),
+        zoneIds.length > 0
+          ? supabase.from("zones").select("id, name").in("id", zoneIds)
+          : Promise.resolve({ data: [] }),
+      ])
+
+      // Crear mapas para lookup rápido
+      const distributorMap = new Map((distributorsData.data || []).map((d) => [d.id, d]))
+      const zoneMap = new Map((zonesData.data || []).map((z) => [z.id, z]))
+
+      // Formatear datos
+      const formattedData = (teamsData || []).map((team) => ({
         id: team.id,
         name: team.name || "Sin nombre",
         distributor_id: team.distributor_id,
-        distributor_name: team.distributors?.name || "Sin distribuidor",
-        distributor_logo: team.distributors?.logo_url || null,
+        distributor_name: distributorMap.get(team.distributor_id)?.name || "Sin distribuidor",
+        distributor_logo: distributorMap.get(team.distributor_id)?.logo_url || null,
         zone_id: team.zone_id,
-        zone_name: team.zones?.name || "Sin zona",
+        zone_name: zoneMap.get(team.zone_id)?.name || "Sin zona",
         created_at: team.created_at,
       }))
-
-      console.log("✅ Equipos formateados:", formattedData.length)
-      console.log("📊 Primer equipo formateado:", formattedData[0])
 
       setTeams(formattedData)
     } catch (error: any) {
       console.error("❌ Error al cargar equipos:", error)
       setError(error.message || "Error al cargar equipos")
-      toast({
-        title: "Error",
-        description: "No se pudieron cargar los equipos",
-        variant: "destructive",
-      })
     } finally {
       setLoading(false)
     }
