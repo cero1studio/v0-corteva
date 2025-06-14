@@ -6,6 +6,7 @@ export interface TeamRanking {
   position: number
   team_id: string
   team_name: string
+  captain_name?: string
   distributor_name: string
   distributor_logo?: string
   goals: number
@@ -81,6 +82,25 @@ export async function getTeamRankingByZone(zoneId?: string) {
 
     // Obtener todos los IDs de equipos para hacer consultas batch
     const teamIds = teams?.map((team) => team.id) || []
+
+    // Obtener capitanes de todos los equipos en una sola consulta
+    const { data: captains } = await supabase
+      .from("profiles")
+      .select("id, first_name, last_name, team_id")
+      .eq("role", "capitan")
+      .in("team_id", teamIds)
+
+    // Crear mapa de capitanes por equipo
+    const captainsByTeamMap = new Map<string, string>()
+    if (captains) {
+      captains.forEach((captain) => {
+        if (captain.team_id) {
+          const fullName = `${captain.first_name || ""} ${captain.last_name || ""}`.trim()
+          captainsByTeamMap.set(captain.team_id, fullName || "Sin nombre")
+        }
+      })
+    }
+
     const allMemberIds: string[] = []
     const teamMemberMap = new Map<string, string[]>()
 
@@ -260,6 +280,7 @@ export async function getTeamRankingByZone(zoneId?: string) {
         position: 0, // Se asignará después del ordenamiento
         team_id: team.id,
         team_name: team.name,
+        captain_name: captainsByTeamMap.get(team.id) || "Sin capitán",
         distributor_name: team.distributors?.name || "Sin distribuidor", // Manejar null
         distributor_logo: team.distributors?.logo_url || null, // Manejar null
         goals: goals,
@@ -333,17 +354,16 @@ export async function getSalesRankingByZone(zoneId?: string) {
       totalPoints += salesByRep.reduce((sum, sale) => sum + (sale.points || 0), 0)
 
       totalSales += salesByTeam.length
-      totalPoints += salesByTeam.reduce((sum, sale) => sum + (sale.points || 0), 0)
-
-      ranking.push({
-        position: 0, // Se asignará después del ordenamiento
-        team_id: team.id,
-        team_name: team.name,
-        distributor_name: team.distributors?.name || "Sin distribuidor",
-        total_sales: totalSales,
-        total_points: totalPoints,
-        zone_name: team.zones?.name || "Sin zona",
-      })
+      ;(totalPoints += salesByTeam.reduce((sum, sale) => sum + (sale.points || 0), 0)),
+        ranking.push({
+          position: 0, // Se asignará después del ordenamiento
+          team_id: team.id,
+          team_name: team.name,
+          distributor_name: team.distributors?.name || "Sin distribuidor",
+          total_sales: totalSales,
+          total_points: totalPoints,
+          zone_name: team.zones?.name || "Sin zona",
+        })
     }
 
     // Ordenar por puntos totales y asignar posiciones

@@ -24,6 +24,7 @@ type Team = {
   goals: number
   position?: number
   total_points: number
+  captain_name?: string
 }
 
 type Zone = {
@@ -248,6 +249,7 @@ export default function RankingAdminPage() {
       const excelData = filteredTeams.map((team, index) => ({
         Posición: index + 1,
         Equipo: team.team_name,
+        Capitán: team.captain_name || "Sin capitán",
         Zona: team.zone_name,
         Goles: team.goals,
         "Puntos Totales": team.total_points,
@@ -262,6 +264,7 @@ export default function RankingAdminPage() {
       const colWidths = [
         { wch: 10 }, // Posición
         { wch: 30 }, // Equipo
+        { wch: 25 }, // Capitán
         { wch: 20 }, // Zona
         { wch: 10 }, // Goles
         { wch: 15 }, // Puntos Totales
@@ -436,6 +439,7 @@ export default function RankingAdminPage() {
                     <TableRow>
                       <TableHead className="w-16">Pos.</TableHead>
                       <TableHead>Equipo</TableHead>
+                      <TableHead>Capitán</TableHead>
                       <TableHead>Zona</TableHead>
                       <TableHead className="text-right">Goles</TableHead>
                       <TableHead className="text-right">Kilos</TableHead>
@@ -453,6 +457,7 @@ export default function RankingAdminPage() {
                           </div>
                         </TableCell>
                         <TableCell>{team.team_name}</TableCell>
+                        <TableCell className="text-sm text-muted-foreground">{team.captain_name}</TableCell>
                         <TableCell>{team.zone_name}</TableCell>
                         <TableCell className="text-right font-bold text-corteva-600">{team.goals}</TableCell>
                         <TableCell className="text-right font-bold text-green-600">
@@ -555,6 +560,7 @@ export default function RankingAdminPage() {
                     <TableRow>
                       <TableHead className="w-16">Pos.</TableHead>
                       <TableHead>Equipo</TableHead>
+                      <TableHead>Capitán</TableHead>
                       <TableHead className="text-right">Goles</TableHead>
                       <TableHead className="text-right">Kilos</TableHead>
                     </TableRow>
@@ -571,6 +577,7 @@ export default function RankingAdminPage() {
                           </div>
                         </TableCell>
                         <TableCell>{team.team_name}</TableCell>
+                        <TableCell className="text-sm text-muted-foreground">{team.captain_name}</TableCell>
                         <TableCell className="text-right font-bold text-corteva-600">{team.goals}</TableCell>
                         <TableCell className="text-right font-bold text-green-600">
                           {Math.round((team.total_points * 10) / 100)} kg
