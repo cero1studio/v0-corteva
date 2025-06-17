@@ -19,6 +19,7 @@ import {
   type UserTeamInfo,
 } from "@/app/actions/ranking"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Badge } from "@/components/ui/badge"
 
 export default function CapitanRankingPage() {
   const { user } = useAuth()
@@ -31,56 +32,86 @@ export default function CapitanRankingPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (user?.id) {
-      loadData()
-    }
-  }, [user?.id])
-
   const loadData = async () => {
-    try {
-      setLoading(true)
-      setError(null)
+    let mounted = true
 
-      // Cargar información del equipo del usuario (requerido)
-      const userInfoResult = await getUserTeamInfo(user!.id)
-      if (!userInfoResult.success) {
-        throw new Error(userInfoResult.error || "Error al cargar información del equipo")
+    const load = async () => {
+      let timeoutId: NodeJS.Timeout
+
+      // Timeout de seguridad para evitar loading infinito
+      timeoutId = setTimeout(() => {
+        if (mounted) {
+          console.log("CAPITAN RANKING: Timeout reached, forcing loading to false")
+          setLoading(false)
+        }
+      }, 12000)
+
+      try {
+        setLoading(true)
+        setError(null)
+
+        // Cargar información del equipo del usuario (requerido)
+        const userInfoResult = await getUserTeamInfo(user!.id)
+        if (!userInfoResult.success) {
+          throw new Error(userInfoResult.error || "Error al cargar información del equipo")
+        }
+
+        if (mounted) {
+          setUserTeamInfo(userInfoResult.data!)
+        }
+
+        const userZoneId = userInfoResult.data!.zone_id
+
+        // Cargar todos los rankings de la zona del usuario
+        const [teamRankingResult, salesRankingResult, clientsRankingResult, productsResult] = await Promise.all([
+          getTeamRankingByZone(userZoneId),
+          getSalesRankingByZone(userZoneId),
+          getClientsRankingByZone(userZoneId),
+          getProducts(),
+        ])
+
+        if (mounted) {
+          if (teamRankingResult.success) {
+            setTeamRanking(teamRankingResult.data || [])
+          }
+
+          if (salesRankingResult.success) {
+            setSalesRanking(salesRankingResult.data || [])
+          }
+
+          if (clientsRankingResult.success) {
+            setClientsRanking(clientsRankingResult.data || [])
+          }
+
+          if (productsResult.success) {
+            setProducts(productsResult.data || [])
+          }
+        }
+      } catch (error) {
+        console.error("Error loading ranking data:", error)
+        if (mounted) {
+          setError(error instanceof Error ? error.message : "Error al cargar los datos")
+        }
+      } finally {
+        if (mounted) {
+          setLoading(false)
+        }
+        clearTimeout(timeoutId)
       }
-      setUserTeamInfo(userInfoResult.data!)
+    }
 
-      const userZoneId = userInfoResult.data!.zone_id
+    if (user?.id) {
+      load()
+    }
 
-      // Cargar todos los rankings de la zona del usuario
-      const [teamRankingResult, salesRankingResult, clientsRankingResult, productsResult] = await Promise.all([
-        getTeamRankingByZone(userZoneId),
-        getSalesRankingByZone(userZoneId),
-        getClientsRankingByZone(userZoneId),
-        getProducts(),
-      ])
-
-      if (teamRankingResult.success) {
-        setTeamRanking(teamRankingResult.data || [])
-      }
-
-      if (salesRankingResult.success) {
-        setSalesRanking(salesRankingResult.data || [])
-      }
-
-      if (clientsRankingResult.success) {
-        setClientsRanking(clientsRankingResult.data || [])
-      }
-
-      if (productsResult.success) {
-        setProducts(productsResult.data || [])
-      }
-    } catch (error) {
-      console.error("Error loading ranking data:", error)
-      setError(error instanceof Error ? error.message : "Error al cargar los datos")
-    } finally {
-      setLoading(false)
+    return () => {
+      mounted = false
     }
   }
+
+  useEffect(() => {
+    loadData()
+  }, [user?.id])
 
   const getPositionIcon = (position: number) => {
     switch (position) {
@@ -182,6 +213,7 @@ export default function CapitanRankingPage() {
                   <TableRow>
                     <TableHead className="w-16">Pos.</TableHead>
                     <TableHead>Equipo</TableHead>
+                    <TableHead>Capitán</TableHead>
                     <TableHead className="text-right">Goles</TableHead>
                     <TableHead className="text-right">Puntos</TableHead>
                   </TableRow>
@@ -202,6 +234,11 @@ export default function CapitanRankingPage() {
                         {team.team_id === userTeamInfo?.team_id && (
                           <span className="ml-2 text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">Tu equipo</span>
                         )}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="bg-gray-50">
+                          {team.captain_name || "Sin capitán"}
+                        </Badge>
                       </TableCell>
                       <TableCell className="text-right font-bold text-green-600">{team.goals}</TableCell>
                       <TableCell className="text-right font-bold text-blue-600">{team.total_points}</TableCell>

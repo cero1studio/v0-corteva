@@ -3,8 +3,6 @@
 import { createServerSupabaseClient } from "@/lib/supabase/server"
 import { revalidatePath } from "next/cache"
 
-
-
 export async function registerSale(formData: FormData) {
   const supabase = createServerSupabaseClient()
 
@@ -153,7 +151,7 @@ export async function getAllSales() {
   const supabase = createServerSupabaseClient()
 
   try {
-    // Primero obtenemos las ventas básicas
+    // Primero obtenemos las ventas básicas (sin kilos ya que se calcula dinámicamente)
     const { data: salesData, error: salesError } = await supabase
       .from("sales")
       .select(`

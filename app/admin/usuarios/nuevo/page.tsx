@@ -41,7 +41,12 @@ export default function NuevoUsuario() {
 
     const loadInitialData = async () => {
       try {
+        // Resetear estado inmediatamente
         setLoadingData(true)
+        setZones([])
+        setDistributors([])
+        setTeams([])
+
         console.log("Iniciando carga de datos para nuevo usuario...")
 
         // Reset form data
@@ -115,6 +120,7 @@ export default function NuevoUsuario() {
           }
 
           clearTimeout(timeoutId)
+          setLoadingData(false)
         }
       } catch (error: any) {
         console.error("Error general cargando datos:", error)
@@ -123,6 +129,7 @@ export default function NuevoUsuario() {
           setZones([])
           setDistributors([])
           setTeams([])
+          setLoadingData(false)
 
           toast({
             title: "Advertencia",
@@ -130,14 +137,10 @@ export default function NuevoUsuario() {
             variant: "destructive",
           })
         }
-      } finally {
-        if (isMounted) {
-          setLoadingData(false)
-          console.log("Carga de datos completada")
-        }
       }
     }
 
+    // Ejecutar inmediatamente
     loadInitialData()
 
     return () => {
@@ -146,7 +149,17 @@ export default function NuevoUsuario() {
         clearTimeout(timeoutId)
       }
     }
-  }, [toast])
+  }, [])
+
+  const forceReload = () => {
+    setLoadingData(true)
+    setZones([])
+    setDistributors([])
+    setTeams([])
+
+    // Trigger useEffect again
+    window.location.reload()
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -160,6 +173,19 @@ export default function NuevoUsuario() {
           title: "Usuario creado",
           description: "El usuario ha sido creado exitosamente",
         })
+
+        // Resetear completamente el formulario
+        setFormData({
+          email: "",
+          password: "",
+          full_name: "",
+          role: "",
+          zone_id: "",
+          distributor_id: "",
+          team_id: "",
+        })
+
+        // Navegar de vuelta
         router.push("/admin/usuarios")
       } else {
         toast({

@@ -16,98 +16,78 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter()
   const [isAuthorized, setIsAuthorized] = useState(false)
   const [showFallback, setShowFallback] = useState(false)
-  const [quickResolved, setQuickResolved] = useState(false)
+  const [hasRedirected, setHasRedirected] = useState(false)
 
-  // Resolución inmediata para URLs directas usando caché
+  // Verificar si es ruta pública
+  const isPublicRoute = publicRoutes.some((route) => pathname?.startsWith(route))
+
+  // Autorización inmediata para rutas públicas
   useEffect(() => {
-    const isPublicRoute = publicRoutes.some((route) => pathname?.startsWith(route))
-
     if (isPublicRoute) {
       console.log("AUTH-GUARD: Public route, authorizing immediately")
       setIsAuthorized(true)
-      setQuickResolved(true)
       return
     }
+  }, [isPublicRoute])
 
-    // Para rutas privadas, verificar caché inmediatamente
-    const { session: cachedSession } = getCachedSessionForced()
-    const cachedProfile = getCachedProfileForced()
-
-    if (cachedSession && cachedProfile) {
-      console.log("AUTH-GUARD: Found cache, authorizing immediately")
-      setIsAuthorized(true)
-      setQuickResolved(true)
-      return
-    }
-
-    // Si no hay caché y no es ruta pública, esperar un poco antes de decidir
-    const quickTimeout = setTimeout(() => {
-      if (!isInitialized && !isAuthorized) {
-        console.log("AUTH-GUARD: No cache and not initialized, redirecting to login")
-        router.push("/login")
-      }
-    }, 2000) // Solo 2 segundos para URLs directas sin caché
-
-    return () => clearTimeout(quickTimeout)
-  }, [pathname, router, isInitialized, isAuthorized])
-
-  // Timeout para mostrar fallback solo si no se resolvió rápido
+  // Lógica de autorización para rutas privadas
   useEffect(() => {
-    if (quickResolved) return
+    if (isPublicRoute) return
 
-    const timer = setTimeout(() => {
-      if (!isInitialized && !isAuthorized) {
-        setShowFallback(true)
-      }
-    }, 3000)
-
-    return () => clearTimeout(timer)
-  }, [isInitialized, isAuthorized, quickResolved])
-
-  // Lógica normal de autorización cuando el auth provider esté listo
-  useEffect(() => {
-    if (!isInitialized) return
-
-    const isPublicRoute = publicRoutes.some((route) => pathname?.startsWith(route))
-
-    if (isPublicRoute) {
-      setIsAuthorized(true)
-    } else if (!user || !profile) {
-      // Verificar caché una vez más
+    if (!isInitialized) {
+      // Si no está inicializado, verificar caché
       const { session: cachedSession } = getCachedSessionForced()
       const cachedProfile = getCachedProfileForced()
 
       if (cachedSession && cachedProfile) {
-        console.log("AUTH-GUARD: Using cache after auth provider ready")
+        console.log("AUTH-GUARD: Found cache, authorizing")
         setIsAuthorized(true)
-      } else {
-        console.log("AUTH-GUARD: No valid session, redirecting to login")
-        router.push("/login")
       }
-    } else {
-      setIsAuthorized(true)
+      return
     }
-  }, [user, profile, pathname, router, isInitialized])
 
-  // Si ya se resolvió rápido, mostrar contenido inmediatamente
-  if (quickResolved && isAuthorized) {
+    // Una vez inicializado, verificar usuario y perfil
+    if (user && profile) {
+      console.log("AUTH-GUARD: User and profile found, authorizing")
+      setIsAuthorized(true)
+    } else if (!hasRedirected) {
+      console.log("AUTH-GUARD: No user/profile, redirecting to login")
+      setHasRedirected(true)
+      router.push("/login")
+    }
+  }, [user, profile, isInitialized, isPublicRoute, hasRedirected, router])
+
+  // Timeout para mostrar fallback
+  useEffect(() => {
+    if (isPublicRoute || isAuthorized) return
+
+    const timer = setTimeout(() => {
+      if (!isAuthorized && !hasRedirected) {
+        setShowFallback(true)
+      }
+    }, 5000)
+
+    return () => clearTimeout(timer)
+  }, [isAuthorized, hasRedirected, isPublicRoute])
+
+  // Si es ruta pública o está autorizado, mostrar contenido
+  if (isPublicRoute || isAuthorized) {
     return <>{children}</>
   }
 
-  // Si está inicializado y autorizado, mostrar contenido
-  if (isInitialized && isAuthorized) {
-    return <>{children}</>
+  // Si ya redirigió, no mostrar nada
+  if (hasRedirected) {
+    return null
   }
 
-  // Mostrar loading solo si no se ha resuelto rápido
-  if (!quickResolved && ((!isInitialized && !isAuthorized) || (isLoading && !isAuthorized))) {
+  // Mostrar loading
+  if (!isInitialized || isLoading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50">
         <div className="w-full max-w-md p-8 space-y-6 bg-white rounded-lg shadow-lg">
           <div className="flex flex-col items-center space-y-4">
             <Loader2 className="h-12 w-12 animate-spin text-[#006BA6]" />
-            <h2 className="text-xl font-semibold text-gray-800">Cargando...</h2>
-            <p className="text-center text-gray-600 text-sm">Verificando acceso...</p>
+            <h2 className="text-xl font-semibold text-gray-800">Verificando acceso...</h2>
 
             {showFallback && (
               <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
@@ -120,7 +100,6 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
 
                       if (cachedSession && cachedProfile) {
                         setIsAuthorized(true)
-                        setQuickResolved(true)
                       } else {
                         router.push("/login")
                       }

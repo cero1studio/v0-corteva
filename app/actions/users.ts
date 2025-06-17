@@ -1,6 +1,6 @@
 "use server"
 
-import { createServerClient, adminSupabase } from "@/lib/supabase/server"
+import { createServerClient, adminSupabase } from "@/lib/supabase/server" // Import from centralized server client
 import { revalidatePath } from "next/cache"
 
 // Alias de getUsers para mantener consistencia con otras funciones "getAll"
@@ -11,7 +11,7 @@ export const getAllUsers = getUsers
 // Función adicional para obtener usuarios simples (solo representantes)
 export async function getRepresentatives() {
   try {
-    const supabase = createServerClient()
+    const supabase = createServerClient() // Use the centralized client
 
     const { data: profiles, error: profilesError } = await supabase
       .from("profiles")
@@ -52,7 +52,7 @@ export async function getUsersSimple() {
 
 export async function getUsers(zoneFilter?: string) {
   try {
-    const supabase = createServerClient()
+    const supabase = createServerClient() // Use the centralized client
 
     console.log("Obteniendo usuarios...")
 
@@ -140,7 +140,7 @@ export async function getUsers(zoneFilter?: string) {
 
 export async function deleteUser(userId: string) {
   try {
-    const supabase = adminSupabase
+    const supabase = adminSupabase // Use the centralized admin client
 
     console.log("Eliminando usuario:", userId)
 
@@ -172,7 +172,7 @@ export async function deleteUser(userId: string) {
 // Función de diagnóstico para verificar la configuración de Supabase
 export async function testSupabaseConfig() {
   try {
-    const supabase = createServerClient()
+    const supabase = createServerClient() // Use the centralized client
 
     console.log("Verificando configuración de Supabase...")
     console.log("URL:", process.env.NEXT_PUBLIC_SUPABASE_URL ? "✓ Configurada" : "✗ No configurada")
@@ -218,7 +218,7 @@ export async function createUser(userData: any) {
       return { error: "La contraseña debe tener al menos 6 caracteres" }
     }
 
-    const supabase = adminSupabase
+    const supabase = adminSupabase // Use the centralized admin client
 
     // Verificar si el usuario ya existe en profiles
     const { data: existingProfile } = await supabase.from("profiles").select("email").eq("email", email).single()
@@ -343,7 +343,7 @@ export async function updateUser(userId: string, formData: FormData) {
       return { error: "La contraseña debe tener al menos 6 caracteres" }
     }
 
-    const supabase = adminSupabase
+    const supabase = adminSupabase // Use the centralized admin client
 
     // Verificar si el email ya existe en otro usuario
     const { data: existingUser } = await supabase
@@ -432,7 +432,7 @@ export async function syncUserWithAuth(
   password?: string,
 ) {
   try {
-    const supabase = adminSupabase
+    const supabase = adminSupabase // Use the centralized admin client
 
     console.log("Sincronizando usuario con auth:", userId)
 
@@ -576,46 +576,6 @@ export async function syncUserWithAuth(
           message: "Error al crear en auth, pero el perfil existe en la base de datos",
         }
       }
-    } else {
-      console.log("Usuario encontrado en auth, actualizando...")
-
-      // Actualizar usuario existente
-      const updateData: any = {
-        email: email,
-        user_metadata: {
-          full_name: fullName,
-          role: role,
-        },
-      }
-
-      if (password && password.trim() !== "") {
-        if (password.length < 6) {
-          return { error: "La contraseña debe tener al menos 6 caracteres" }
-        }
-        updateData.password = password
-      }
-
-      try {
-        const { error: updateError } = await supabase.auth.admin.updateUserById(userId, updateData)
-
-        if (updateError) {
-          console.error("Error al actualizar usuario en auth:", updateError)
-          return {
-            partialSuccess: true,
-            error: `Error al actualizar en auth: ${updateError.message}`,
-            message: "No se pudo actualizar en auth, pero el perfil existe en la base de datos",
-          }
-        }
-
-        return { success: true, updated: true }
-      } catch (updateError: any) {
-        console.error("Error al actualizar usuario en auth:", updateError)
-        return {
-          partialSuccess: true,
-          error: updateError.message,
-          message: "Error al actualizar en auth, pero el perfil existe en la base de datos",
-        }
-      }
     }
   } catch (error: any) {
     console.error("Error en syncUserWithAuth:", error)
@@ -632,7 +592,7 @@ export async function syncAllUsersWithAuth() {
   try {
     console.log("Iniciando sincronización masiva de usuarios...")
 
-    const supabase = createServerClient()
+    const supabase = createServerClient() // Use the centralized client
 
     // Obtener todos los usuarios de profiles
     const { data: profiles, error: profilesError } = await supabase
@@ -752,7 +712,7 @@ export async function migrateEmailDomains() {
   try {
     console.log("Iniciando migración de dominios de email...")
 
-    const supabase = createServerClient()
+    const supabase = createServerClient() // Use the centralized client
 
     // Obtener todos los usuarios con emails @superganaderia.com
     const { data: users, error: fetchError } = await supabase
@@ -826,7 +786,7 @@ export async function migrateEmailDomains() {
 
     return {
       success: true,
-      message: `Migración completada: ${successCount} usuarios actualizados`,
+      message: `Migración completada: ${successCount} usuarios actualizados.`,
       updated: successCount,
       errors: errorCount > 0 ? errors : undefined,
     }
@@ -838,7 +798,7 @@ export async function migrateEmailDomains() {
 
 export async function getUserById(userId: string) {
   try {
-    const supabase = createServerClient()
+    const supabase = createServerClient() // Use the centralized client
 
     const { data, error } = await supabase
       .from("profiles")
@@ -870,7 +830,7 @@ export async function getUserById(userId: string) {
 
 export async function getZones() {
   try {
-    const supabase = createServerClient()
+    const supabase = createServerClient() // Use the centralized client
 
     const { data, error } = await supabase.from("zones").select("id, name").order("name")
 
@@ -888,7 +848,7 @@ export async function getZones() {
 
 export async function getDistributors() {
   try {
-    const supabase = createServerClient()
+    const supabase = createServerClient() // Use the centralized client
 
     const { data, error } = await supabase.from("distributors").select("id, name, logo_url").order("name")
 
@@ -906,7 +866,7 @@ export async function getDistributors() {
 
 export async function updateUserProfile(userId: string, updates: any) {
   try {
-    const supabase = createServerClient()
+    const supabase = createServerClient() // Use the centralized client
 
     const { error } = await supabase.from("profiles").update(updates).eq("id", userId)
 
@@ -923,7 +883,7 @@ export async function updateUserProfile(userId: string, updates: any) {
 
 export async function diagnoseUser(userId: string) {
   try {
-    const supabase = createServerClient()
+    const supabase = createServerClient() // Use the centralized client
 
     console.log("Diagnosticando usuario:", userId)
 
@@ -957,7 +917,7 @@ export async function diagnoseUser(userId: string) {
 
 export async function findUserByEmail(email: string) {
   try {
-    const supabase = createServerClient()
+    const supabase = createServerClient() // Use the centralized client
 
     const { data, error } = await supabase.from("profiles").select("*").eq("email", email).single()
 
@@ -976,7 +936,7 @@ export async function findUserByEmail(email: string) {
 
 export async function deleteAllUsers() {
   try {
-    const supabase = createServerClient()
+    const supabase = createServerClient() // Use the centralized client
     console.log("Iniciando eliminación de todos los usuarios...")
 
     // Obtener todos los usuarios excepto el admin
@@ -1058,7 +1018,7 @@ export async function deleteAllUsers() {
 
 export async function importUsersFromList() {
   try {
-    const supabase = createServerClient()
+    const supabase = createServerClient() // Use the centralized client
     console.log("Iniciando importación de usuarios desde la lista...")
 
     // Lista de usuarios a importar (reemplaza con tu lista real)
@@ -1254,7 +1214,8 @@ export async function importUsersFromList() {
         console.log(`Importando usuario: ${user.email}`)
 
         // Crear usuario en auth
-        const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+        const { data: authData, error: authError } = await adminSupabase.auth.admin.createUser({
+          // Use adminSupabase
           email: user.email,
           password: user.password,
           email_confirm: true,
@@ -1288,7 +1249,7 @@ export async function importUsersFromList() {
           distributor_id: user.distributor_id,
         }
 
-        const { error: profileError } = await supabase.from("profiles").insert(profileData)
+        const { error: profileError } = await adminSupabase.from("profiles").insert(profileData) // Use adminSupabase
 
         if (profileError) {
           console.error(`Error al crear perfil para ${user.email}:`, profileError)
@@ -1297,7 +1258,7 @@ export async function importUsersFromList() {
 
           // Si falla la creación del perfil, eliminar el usuario de auth
           try {
-            await supabase.auth.admin.deleteUser(authData.user.id)
+            await adminSupabase.auth.admin.deleteUser(authData.user.id) // Use adminSupabase
             console.log(`Usuario de auth eliminado debido a error en perfil para ${user.email}`)
           } catch (cleanupError: any) {
             console.error(`Error al limpiar usuario de auth para ${user.email}:`, cleanupError)

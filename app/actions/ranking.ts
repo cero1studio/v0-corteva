@@ -8,6 +8,8 @@ export interface TeamRanking {
   team_name: string
   distributor_name: string
   distributor_logo?: string
+  captain_name?: string
+  captain_id?: string
   goals: number
   total_points: number
   zone_name: string
@@ -44,290 +46,255 @@ export interface UserTeamInfo {
   goals_to_next_position: number
 }
 
-// Función de utilidad para reintento con backoff exponencial
-async function fetchWithRetry<T>(fetchFn: () => Promise<T>, maxRetries = 3, initialDelay = 1000): Promise<T> {
-  let retries = 0
-
-  while (true) {
-    try {
-      return await fetchFn()
-    } catch (error: any) {
-      if (retries >= maxRetries || !error.message?.includes("Too Many R")) {
-        throw error
-      }
-
-      const delay = initialDelay * Math.pow(2, retries)
-      console.log(`Retry ${retries + 1}/${maxRetries} after ${delay}ms`)
-      await new Promise((resolve) => setTimeout(resolve, delay))
-      retries++
-    }
-  }
-}
-
-// Función para dividir un array en chunks para evitar consultas demasiado grandes
-function chunkArray<T>(array: T[], chunkSize: number): T[][] {
-  const chunks: T[][] = []
-  for (let i = 0; i < array.length; i += chunkSize) {
-    chunks.push(array.slice(i, i + chunkSize))
-  }
-  return chunks
-}
-
 export async function getTeamRankingByZone(zoneId?: string) {
   try {
     const supabase = createServerClient()
 
     // Obtener configuración de puntos para gol
-    const { data: puntosConfig } = await fetchWithRetry(() =>
-      supabase.from("system_config").select("value").eq("key", "puntos_para_gol").maybeSingle(),
-    )
+    const { data: puntosConfig } = await supabase
+      .from("system_config")
+      .select("value")
+      .eq("key", "puntos_para_gol")
+      .maybeSingle()
 
     const puntosParaGol = puntosConfig?.value ? Number(puntosConfig.value) : 100
-    console.log("DEBUG: Puntos para gol:", puntosParaGol)
+    console.log("DEBUG: Puntos para gol (getTeamRankingByZone):", puntosParaGol) // Log de depuración
 
-    // Obtener equipos con sus zonas y distribuidores
+    // Obtener equipos con sus zonas y distribuidores (sin capitanes por ahora)
     let teamsQuery = supabase.from("teams").select(`
-        id,
-        name,
-        zone_id,
-        zones!inner(id, name),
-        distributors!inner(id, name, logo_url)
-      `)
+  id,
+  name,
+  zone_id,
+  zones!left(id, name),
+  distributors!left(id, name, logo_url)
+`)
 
     if (zoneId) {
       teamsQuery = teamsQuery.eq("zone_id", zoneId)
     }
 
-    const { data: teams, error: teamsError } = await fetchWithRetry(() => teamsQuery)
+    const { data: teams, error: teamsError } = await teamsQuery
 
     if (teamsError) {
       console.error("Error fetching teams for ranking:", teamsError)
       return { success: false, error: teamsError.message }
     }
-
-    // Si no hay equipos, devolver array vacío
-    if (!teams || teams.length === 0) {
-      console.log("DEBUG: No teams found for ranking.")
-      return { success: true, data: [] }
-    }
-    console.log(
-      "DEBUG: Fetched teams:",
-      teams.map((t) => ({ id: t.id, name: t.name, zone: t.zones.name })),
-    )
+    console.log("DEBUG: Teams fetched (raw):", teams?.length, teams?.[0]) // Log de depuración
 
     // Obtener todos los IDs de equipos para hacer consultas batch
-    const teamIds = teams.map((team) => team.id)
+    const teamIds = teams?.map((team) => team.id) || []
 
-    // Crear un mapa para almacenar los puntos por equipo
-    const teamPointsMap = new Map<
-      string,
-      {
-        salesPoints: number
-        clientsPoints: number
-        freeKickPoints: number
-        totalPoints: number
-        goals: number
+    // Obtener capitanes de todos los equipos
+    const captainsMap = new Map<string, { id: string; name: string }>()
+    if (teamIds.length > 0) {
+      const { data: captains } = await supabase
+        .from("profiles")
+        .select("id, full_name, team_id")
+        .in("team_id", teamIds)
+        .eq("role", "capitan")
+
+      if (captains) {
+        captains.forEach((captain) => {
+          if (captain.team_id) {
+            captainsMap.set(captain.team_id, {
+              id: captain.id,
+              name: captain.full_name || "Sin nombre",
+            })
+          }
+        })
       }
-    >()
-
-    // Inicializar el mapa con todos los equipos
-    for (const team of teams) {
-      teamPointsMap.set(team.id, {
-        salesPoints: 0,
-        clientsPoints: 0,
-        freeKickPoints: 0,
-        totalPoints: 0,
-        goals: 0,
-      })
     }
-
-    // Obtener miembros de equipos en chunks para evitar consultas demasiado grandes
-    const CHUNK_SIZE = 10 // Ajustar según sea necesario
-    const teamChunks = chunkArray(teamIds, CHUNK_SIZE)
 
     const allMemberIds: string[] = []
     const teamMemberMap = new Map<string, string[]>()
 
-    // Procesar cada chunk de equipos
-    for (const chunk of teamChunks) {
-      const { data: members } = await fetchWithRetry(() =>
-        supabase.from("profiles").select("id, team_id").in("team_id", chunk),
-      )
+    // Obtener todos los miembros de todos los equipos en una sola consulta
+    if (teamIds.length > 0) {
+      const { data: allMembers } = await supabase.from("profiles").select("id, team_id").in("team_id", teamIds)
 
-      if (members && members.length > 0) {
-        for (const member of members) {
-          if (!teamMemberMap.has(member.team_id)) {
-            teamMemberMap.set(member.team_id, [])
-          }
-          teamMemberMap.get(member.team_id)!.push(member.id)
-          allMemberIds.push(member.id)
-        }
-      }
-
-      // Pequeña pausa para evitar rate limiting
-      await new Promise((resolve) => setTimeout(resolve, 100))
-    }
-    console.log("DEBUG: Team member map:", teamMemberMap)
-
-    // Procesar ventas por equipo directamente
-    for (const chunk of teamChunks) {
-      const { data: salesByTeam } = await fetchWithRetry(() =>
-        supabase.from("sales").select("points, team_id").in("team_id", chunk),
-      )
-
-      if (salesByTeam && salesByTeam.length > 0) {
-        for (const sale of salesByTeam) {
-          if (sale.team_id && teamPointsMap.has(sale.team_id)) {
-            const teamData = teamPointsMap.get(sale.team_id)!
-            teamData.salesPoints += sale.points || 0
-            teamPointsMap.set(sale.team_id, teamData)
-          }
-        }
-      }
-
-      // Pequeña pausa para evitar rate limiting
-      await new Promise((resolve) => setTimeout(resolve, 100))
-    }
-
-    // Procesar clientes por equipo directamente
-    for (const chunk of teamChunks) {
-      const { data: clientsByTeam } = await fetchWithRetry(() =>
-        supabase.from("competitor_clients").select("id, points, team_id").in("team_id", chunk),
-      )
-
-      if (clientsByTeam && clientsByTeam.length > 0) {
-        const processedClientIds = new Set<string>()
-
-        for (const client of clientsByTeam) {
-          if (client.team_id && teamPointsMap.has(client.team_id) && !processedClientIds.has(client.id)) {
-            const teamData = teamPointsMap.get(client.team_id)!
-            teamData.clientsPoints += client.points || 200
-            teamPointsMap.set(client.team_id, teamData)
-            processedClientIds.add(client.id)
-          }
-        }
-      }
-
-      // Pequeña pausa para evitar rate limiting
-      await new Promise((resolve) => setTimeout(resolve, 100))
-    }
-
-    // Procesar tiros libres por equipo
-    for (const chunk of teamChunks) {
-      const { data: freeKicksByTeam } = await fetchWithRetry(() =>
-        supabase.from("free_kick_goals").select("points, team_id").in("team_id", chunk),
-      )
-
-      if (freeKicksByTeam && freeKicksByTeam.length > 0) {
-        for (const freeKick of freeKicksByTeam) {
-          if (freeKick.team_id && teamPointsMap.has(freeKick.team_id)) {
-            const teamData = teamPointsMap.get(freeKick.team_id)!
-            teamData.freeKickPoints += freeKick.points || 0
-            teamPointsMap.set(freeKick.team_id, teamData)
-          }
-        }
-      }
-
-      // Pequeña pausa para evitar rate limiting
-      await new Promise((resolve) => setTimeout(resolve, 100))
-    }
-
-    // Procesar ventas por representante
-    if (allMemberIds.length > 0) {
-      const memberChunks = chunkArray(allMemberIds, CHUNK_SIZE)
-
-      for (const chunk of memberChunks) {
-        const { data: salesByRep } = await fetchWithRetry(() =>
-          supabase.from("sales").select("points, representative_id").in("representative_id", chunk),
-        )
-
-        if (salesByRep && salesByRep.length > 0) {
-          for (const sale of salesByRep) {
-            if (sale.representative_id) {
-              // Encontrar a qué equipo pertenece este representante
-              for (const [teamId, memberIds] of teamMemberMap.entries()) {
-                if (memberIds.includes(sale.representative_id) && teamPointsMap.has(teamId)) {
-                  const teamData = teamPointsMap.get(teamId)!
-                  teamData.salesPoints += sale.points || 0
-                  teamPointsMap.set(teamId, teamData)
-                  break
-                }
-              }
+      if (allMembers) {
+        allMembers.forEach((member) => {
+          if (member.team_id) {
+            // Asegurar que team_id no sea null
+            if (!teamMemberMap.has(member.team_id)) {
+              teamMemberMap.set(member.team_id, [])
             }
+            teamMemberMap.get(member.team_id)!.push(member.id)
+            allMemberIds.push(member.id)
           }
-        }
-
-        // Pequeña pausa para evitar rate limiting
-        await new Promise((resolve) => setTimeout(resolve, 100))
-      }
-
-      // Procesar clientes por representante
-      const processedClientIds = new Set<string>()
-
-      for (const chunk of memberChunks) {
-        const { data: clientsByRep } = await fetchWithRetry(() =>
-          supabase.from("competitor_clients").select("id, points, representative_id").in("representative_id", chunk),
-        )
-
-        if (clientsByRep && clientsByRep.length > 0) {
-          for (const client of clientsByRep) {
-            if (client.representative_id && !processedClientIds.has(client.id)) {
-              // Encontrar a qué equipo pertenece este representante
-              for (const [teamId, memberIds] of teamMemberMap.entries()) {
-                if (memberIds.includes(client.representative_id) && teamPointsMap.has(teamId)) {
-                  const teamData = teamPointsMap.get(teamId)!
-                  teamData.clientsPoints += client.points || 200
-                  teamPointsMap.set(teamId, teamData)
-                  processedClientIds.add(client.id)
-                  break
-                }
-              }
-            }
-          }
-        }
-
-        // Pequeña pausa para evitar rate limiting
-        await new Promise((resolve) => setTimeout(resolve, 100))
+        })
       }
     }
+    console.log("DEBUG: All member IDs:", allMemberIds.length) // Log de depuración
 
-    // Calcular puntos totales y goles para cada equipo
-    for (const [teamId, teamData] of teamPointsMap.entries()) {
-      const totalPoints = teamData.salesPoints + teamData.clientsPoints + teamData.freeKickPoints
-      const goals = Math.floor(totalPoints / puntosParaGol)
+    // Obtener todas las ventas, clientes y tiros libres en consultas batch
+    const [salesByRep, salesByTeam, clientsByRep, clientsByTeam, allFreeKicks] = await Promise.allSettled([
+      // Ventas por representante
+      allMemberIds.length > 0
+        ? supabase.from("sales").select("points, representative_id").in("representative_id", allMemberIds)
+        : Promise.resolve({ data: [], error: null }),
 
-      console.log(
-        `DEBUG: Team ${teams.find((t) => t.id === teamId)?.name || teamId} - Sales Points: ${teamData.salesPoints}, Clients Points: ${teamData.clientsPoints}, Free Kick Points: ${teamData.freeKickPoints}, Total Points: ${totalPoints}, Calculated Goals: ${goals}`,
-      )
+      // Ventas por equipo
+      teamIds.length > 0
+        ? supabase.from("sales").select("points, team_id").in("team_id", teamIds)
+        : Promise.resolve({ data: [], error: null }),
 
-      teamPointsMap.set(teamId, {
-        ...teamData,
-        totalPoints,
-        goals,
+      // Clientes por representante
+      allMemberIds.length > 0
+        ? supabase
+            .from("competitor_clients")
+            .select("id, points, representative_id")
+            .in("representative_id", allMemberIds)
+        : Promise.resolve({ data: [], error: null }),
+
+      // Clientes por equipo
+      teamIds.length > 0
+        ? supabase.from("competitor_clients").select("id, points, team_id").in("team_id", teamIds)
+        : Promise.resolve({ data: [], error: null }),
+
+      // Tiros libres
+      teamIds.length > 0
+        ? supabase.from("free_kick_goals").select("points, team_id").in("team_id", teamIds)
+        : Promise.resolve({ data: [], error: null }),
+    ])
+
+    // Procesar resultados y manejar errores
+    const salesRepData = salesByRep.status === "fulfilled" ? salesByRep.value.data || [] : []
+    const salesTeamData = salesByTeam.status === "fulfilled" ? salesByTeam.value.data || [] : []
+    const clientsRepData = clientsByRep.status === "fulfilled" ? clientsByRep.value.data || [] : []
+    const clientsTeamData = clientsByTeam.status === "fulfilled" ? clientsByTeam.value.data || [] : []
+    const freeKicksData = allFreeKicks.status === "fulfilled" ? allFreeKicks.value.data || [] : []
+
+    console.log("DEBUG: Sales Rep Data:", salesRepData.length)
+    console.log("DEBUG: Sales Team Data:", salesTeamData.length)
+    console.log("DEBUG: Clients Rep Data:", clientsRepData.length)
+    console.log("DEBUG: Clients Team Data:", clientsTeamData.length)
+    console.log("DEBUG: Free Kicks Data:", freeKicksData.length)
+
+    // Crear mapas para acceso rápido
+    const salesByRepMap = new Map<string, number>()
+    salesRepData.forEach((sale) => {
+      if (sale.representative_id) {
+        salesByRepMap.set(sale.representative_id, (salesByRepMap.get(sale.representative_id) || 0) + (sale.points || 0))
+      }
+    })
+
+    const salesByTeamMap = new Map<string, number>()
+    salesTeamData.forEach((sale) => {
+      if (sale.team_id) {
+        salesByTeamMap.set(sale.team_id, (salesByTeamMap.get(sale.team_id) || 0) + (sale.points || 0))
+      }
+    })
+
+    const clientsByRepMap = new Map<string, Set<string>>() // Usar Set para IDs de clientes únicos
+    clientsRepData.forEach((client) => {
+      if (client.representative_id) {
+        if (!clientsByRepMap.has(client.representative_id)) {
+          clientsByRepMap.set(client.representative_id, new Set())
+        }
+        clientsByRepMap.get(client.representative_id)!.add(client.id)
+      }
+    })
+
+    const clientsByTeamMap = new Map<string, Set<string>>() // Usar Set para IDs de clientes únicos
+    clientsTeamData.forEach((client) => {
+      if (client.team_id) {
+        if (!clientsByTeamMap.has(client.team_id)) {
+          clientsByTeamMap.set(client.team_id, new Set())
+        }
+        clientsByTeamMap.get(client.team_id)!.add(client.id)
+      }
+    })
+
+    const freeKicksByTeamMap = new Map<string, number>()
+    freeKicksData.forEach((freeKick) => {
+      if (freeKick.team_id) {
+        freeKicksByTeamMap.set(
+          freeKick.team_id,
+          (freeKicksByTeamMap.get(freeKick.team_id) || 0) + (freeKick.points || 0),
+        )
+      }
+    })
+
+    // Calcular puntos para cada equipo
+    const ranking: TeamRanking[] = []
+
+    for (const team of teams || []) {
+      console.log(`DEBUG: Calculando puntos para equipo: ${team.name} (ID: ${team.id})`)
+
+      const memberIds = teamMemberMap.get(team.id) || []
+      console.log(`DEBUG: Team ${team.name} - Member IDs:`, memberIds)
+
+      // 1. CALCULAR PUNTOS DE VENTAS
+      let totalSalesPoints = 0
+
+      // Sumar ventas por representantes del equipo
+      memberIds.forEach((memberId) => {
+        const points = salesByRepMap.get(memberId) || 0
+        totalSalesPoints += points
+        console.log(`DEBUG: Team ${team.name} - Sales points from rep ${memberId}:`, points)
       })
-    }
 
-    // Crear el ranking final
-    const ranking: TeamRanking[] = teams.map((team) => {
-      const teamData = teamPointsMap.get(team.id) || {
-        salesPoints: 0,
-        clientsPoints: 0,
-        freeKickPoints: 0,
-        totalPoints: 0,
-        goals: 0,
+      // Sumar ventas directas por team_id
+      const directTeamSalesPoints = salesByTeamMap.get(team.id) || 0
+      totalSalesPoints += directTeamSalesPoints
+      console.log(`DEBUG: Team ${team.name} - Sales points from team direct:`, directTeamSalesPoints)
+      console.log(`DEBUG: Team ${team.name} - Total Sales Points:`, totalSalesPoints)
+
+      // 2. CALCULAR PUNTOS DE CLIENTES
+      let totalClientsPoints = 0
+      const teamClientUniqueIds = new Set<string>() // Para asegurar unicidad de clientes por equipo
+
+      // Clientes por representantes
+      memberIds.forEach((memberId) => {
+        const clientIds = clientsByRepMap.get(memberId)
+        if (clientIds) {
+          clientIds.forEach((clientId) => {
+            if (!teamClientUniqueIds.has(clientId)) {
+              totalClientsPoints += 200 // Puntos por cliente
+              teamClientUniqueIds.add(clientId)
+            }
+          })
+        }
+      })
+
+      // Clientes directos por equipo
+      const directTeamClientIds = clientsByTeamMap.get(team.id)
+      if (directTeamClientIds) {
+        directTeamClientIds.forEach((clientId) => {
+          if (!teamClientUniqueIds.has(clientId)) {
+            totalClientsPoints += 200
+            teamClientUniqueIds.add(clientId)
+          }
+        })
       }
+      console.log(`DEBUG: Team ${team.name} - Total Clients Points:`, totalClientsPoints)
 
-      return {
+      // 3. CALCULAR PUNTOS DE TIROS LIBRES
+      const totalFreeKickPoints = freeKicksByTeamMap.get(team.id) || 0
+      console.log(`DEBUG: Team ${team.name} - Total Free Kick Points:`, totalFreeKickPoints)
+
+      // 4. SUMAR TODOS LOS PUNTOS Y CALCULAR GOLES
+      const finalTotalPoints = totalSalesPoints + totalClientsPoints + totalFreeKickPoints
+      const goals = Math.floor(finalTotalPoints / puntosParaGol)
+
+      console.log(`DEBUG: Team ${team.name} - Final Total Points: ${finalTotalPoints}, Goals: ${goals}`)
+
+      const captainInfo = captainsMap.get(team.id)
+
+      ranking.push({
         position: 0, // Se asignará después del ordenamiento
         team_id: team.id,
         team_name: team.name,
-        distributor_name: team.distributors.name,
-        distributor_logo: team.distributors.logo_url,
-        goals: teamData.goals,
-        total_points: teamData.totalPoints,
-        zone_name: team.zones.name,
-      }
-    })
+        distributor_name: team.distributors?.name || "Sin distribuidor",
+        distributor_logo: team.distributors?.logo_url || null,
+        captain_name: captainInfo?.name || "Sin capitán",
+        captain_id: captainInfo?.id || null,
+        goals: goals,
+        total_points: finalTotalPoints,
+        zone_name: team.zones?.name || "Sin zona",
+      })
+    }
 
     // Ordenar por puntos totales y asignar posiciones
     const sortedRanking = ranking
@@ -337,14 +304,11 @@ export async function getTeamRankingByZone(zoneId?: string) {
         position: index + 1,
       }))
 
-    console.log("DEBUG: Final sorted ranking data (from action):", sortedRanking)
+    console.log("DEBUG: Final sorted ranking data:", sortedRanking) // Log de depuración
     return { success: true, data: sortedRanking }
   } catch (error) {
     console.error("Error in getTeamRankingByZone:", error)
-    return {
-      success: false,
-      error: "Error interno del servidor: " + (error instanceof Error ? error.message : String(error)),
-    }
+    return { success: false, error: "Error interno del servidor" }
   }
 }
 
@@ -356,117 +320,59 @@ export async function getSalesRankingByZone(zoneId?: string) {
     let teamsQuery = supabase.from("teams").select(`
         id,
         name,
-        zones!inner(id, name),
-        distributors!inner(id, name, logo_url)
+        zones!left(id, name),
+        distributors!left(id, name, logo_url)
       `)
 
     if (zoneId) {
       teamsQuery = teamsQuery.eq("zone_id", zoneId)
     }
 
-    const { data: teams, error: teamsError } = await fetchWithRetry(() => teamsQuery)
+    const { data: teams, error: teamsError } = await teamsQuery
 
     if (teamsError) {
       console.error("Error fetching teams for sales ranking:", teamsError)
       return { success: false, error: teamsError.message }
     }
 
-    // Si no hay equipos, devolver array vacío
-    if (!teams || teams.length === 0) {
-      return { success: true, data: [] }
-    }
+    const ranking: SalesRanking[] = []
 
-    const teamIds = teams.map((team) => team.id)
-    const teamChunks = chunkArray(teamIds, 10)
+    for (const team of teams || []) {
+      // Obtener miembros del equipo
+      const { data: teamMembers } = await supabase.from("profiles").select("id").eq("team_id", team.id)
 
-    // Mapa para almacenar datos de ventas por equipo
-    const salesByTeamMap = new Map<
-      string,
-      {
-        totalSales: number
-        totalPoints: number
-      }
-    >()
+      const memberIds = teamMembers?.map((member) => member.id) || []
 
-    // Inicializar el mapa con todos los equipos
-    for (const team of teams) {
-      salesByTeamMap.set(team.id, {
-        totalSales: 0,
-        totalPoints: 0,
-      })
-    }
+      // Obtener ventas del equipo a través de los miembros y ventas directas del equipo
+      const [salesByRepResult, salesByTeamResult] = await Promise.allSettled([
+        memberIds.length > 0
+          ? supabase.from("sales").select("points").in("representative_id", memberIds)
+          : Promise.resolve({ data: [], error: null }),
+        supabase.from("sales").select("points").eq("team_id", team.id),
+      ])
 
-    // Obtener miembros de equipos en chunks
-    const teamMemberMap = new Map<string, string[]>()
+      const salesByRep = salesByRepResult.status === "fulfilled" ? salesByRepResult.value.data || [] : []
+      const salesByTeam = salesByTeamResult.status === "fulfilled" ? salesByTeamResult.value.data || [] : []
 
-    for (const chunk of teamChunks) {
-      const { data: members } = await fetchWithRetry(() =>
-        supabase.from("profiles").select("id, team_id").in("team_id", chunk),
-      )
+      let totalSales = 0
+      let totalPoints = 0
 
-      if (members && members.length > 0) {
-        for (const member of members) {
-          if (!teamMemberMap.has(member.team_id)) {
-            teamMemberMap.set(member.team_id, [])
-          }
-          teamMemberMap.get(member.team_id)!.push(member.id)
-        }
-      }
+      totalSales += salesByRep.length
+      totalPoints += salesByRep.reduce((sum, sale) => sum + (sale.points || 0), 0)
 
-      await new Promise((resolve) => setTimeout(resolve, 100))
-    }
+      totalSales += salesByTeam.length
+      totalPoints += salesByTeam.reduce((sum, sale) => sum + (sale.points || 0), 0)
 
-    // Procesar ventas por equipo y por representante
-    for (const [teamId, memberIds] of teamMemberMap.entries()) {
-      if (memberIds.length > 0) {
-        const memberChunks = chunkArray(memberIds, 10)
-
-        for (const chunk of memberChunks) {
-          const { data: sales } = await fetchWithRetry(() =>
-            supabase.from("sales").select("points").in("representative_id", chunk),
-          )
-
-          if (sales && sales.length > 0) {
-            const teamData = salesByTeamMap.get(teamId)!
-            teamData.totalSales += sales.length
-            teamData.totalPoints += sales.reduce((sum, sale) => sum + (sale.points || 0), 0)
-            salesByTeamMap.set(teamId, teamData)
-          }
-
-          await new Promise((resolve) => setTimeout(resolve, 100))
-        }
-      }
-
-      // También buscar ventas directas por team_id
-      const { data: directSales } = await fetchWithRetry(() =>
-        supabase.from("sales").select("points").eq("team_id", teamId),
-      )
-
-      if (directSales && directSales.length > 0) {
-        const teamData = salesByTeamMap.get(teamId)!
-        teamData.totalSales += directSales.length
-        teamData.totalPoints += directSales.reduce((sum, sale) => sum + (sale.points || 0), 0)
-        salesByTeamMap.set(teamId, teamData)
-      }
-    }
-
-    // Crear el ranking final
-    const ranking: SalesRanking[] = teams.map((team) => {
-      const teamData = salesByTeamMap.get(team.id) || {
-        totalSales: 0,
-        totalPoints: 0,
-      }
-
-      return {
+      ranking.push({
         position: 0, // Se asignará después del ordenamiento
         team_id: team.id,
         team_name: team.name,
-        distributor_name: team.distributors.name,
-        total_sales: teamData.totalSales,
-        total_points: teamData.totalPoints,
-        zone_name: team.zones.name,
-      }
-    })
+        distributor_name: team.distributors?.name || "Sin distribuidor",
+        total_sales: totalSales,
+        total_points: totalPoints,
+        zone_name: team.zones?.name || "Sin zona",
+      })
+    }
 
     // Ordenar por puntos totales y asignar posiciones
     const sortedRanking = ranking
@@ -479,10 +385,7 @@ export async function getSalesRankingByZone(zoneId?: string) {
     return { success: true, data: sortedRanking }
   } catch (error) {
     console.error("Error in getSalesRankingByZone:", error)
-    return {
-      success: false,
-      error: "Error interno del servidor: " + (error instanceof Error ? error.message : String(error)),
-    }
+    return { success: false, error: "Error interno del servidor" }
   }
 }
 
@@ -494,134 +397,80 @@ export async function getClientsRankingByZone(zoneId?: string) {
     let teamsQuery = supabase.from("teams").select(`
         id,
         name,
-        zones!inner(id, name),
-        distributors!inner(id, name, logo_url)
+        zones!left(id, name),
+        distributors!left(id, name, logo_url)
       `)
 
     if (zoneId) {
       teamsQuery = teamsQuery.eq("zone_id", zoneId)
     }
 
-    const { data: teams, error: teamsError } = await fetchWithRetry(() => teamsQuery)
+    const { data: teams, error: teamsError } = await teamsQuery
 
     if (teamsError) {
       console.error("Error fetching teams for clients ranking:", teamsError)
       return { success: false, error: teamsError.message }
     }
 
-    // Si no hay equipos, devolver array vacío
-    if (!teams || teams.length === 0) {
-      return { success: true, data: [] }
-    }
+    const ranking: ClientsRanking[] = []
 
-    const teamIds = teams.map((team) => team.id)
-    const teamChunks = chunkArray(teamIds, 10)
+    for (const team of teams || []) {
+      // Obtener representantes del equipo
+      const { data: representatives, error: repsError } = await supabase
+        .from("profiles")
+        .select("id")
+        .eq("team_id", team.id)
 
-    // Mapa para almacenar datos de clientes por equipo
-    const clientsByTeamMap = new Map<
-      string,
-      {
-        totalClients: number
-        totalPoints: number
-      }
-    >()
+      let totalClients = 0
+      const countedClientIds = new Set()
 
-    // Conjunto para rastrear clientes ya contados
-    const countedClientIds = new Set<string>()
-
-    // Inicializar el mapa con todos los equipos
-    for (const team of teams) {
-      clientsByTeamMap.set(team.id, {
-        totalClients: 0,
-        totalPoints: 0,
-      })
-    }
-
-    // Obtener miembros de equipos en chunks
-    const teamMemberMap = new Map<string, string[]>()
-
-    for (const chunk of teamChunks) {
-      const { data: members } = await fetchWithRetry(() =>
-        supabase.from("profiles").select("id, team_id").in("team_id", chunk),
-      )
-
-      if (members && members.length > 0) {
-        for (const member of members) {
-          if (!teamMemberMap.has(member.team_id)) {
-            teamMemberMap.set(member.team_id, [])
-          }
-          teamMemberMap.get(member.team_id)!.push(member.id)
-        }
-      }
-
-      await new Promise((resolve) => setTimeout(resolve, 100))
-    }
-
-    // Procesar clientes por equipo directamente
-    for (const chunk of teamChunks) {
-      const { data: clients } = await fetchWithRetry(() =>
-        supabase.from("competitor_clients").select("id, points, team_id").in("team_id", chunk),
-      )
-
-      if (clients && clients.length > 0) {
-        for (const client of clients) {
-          if (client.team_id && !countedClientIds.has(client.id)) {
-            const teamData = clientsByTeamMap.get(client.team_id)!
-            teamData.totalClients += 1
-            teamData.totalPoints += client.points || 200
-            clientsByTeamMap.set(client.team_id, teamData)
-            countedClientIds.add(client.id)
-          }
-        }
-      }
-
-      await new Promise((resolve) => setTimeout(resolve, 100))
-    }
-
-    // Procesar clientes por representante
-    for (const [teamId, memberIds] of teamMemberMap.entries()) {
-      if (memberIds.length > 0) {
-        const memberChunks = chunkArray(memberIds, 10)
-
-        for (const chunk of memberChunks) {
-          const { data: clients } = await fetchWithRetry(() =>
-            supabase.from("competitor_clients").select("id, points, representative_id").in("representative_id", chunk),
+      if (!repsError && representatives && representatives.length > 0) {
+        const { data: clients, error: clientsError } = await supabase
+          .from("competitor_clients")
+          .select("id")
+          .in(
+            "representative_id",
+            representatives.map((rep) => rep.id),
           )
 
-          if (clients && clients.length > 0) {
-            for (const client of clients) {
-              if (!countedClientIds.has(client.id)) {
-                const teamData = clientsByTeamMap.get(teamId)!
-                teamData.totalClients += 1
-                teamData.totalPoints += client.points || 200
-                clientsByTeamMap.set(teamId, teamData)
-                countedClientIds.add(client.id)
-              }
+        if (!clientsError && clients) {
+          // Contar clientes únicos
+          clients.forEach((client) => {
+            if (!countedClientIds.has(client.id)) {
+              countedClientIds.add(client.id)
+              totalClients++
             }
-          }
-
-          await new Promise((resolve) => setTimeout(resolve, 100))
+          })
         }
       }
-    }
 
-    // Crear el ranking final
-    const ranking: ClientsRanking[] = teams.map((team) => {
-      const teamData = clientsByTeamMap.get(team.id) || {
-        totalClients: 0,
-        totalPoints: 0,
+      // También verificar clientes asignados directamente al equipo
+      const { data: teamClients, error: teamClientsError } = await supabase
+        .from("competitor_clients")
+        .select("id")
+        .eq("team_id", team.id)
+
+      if (!teamClientsError && teamClients) {
+        teamClients.forEach((client) => {
+          if (!countedClientIds.has(client.id)) {
+            countedClientIds.add(client.id)
+            totalClients++
+          }
+        })
       }
 
-      return {
+      const totalPointsFromClients = totalClients * 200 // 200 puntos por cliente
+
+      ranking.push({
         position: 0, // Se asignará después del ordenamiento
         team_id: team.id,
         team_name: team.name,
-        distributor_name: team.distributors.name,
-        total_clients: teamData.totalClients,
-        total_points_from_clients: teamData.totalPoints,
-        zone_name: team.zones.name,
-      }
-    })
+        distributor_name: team.distributors?.name || "Sin distribuidor",
+        total_clients: totalClients,
+        total_points_from_clients: totalPointsFromClients,
+        zone_name: team.zones?.name || "Sin zona",
+      })
+    }
 
     // Ordenar por número de clientes y asignar posiciones
     const sortedRanking = ranking
@@ -634,10 +483,7 @@ export async function getClientsRankingByZone(zoneId?: string) {
     return { success: true, data: sortedRanking }
   } catch (error) {
     console.error("Error in getClientsRankingByZone:", error)
-    return {
-      success: false,
-      error: "Error interno del servidor: " + (error instanceof Error ? error.message : String(error)),
-    }
+    return { success: false, error: "Error interno del servidor" }
   }
 }
 
@@ -650,9 +496,7 @@ export async function getUserTeamInfo(
     console.log("Buscando usuario con ID:", userId)
 
     // Obtener perfil del usuario
-    const { data: profile, error: profileError } = await fetchWithRetry(() =>
-      supabase.from("profiles").select("*").eq("id", userId).single(),
-    )
+    const { data: profile, error: profileError } = await supabase.from("profiles").select("*").eq("id", userId).single()
 
     if (profileError || !profile) {
       return { success: false, error: "Usuario no encontrado en profiles" }
@@ -663,27 +507,23 @@ export async function getUserTeamInfo(
     }
 
     // Obtener información del equipo
-    const { data: team, error: teamError } = await fetchWithRetry(() =>
-      supabase
-        .from("teams")
-        .select(`
-          id,
-          name,
-          zone_id,
-          zones!inner(name)
-        `)
-        .eq("id", profile.team_id)
-        .single(),
-    )
+    const { data: team, error: teamError } = await supabase
+      .from("teams")
+      .select(`
+        id,
+        name,
+        zone_id,
+        zones!left(name)
+      `)
+      .eq("id", profile.team_id)
+      .single()
 
     if (teamError || !team) {
       return { success: false, error: "Error al obtener información del equipo" }
     }
 
     // Obtener miembros del equipo
-    const { data: teamMembers } = await fetchWithRetry(() =>
-      supabase.from("profiles").select("id").eq("team_id", team.id),
-    )
+    const { data: teamMembers } = await supabase.from("profiles").select("id").eq("team_id", team.id)
 
     const memberIds = teamMembers?.map((member) => member.id) || []
 
@@ -692,25 +532,15 @@ export async function getUserTeamInfo(
 
     // Buscar ventas por representative_id (miembros del equipo)
     if (memberIds.length > 0) {
-      const memberChunks = chunkArray(memberIds, 10)
+      const { data: salesByRep } = await supabase.from("sales").select("points").in("representative_id", memberIds)
 
-      for (const chunk of memberChunks) {
-        const { data: salesByRep } = await fetchWithRetry(() =>
-          supabase.from("sales").select("points").in("representative_id", chunk),
-        )
-
-        if (salesByRep) {
-          totalPointsFromSales += salesByRep.reduce((sum, sale) => sum + (sale.points || 0), 0)
-        }
-
-        await new Promise((resolve) => setTimeout(resolve, 100))
+      if (salesByRep) {
+        totalPointsFromSales += salesByRep.reduce((sum, sale) => sum + (sale.points || 0), 0)
       }
     }
 
     // Buscar ventas directas por team_id
-    const { data: salesByTeam } = await fetchWithRetry(() =>
-      supabase.from("sales").select("points").eq("team_id", team.id),
-    )
+    const { data: salesByTeam } = await supabase.from("sales").select("points").eq("team_id", team.id)
 
     if (salesByTeam) {
       totalPointsFromSales += salesByTeam.reduce((sum, sale) => sum + (sale.points || 0), 0)
@@ -721,30 +551,23 @@ export async function getUserTeamInfo(
     const countedClientIds = new Set()
 
     if (memberIds.length > 0) {
-      const memberChunks = chunkArray(memberIds, 10)
+      const { data: clients } = await supabase
+        .from("competitor_clients")
+        .select("id, points")
+        .in("representative_id", memberIds)
 
-      for (const chunk of memberChunks) {
-        const { data: clients } = await fetchWithRetry(() =>
-          supabase.from("competitor_clients").select("id, points").in("representative_id", chunk),
-        )
-
-        if (clients) {
-          for (const client of clients) {
-            if (!countedClientIds.has(client.id)) {
-              totalPointsFromClients += client.points || 200
-              countedClientIds.add(client.id)
-            }
+      if (clients) {
+        for (const client of clients) {
+          if (!countedClientIds.has(client.id)) {
+            totalPointsFromClients += client.points || 200
+            countedClientIds.add(client.id)
           }
         }
-
-        await new Promise((resolve) => setTimeout(resolve, 100))
       }
     }
 
     // También clientes directos por team_id
-    const { data: teamClients } = await fetchWithRetry(() =>
-      supabase.from("competitor_clients").select("id, points").eq("team_id", team.id),
-    )
+    const { data: teamClients } = await supabase.from("competitor_clients").select("id, points").eq("team_id", team.id)
 
     if (teamClients) {
       for (const client of teamClients) {
@@ -756,9 +579,7 @@ export async function getUserTeamInfo(
     }
 
     // 3. CALCULAR PUNTOS DE TIROS LIBRES
-    const { data: freeKicks } = await fetchWithRetry(() =>
-      supabase.from("free_kick_goals").select("points").eq("team_id", team.id),
-    )
+    const { data: freeKicks } = await supabase.from("free_kick_goals").select("points").eq("team_id", team.id)
 
     let totalPointsFromFreeKicks = 0
     if (freeKicks) {
@@ -775,9 +596,11 @@ export async function getUserTeamInfo(
     console.log(`- Total: ${totalPoints}`)
 
     // Obtener configuración de puntos para gol
-    const { data: puntosConfig } = await fetchWithRetry(() =>
-      supabase.from("system_config").select("value").eq("key", "puntos_para_gol").maybeSingle(),
-    )
+    const { data: puntosConfig } = await supabase
+      .from("system_config")
+      .select("value")
+      .eq("key", "puntos_para_gol")
+      .maybeSingle()
 
     const puntosParaGol = puntosConfig?.value ? Number(puntosConfig.value) : 100
     const goals = Math.floor(totalPoints / puntosParaGol)
@@ -800,7 +623,7 @@ export async function getUserTeamInfo(
       team_id: team.id,
       team_name: team.name,
       zone_id: team.zone_id,
-      zone_name: team.zones.name,
+      zone_name: team.zones?.name || "Sin zona",
       position: position,
       goals: goals,
       total_points: totalPoints,
@@ -810,10 +633,7 @@ export async function getUserTeamInfo(
     return { success: true, data: userTeamInfo }
   } catch (error) {
     console.error("Error in getUserTeamInfo:", error)
-    return {
-      success: false,
-      error: "Error interno del servidor: " + (error instanceof Error ? error.message : String(error)),
-    }
+    return { success: false, error: "Error interno del servidor" }
   }
 }
 
@@ -821,9 +641,11 @@ export async function getProducts() {
   try {
     const supabase = createServerClient()
 
-    const { data: products, error } = await fetchWithRetry(() =>
-      supabase.from("products").select("id, name").eq("active", true).order("name"),
-    )
+    const { data: products, error } = await supabase
+      .from("products")
+      .select("id, name")
+      .eq("active", true)
+      .order("name")
 
     if (error) {
       console.error("Error fetching products:", error)
@@ -833,9 +655,6 @@ export async function getProducts() {
     return { success: true, data: products || [] }
   } catch (error) {
     console.error("Error in getProducts:", error)
-    return {
-      success: false,
-      error: "Error interno del servidor: " + (error instanceof Error ? error.message : String(error)),
-    }
+    return { success: false, error: "Error interno del servidor" }
   }
 }

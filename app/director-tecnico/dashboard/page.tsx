@@ -13,7 +13,6 @@ import { useToast } from "@/hooks/use-toast"
 import { EmptyState } from "@/components/empty-state"
 import { useRouter } from "next/navigation"
 import { getImageUrl } from "@/lib/utils/image"
-import { getTeamRankingByZone } from "@/app/actions/ranking"
 import { AuthGuard } from "@/components/auth-guard"
 import { Badge } from "@/components/ui/badge"
 
@@ -40,8 +39,70 @@ function DirectorTecnicoDashboardContent() {
   const [retoActivo, setRetoActivo] = useState(false)
 
   useEffect(() => {
+    let isMounted = true
+
+    const checkUserAndLoadData = async () => {
+      if (!isMounted) return
+      try {
+        setLoading(true)
+
+        // Obtener el usuario actual
+        const {
+          data: { user: authUser },
+        } = await supabase.auth.getUser()
+
+        if (!authUser) {
+          router.push("/login")
+          return
+        }
+
+        // Obtener el perfil del usuario con información detallada incluyendo el distribuidor
+        const { data: profileData, error: profileError } = await supabase
+          .from("profiles")
+          .select(`
+           *,
+           zones:zone_id(*),
+           teams:team_id(*, distributors:distributor_id(*))
+         `)
+          .eq("id", authUser.id)
+          .single()
+
+        if (profileError) throw profileError
+
+        setUser(profileData)
+        setUserData(profileData)
+
+        // Guardar datos de zona del perfil del usuario
+        if (profileData.zones) {
+          setZoneData(profileData.zones)
+        }
+
+        // Guardar datos del distribuidor del equipo del director técnico
+        if (profileData.teams?.distributors) {
+          setDistributorData(profileData.teams.distributors)
+        }
+
+        // Cargar datos de la zona
+        if (profileData.zone_id) {
+          await loadZoneData(profileData.zone_id)
+        }
+      } catch (error: any) {
+        console.error("Error al verificar usuario:", error)
+        toast({
+          title: "Error",
+          description: error?.message || "No se pudo cargar la información del usuario",
+          variant: "destructive",
+        })
+      } finally {
+        setLoading(false)
+      }
+    }
+
     checkUserAndLoadData()
-    loadSystemConfig()
+
+    return () => {
+      isMounted = false
+    }
   }, [])
 
   async function loadSystemConfig() {
@@ -83,265 +144,57 @@ function DirectorTecnicoDashboardContent() {
     }
   }
 
-  async function checkUserAndLoadData() {
+  async function loadZoneData(zoneId: string) {
     try {
-      setLoading(true)
+      if (!zoneId) return
 
-      // Obtener el usuario actual
-      const {
-        data: { user: authUser },
-      } = await supabase.auth.getUser()
+      console.log("Cargando datos de la zona (Director Técnico):", zoneId)
 
-      if (!authUser) {
-        router.push("/login")
+      // Simplificar consultas - hacer secuencialmente las más pesadas
+      const teamsResult = await supabase
+        .from("teams")
+        .select(`
+  id,
+  name,
+  distributor_id,
+  distributors!left(id, name, logo_url)
+`)
+        .eq("zone_id", zoneId)
+
+      if (teamsResult.error) throw teamsResult.error
+
+      const teams = teamsResult.data || []
+      const teamIds = teams.map((t) => t.id)
+
+      // Solo continuar si hay equipos
+      if (teamIds.length === 0) {
+        setTeamsData([])
+        setSalesData([])
+        setClientsData([])
+        setFreeKickData([])
         return
       }
 
-      // Obtener el perfil del usuario con información detallada incluyendo el distribuidor
-      const { data: profileData, error: profileError } = await supabase
-        .from("profiles")
-        .select(`
-         *,
-         zones:zone_id(*),
-         teams:team_id(*, distributors:distributor_id(*))
-       `)
-        .eq("id", authUser.id)
-        .single()
+      // Cargar datos básicos en paralelo (más simple)
+      const [salesResult, clientsResult, freeKicksResult] = await Promise.all([
+        supabase.from("sales").select("id, points, quantity, created_at, product_id, representative_id").limit(100),
+        supabase.from("competitor_clients").select("id, ganadero_name, created_at, representative_id").limit(100),
+        supabase.from("free_kick_goals").select("id, points, reason, created_at, team_id").in("team_id", teamIds),
+      ])
 
-      if (profileError) throw profileError
-
-      setUser(profileData)
-      setUserData(profileData)
-
-      // Guardar datos de zona del perfil del usuario
-      if (profileData.zones) {
-        setZoneData(profileData.zones)
-      }
-
-      // Guardar datos del distribuidor del equipo del director técnico
-      if (profileData.teams?.distributors) {
-        setDistributorData(profileData.teams.distributors)
-      }
-
-      // Cargar datos de la zona
-      if (profileData.zone_id) {
-        await loadZoneData(profileData.zone_id)
-      }
+      // Procesar datos de forma más simple
+      setSalesData(salesResult.data || [])
+      setClientsData(clientsResult.data || [])
+      setFreeKickData(freeKicksResult.data || [])
+      setTeamsData(
+        teams.map((team) => ({
+          ...team,
+          distributor_name: team.distributors?.name || "Sin distribuidor", // Agregar esta línea
+          calculated_total_points: 0, // Calcular después si es necesario
+          calculated_total_goals: 0,
+        })),
+      )
     } catch (error: any) {
-      console.error("Error al verificar usuario:", error)
-      toast({
-        title: "Error",
-        description: error?.message || "No se pudo cargar la información del usuario",
-        variant: "destructive",
-      })
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  async function loadZoneData(zoneId: string) {
-    try {
-      console.log("Cargando datos de la zona:", zoneId)
-
-      // Obtener todos los equipos de la zona
-      const { data: teams, error: teamsError } = await supabase
-        .from("teams")
-        .select(`
-          *,
-          distributors:distributor_id(*)
-        `)
-        .eq("zone_id", zoneId)
-        .order("total_points", { ascending: false })
-
-      if (teamsError) {
-        console.error("Error al obtener equipos:", teamsError)
-      } else {
-        console.log("Equipos cargados:", teams?.length || 0)
-      }
-
-      // Obtener todos los miembros de los equipos de la zona
-      const teamIds = teams?.map((team) => team.id) || []
-
-      if (teamIds.length > 0) {
-        const { data: teamMembers, error: membersError } = await supabase
-          .from("profiles")
-          .select(`
-            id, 
-            full_name, 
-            team_id,
-            teams:team_id(
-              *,
-              distributors:distributor_id(*)
-            )
-          `)
-          .in("team_id", teamIds)
-
-        if (membersError) {
-          console.error("Error al obtener miembros:", membersError)
-        } else {
-          const memberIds = teamMembers?.map((member) => member.id) || []
-
-          // Cargar ventas de todos los miembros de la zona
-          const { data: salesDataFromDb, error: salesError } = await supabase
-            .from("sales")
-            .select(`
-             *,
-             products(id, name, image_url)
-           `)
-            .in("representative_id", memberIds)
-            .order("created_at", { ascending: false })
-
-          if (salesError) {
-            console.error("Error cargando ventas:", salesError)
-          } else {
-            console.log("Ventas cargadas:", salesDataFromDb?.length || 0)
-
-            // Enriquecer los datos de ventas con información de perfiles y equipos
-            const enrichedSales =
-              salesDataFromDb?.map((sale) => {
-                const representative = teamMembers?.find((member) => member.id === sale.representative_id)
-                const team = teams?.find((team) => team.id === representative?.team_id)
-
-                return {
-                  ...sale,
-                  representative_name: representative?.full_name || "Representante",
-                  team_name: team?.name || "Equipo",
-                  team_id: team?.id,
-                  distributor_data: representative?.teams?.distributors,
-                }
-              }) || []
-
-            setSalesData(enrichedSales)
-
-            // Cargar clientes de todos los miembros de la zona
-            const { data: clientsDataFromDb, error: clientsError } = await supabase
-              .from("competitor_clients")
-              .select(`*`)
-              .in("representative_id", memberIds)
-              .order("created_at", { ascending: false })
-
-            if (clientsError) {
-              console.error("Error cargando clientes:", clientsError)
-            } else {
-              console.log("Clientes cargados:", clientsDataFromDb?.length || 0)
-
-              // Enriquecer los datos de clientes con información de perfiles y equipos
-              const enrichedClients =
-                clientsDataFromDb?.map((client) => {
-                  const representative = teamMembers?.find((member) => member.id === client.representative_id)
-                  const team = teams?.find((team) => team.id === representative?.team_id)
-
-                  return {
-                    ...client,
-                    representative_name: representative?.full_name || "Representante",
-                    team_name: team?.name || "Equipo",
-                    team_id: team?.id,
-                    distributor_data: representative?.teams?.distributors,
-                  }
-                }) || []
-
-              setClientsData(enrichedClients)
-
-              // Cargar tiros libres de todos los equipos de la zona
-              const { data: freeKickDataFromDb, error: freeKickError } = await supabase
-                .from("free_kick_goals")
-                .select(`
-                  *,
-                  teams(id, name)
-                `)
-                .in("team_id", teamIds)
-                .order("created_at", { ascending: false })
-
-              if (freeKickError) {
-                console.error("Error cargando tiros libres:", freeKickError)
-              } else {
-                console.log("Tiros libres cargados:", freeKickDataFromDb?.length || 0)
-
-                // Enriquecer los datos de tiros libres
-                const enrichedFreeKicks =
-                  freeKickDataFromDb?.map((freeKick) => {
-                    const team = teams?.find((team) => team.id === freeKick.team_id)
-
-                    return {
-                      ...freeKick,
-                      team_name: team?.name || "Equipo",
-                      distributor_data: team?.distributors,
-                    }
-                  }) || []
-
-                setFreeKickData(enrichedFreeKicks)
-              }
-
-              // Calcular puntos totales por equipo (ventas + clientes + tiros libres)
-              const teamsWithTotalGoals =
-                teams?.map((team) => {
-                  // Obtener ventas del equipo
-                  const teamSales = enrichedSales?.filter((sale) => sale.team_id === team.id) || []
-                  const salesPoints = teamSales.reduce((sum, sale) => sum + (sale.points || 0), 0)
-
-                  // Obtener clientes del equipo
-                  const teamClients = enrichedClients?.filter((client) => client.team_id === team.id) || []
-                  const clientsPoints = teamClients.length * 200 // 200 puntos por cliente
-
-                  // Obtener tiros libres del equipo
-                  const teamFreeKicks =
-                    freeKickData.map((freeKick) => {
-                      const team = teams?.find((team) => team.id === freeKick.team_id)
-
-                      return {
-                        ...freeKick,
-                        team_name: team?.name || "Equipo",
-                        distributor_data: team?.distributors,
-                      }
-                    }) || []
-                  const freeKickPoints = teamFreeKicks.reduce((sum, freeKick) => sum + (freeKick.points || 0), 0)
-
-                  // Total de puntos y goles
-                  const totalPoints = salesPoints + clientsPoints + freeKickPoints
-                  const totalGoals = Math.floor(totalPoints / puntosParaGol)
-
-                  return {
-                    ...team,
-                    calculated_total_points: totalPoints,
-                    calculated_total_goals: totalGoals,
-                    sales_points: salesPoints,
-                    clients_points: clientsPoints,
-                    free_kick_points: freeKickPoints,
-                    sales_count: teamSales.length,
-                    clients_count: teamClients.length,
-                    free_kick_count: teamFreeKicks.length,
-                  }
-                }) || []
-
-              // Ordenar por puntos calculados
-              teamsWithTotalGoals.sort((a, b) => (b.calculated_total_points || 0) - (a.calculated_total_points || 0))
-
-              setTeamsData(teamsWithTotalGoals)
-            }
-          }
-        }
-      }
-
-      // Cargar ranking de la zona
-      try {
-        const rankingResult = await getTeamRankingByZone(zoneId)
-        if (rankingResult.success && rankingResult.data) {
-          setZoneRanking(rankingResult.data)
-        }
-      } catch (rankingError) {
-        console.error("Error al cargar ranking de zona:", rankingError)
-      }
-
-      // Cargar ranking nacional
-      try {
-        const nationalRankingResult = await getTeamRankingByZone()
-        if (nationalRankingResult.success && nationalRankingResult.data) {
-          setNationalRanking(nationalRankingResult.data)
-        }
-      } catch (rankingError) {
-        console.error("Error al cargar ranking nacional:", rankingError)
-      }
-    } catch (error) {
       console.error("Error al cargar datos de la zona:", error)
     }
   }

@@ -9,10 +9,11 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { ArrowLeft, Users } from "lucide-react"
+import { ArrowLeft, Users, Phone } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 import { supabase } from "@/lib/supabase/client"
 import { ClientGoalCelebration } from "@/components/client-goal-celebration"
+import { formatColombianMobile, getPhoneValidationError, PHONE_INPUT_PROPS } from "@/lib/phone-validation"
 
 export default function RegistrarClientePage() {
   const [loading, setLoading] = useState(false)
@@ -29,6 +30,7 @@ export default function RegistrarClientePage() {
   const [notes, setNotes] = useState("")
   const [userId, setUserId] = useState("")
   const [showCelebration, setShowCelebration] = useState(false)
+  const [phoneError, setPhoneError] = useState<string>("")
 
   const router = useRouter()
   const { toast } = useToast()
@@ -64,28 +66,46 @@ export default function RegistrarClientePage() {
     }
   }
 
+  // Handle phone input change with validation
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value
+    // Allow only numbers, spaces, hyphens, parentheses, and plus sign
+    const cleanValue = value.replace(/[^\d\s\-$$$$+]/g, "")
+    setContactInfo(cleanValue)
+
+    // Clear phone error when user starts typing
+    if (phoneError) {
+      setPhoneError("")
+    }
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
+    // Validar todos los campos obligatorios
     if (
-      !farmerName ||
+      !farmerName.trim() ||
+      !businessName.trim() ||
       !saleType ||
-      !farmLocation ||
-      !previousProduct ||
+      !farmLocation.trim() ||
+      !farmAreaHectares.trim() ||
+      !previousProduct.trim() ||
       !superGanaderiaProduct ||
       !volumenFacturado ||
+      !contactInfo.trim() ||
+      !notes.trim() ||
       !userId
     ) {
       toast({
         title: "Error",
-        description: "Por favor completa los campos requeridos",
+        description: "Por favor completa todos los campos obligatorios",
         variant: "destructive",
       })
       return
     }
 
     // Validar que se ingrese nombre de almacén si el tipo de venta es por almacén
-    if (saleType === "Venta por Almacén" && !storeName) {
+    if (saleType === "Venta por Almacén" && !storeName.trim()) {
       toast({
         title: "Error",
         description: "Por favor ingresa el nombre del almacén",
@@ -105,6 +125,29 @@ export default function RegistrarClientePage() {
       return
     }
 
+    // Validar área de finca
+    const areaFinca = Number.parseFloat(farmAreaHectares)
+    if (isNaN(areaFinca) || areaFinca <= 0) {
+      toast({
+        title: "Error",
+        description: "Por favor ingresa un área de finca válida",
+        variant: "destructive",
+      })
+      return
+    }
+
+    // Validar teléfono
+    const phoneValidationError = getPhoneValidationError(contactInfo)
+    if (phoneValidationError) {
+      setPhoneError(phoneValidationError)
+      toast({
+        title: "Error",
+        description: phoneValidationError,
+        variant: "destructive",
+      })
+      return
+    }
+
     setLoading(true)
 
     try {
@@ -118,6 +161,9 @@ export default function RegistrarClientePage() {
       if (profileError) throw new Error(`Error al obtener perfil: ${profileError.message}`)
       if (!profile || !profile.team_id) throw new Error("Usuario sin equipo asignado")
 
+      // Format phone number before saving
+      const formattedPhone = formatColombianMobile(contactInfo)
+
       // Registrar el cliente
       const { data, error } = await supabase
         .from("competitor_clients")
@@ -129,11 +175,11 @@ export default function RegistrarClientePage() {
           tipo_venta: saleType,
           nombre_almacen: saleType === "Venta por Almacén" ? storeName : null,
           ubicacion_finca: farmLocation,
-          area_finca_hectareas: farmAreaHectares ? Number.parseFloat(farmAreaHectares) : null,
+          area_finca_hectareas: areaFinca,
           producto_anterior: previousProduct,
           producto_super_ganaderia: superGanaderiaProduct,
           volumen_venta_estimado: volumen,
-          contact_info: contactInfo,
+          contact_info: formattedPhone,
           notes,
           representative_id: userId,
           team_id: profile.team_id,
@@ -214,6 +260,7 @@ export default function RegistrarClientePage() {
     setVolumenFacturado("")
     setContactInfo("")
     setNotes("")
+    setPhoneError("")
     setLoading(false) // Asegurar que loading esté en false
 
     // Redirigir al dashboard
@@ -235,7 +282,9 @@ export default function RegistrarClientePage() {
             <Users className="h-5 w-5" />
             Nuevo Cliente
           </CardTitle>
-          <CardDescription>Registra un nuevo cliente captado de la competencia (+2 goles)</CardDescription>
+          <CardDescription>
+            Registra un nuevo cliente captado de la competencia (+2 goles). Todos los campos son obligatorios.
+          </CardDescription>
         </CardHeader>
         <form onSubmit={handleSubmit}>
           <CardContent className="space-y-4">
@@ -251,12 +300,13 @@ export default function RegistrarClientePage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="businessName">Razón Social</Label>
+              <Label htmlFor="businessName">Razón Social *</Label>
               <Input
                 id="businessName"
                 value={businessName}
                 onChange={(e) => setBusinessName(e.target.value)}
-                placeholder="Nombre legal de la empresa, si aplica"
+                placeholder="Nombre legal de la empresa"
+                required
               />
             </div>
 
@@ -300,7 +350,7 @@ export default function RegistrarClientePage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="farmAreaHectares">Área de la Finca (hectáreas)</Label>
+              <Label htmlFor="farmAreaHectares">Área de la Finca (hectáreas) *</Label>
               <Input
                 id="farmAreaHectares"
                 type="number"
@@ -308,6 +358,7 @@ export default function RegistrarClientePage() {
                 value={farmAreaHectares}
                 onChange={(e) => setFarmAreaHectares(e.target.value)}
                 placeholder="Número de hectáreas dedicadas a la actividad ganadera"
+                required
               />
             </div>
 
@@ -338,7 +389,7 @@ export default function RegistrarClientePage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="volumenFacturado">Volumen de Venta Facturado (litros) *</Label>
+              <Label htmlFor="volumenFacturado">Volumen de Venta Real (litros) *</Label>
               <Input
                 id="volumenFacturado"
                 type="number"
@@ -354,23 +405,31 @@ export default function RegistrarClientePage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="contactInfo">Celular del Ganadero</Label>
-              <Input
-                id="contactInfo"
-                value={contactInfo}
-                onChange={(e) => setContactInfo(e.target.value)}
-                placeholder="Número de celular del ganadero"
-              />
+              <Label htmlFor="contactInfo">Celular del Ganadero *</Label>
+              <div className="relative">
+                <Phone className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                <Input
+                  id="contactInfo"
+                  value={contactInfo}
+                  onChange={handlePhoneChange}
+                  className={`pl-10 ${phoneError ? "border-red-500" : ""}`}
+                  required
+                  {...PHONE_INPUT_PROPS}
+                />
+              </div>
+              {phoneError && <p className="text-red-500 text-sm mt-1">{phoneError}</p>}
+              <p className="text-xs text-gray-500 mt-1">Ejemplo: 3205812587 (número colombiano de 10 dígitos)</p>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="notes">Notas</Label>
+              <Label htmlFor="notes">Notas *</Label>
               <Textarea
                 id="notes"
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 placeholder="Detalles adicionales sobre el cliente"
                 rows={3}
+                required
               />
             </div>
           </CardContent>

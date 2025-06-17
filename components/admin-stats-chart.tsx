@@ -1,52 +1,48 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Line, LineChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
+import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis, Cell } from "recharts"
 import { supabase } from "@/lib/supabase/client"
 import { Skeleton } from "@/components/ui/skeleton"
-import { AlertCircle, LineChartIcon } from "lucide-react"
+import { AlertCircle, BarChart3Icon } from "lucide-react"
 import { EmptyState } from "./empty-state"
+import { Button } from "@/components/ui/button"
 
 // Estructura para datos del gráfico
-type WeeklyData = {
+type TeamData = {
   name: string
-  [key: string]: any
-}
-
-type TeamWithColor = {
-  id: string
-  name: string
+  goles: number
+  puntos: number
+  kilos: number
   color: string
 }
 
 export function AdminStatsChart() {
   const [isMounted, setIsMounted] = useState(false)
   const [loading, setLoading] = useState(true)
-  const [data, setData] = useState<WeeklyData[]>([])
-  const [teams, setTeams] = useState<TeamWithColor[]>([])
+  const [data, setData] = useState<TeamData[]>([])
   const [error, setError] = useState<string | null>(null)
+  const [retryCount, setRetryCount] = useState(0)
 
   useEffect(() => {
     setIsMounted(true)
     fetchData()
-  }, [])
+  }, [retryCount])
 
   const fetchData = async () => {
     try {
       setLoading(true)
       setError(null)
 
-      // 1. Obtener equipos y puntos para gol en paralelo
-      const [teamsResponse, configResponse] = await Promise.all([
-        supabase.from("teams").select("id, name").order("name"),
-        supabase.from("system_config").select("value").eq("key", "puntos_para_gol").maybeSingle(),
-      ])
+      // 1. Obtener equipos con sus puntos totales
+      const { data: teamsData, error: teamsError } = await supabase
+        .from("teams")
+        .select("id, name, total_points")
+        .order("total_points", { ascending: false })
 
-      const teamsData = teamsResponse.data
-      const teamsError = teamsResponse.error
-      const puntosConfig = configResponse.data
-
-      if (teamsError) throw teamsError
+      if (teamsError) {
+        throw new Error(`Error al obtener equipos: ${teamsError.message}`)
+      }
 
       if (!teamsData || teamsData.length === 0) {
         setData([])
@@ -54,139 +50,76 @@ export function AdminStatsChart() {
         return
       }
 
-      // Asignar colores a los equipos
-      const colors = ["#f59e0b", "#4ade80", "#3b82f6", "#ec4899", "#8b5cf6", "#14b8a6", "#f43f5e", "#06b6d4"]
-      const teamsWithColors = teamsData.map((team, index) => ({
-        ...team,
-        color: colors[index % colors.length],
-      }))
+      // 2. Obtener configuración de puntos para gol
+      const { data: configData } = await supabase
+        .from("system_config")
+        .select("value")
+        .eq("key", "puntos_para_gol")
+        .maybeSingle()
 
-      setTeams(teamsWithColors)
+      const puntosParaGol = configData?.value ? Number(configData.value) : 100
 
-      const puntosParaGol = puntosConfig?.value ? Number(puntosConfig.value) : 100
+      // Colores para las barras
+      const colors = [
+        "#f59e0b", // Amarillo/Oro para el primero
+        "#4ade80", // Verde
+        "#3b82f6", // Azul
+        "#ec4899", // Rosa
+        "#8b5cf6", // Púrpura
+        "#14b8a6", // Teal
+        "#f43f5e", // Rojo
+        "#06b6d4", // Cyan
+        "#eab308", // Amarillo
+        "#a855f7", // Violeta
+        "#10b981", // Esmeralda
+        "#ef4444", // Rojo brillante
+        "#6366f1", // Índigo
+        "#84cc16", // Lima
+        "#d946ef", // Fucsia
+        "#0ea5e9", // Azul cielo
+        "#f97316", // Naranja
+        "#22c55e", // Verde brillante
+        "#8b5cf6", // Púrpura claro
+        "#06b6d4", // Cian
+      ]
 
-      // 2. Obtener todos los datos necesarios en paralelo
-      const [profilesResponse, salesResponse, clientsResponse, freeKicksResponse] = await Promise.all([
-        supabase.from("profiles").select("id, team_id").not("team_id", "is", null),
-        supabase.from("sales").select("points, representative_id, team_id"),
-        supabase.from("competitor_clients").select("id, points, representative_id, team_id"),
-        supabase.from("free_kick_goals").select("points, team_id"),
-      ])
+      // Formatear datos para el gráfico
+      const chartData: TeamData[] = teamsData.map((team, index) => {
+        const puntos = team.total_points || 0
+        const goles = Math.floor(puntos / puntosParaGol)
+        const kilos = puntos / 10 // 1 gol = 100 puntos = 10 kilos, entonces kilos = puntos/10
 
-      const profiles = profilesResponse.data || []
-      const sales = salesResponse.data || []
-      const clients = clientsResponse.data || []
-      const freeKicks = freeKicksResponse.data || []
-
-      // Crear mapas para acceso rápido
-      const teamMembersMap = new Map<string, string[]>()
-      profiles.forEach((profile) => {
-        if (!teamMembersMap.has(profile.team_id)) {
-          teamMembersMap.set(profile.team_id, [])
+        return {
+          name: team.name,
+          goles: goles,
+          puntos: puntos,
+          kilos: Math.round(kilos * 10) / 10, // Redondear a 1 decimal
+          color: colors[index % colors.length],
         }
-        teamMembersMap.get(profile.team_id)!.push(profile.id)
       })
 
-      // 3. Calcular goles totales actuales por equipo
-      const teamGoals: Record<string, number> = {}
+      // Filtrar equipos con al menos 1 gol para el gráfico
+      const filteredData = chartData.filter((team) => team.goles > 0)
 
-      for (const team of teamsData) {
-        const memberIds = teamMembersMap.get(team.id) || []
-
-        // Calcular puntos de ventas
-        let totalPointsFromSales = 0
-
-        // Ventas por representante
-        sales
-          .filter((sale) => memberIds.includes(sale.representative_id))
-          .forEach((sale) => (totalPointsFromSales += sale.points || 0))
-
-        // Ventas directas por equipo
-        sales.filter((sale) => sale.team_id === team.id).forEach((sale) => (totalPointsFromSales += sale.points || 0))
-
-        // Calcular puntos de clientes
-        let clientsPoints = 0
-        const countedClientIds = new Set<string>()
-
-        // Clientes por representante
-        clients
-          .filter((client) => memberIds.includes(client.representative_id))
-          .forEach((client) => {
-            if (!countedClientIds.has(client.id)) {
-              clientsPoints += client.points || 200
-              countedClientIds.add(client.id)
-            }
-          })
-
-        // Clientes directos por equipo
-        clients
-          .filter((client) => client.team_id === team.id)
-          .forEach((client) => {
-            if (!countedClientIds.has(client.id)) {
-              clientsPoints += client.points || 200
-              countedClientIds.add(client.id)
-            }
-          })
-
-        // Calcular puntos de tiros libres
-        let freeKickPoints = 0
-        freeKicks.filter((fk) => fk.team_id === team.id).forEach((fk) => (freeKickPoints += fk.points || 0))
-
-        // Calcular puntos totales y goles
-        const finalTotalPoints = totalPointsFromSales + clientsPoints + freeKickPoints
-        const goalsFromPoints = Math.floor(finalTotalPoints / puntosParaGol)
-
-        // Obtener tiros libres del equipo (goles directos)
-        const freeKickGoals = freeKicks
-          .filter((fk) => fk.team_id === team.id)
-          .reduce((sum, fk) => sum + (fk.goals || 0), 0)
-
-        const totalGoals = goalsFromPoints + freeKickGoals
-
-        teamGoals[team.id] = totalGoals
-      }
-
-      // 4. Crear datos para el gráfico (simulando evolución semanal)
-      const currentWeek = getCurrentWeek()
-      const chartData: WeeklyData[] = []
-
-      // Generar últimas 4 semanas con distribución progresiva
-      for (let i = 3; i >= 0; i--) {
-        const weekNumber = currentWeek - i
-        const weekData: WeeklyData = { name: `Semana ${weekNumber}` }
-
-        teamsWithColors.forEach((team) => {
-          // Distribuir los goles progresivamente (simulación simple)
-          const totalGoals = teamGoals[team.id] || 0
-          const progressFactor = (4 - i) / 4 // 0.25, 0.5, 0.75, 1.0
-          weekData[team.id] = Math.floor(totalGoals * progressFactor)
-        })
-
-        chartData.push(weekData)
-      }
-
-      setData(chartData)
+      setData(filteredData.length > 0 ? filteredData : chartData.slice(0, 10)) // Mostrar top 10 si no hay goles
+      setLoading(false)
     } catch (err: any) {
       console.error("Error al cargar datos del gráfico:", err)
       setError(`Error al cargar datos: ${err.message || "Desconocido"}`)
-    } finally {
       setLoading(false)
     }
   }
 
-  const getCurrentWeek = () => {
-    const now = new Date()
-    const firstDayOfYear = new Date(now.getFullYear(), 0, 1)
-    const pastDaysOfYear = (now.getTime() - firstDayOfYear.getTime()) / 86400000
-    return Math.ceil((pastDaysOfYear + firstDayOfYear.getDay() + 1) / 7)
+  const handleRetry = () => {
+    setRetryCount((prev) => prev + 1)
   }
 
   if (!isMounted) {
-    return <div className="h-[300px] flex items-center justify-center">Cargando gráfico...</div>
+    return <div className="h-[400px] flex items-center justify-center">Cargando gráfico...</div>
   }
 
   if (loading) {
-    return <Skeleton className="h-[300px] w-full" />
+    return <Skeleton className="h-[400px] w-full" />
   }
 
   if (error) {
@@ -196,57 +129,94 @@ export function AdminStatsChart() {
         title="Error al cargar datos"
         description={error}
         actionLabel="Reintentar"
-        onClick={fetchData}
-        className="h-[300px]"
+        onClick={handleRetry}
+        className="h-[400px]"
         iconClassName="bg-red-50"
       />
     )
   }
 
-  if (data.length === 0 || teams.length === 0) {
+  if (data.length === 0) {
     return (
       <EmptyState
-        icon={LineChartIcon}
+        icon={BarChart3Icon}
         title="No hay equipos registrados"
-        description="Crea equipos para ver la evolución del concurso."
-        actionLabel="Crear equipo"
-        actionHref="/admin/equipos/nuevo"
-        className="h-[300px]"
+        description="Crea equipos y registra ventas para ver el comparativo de goles."
+        actionLabel="Reintentar"
+        onClick={handleRetry}
+        className="h-[400px]"
       />
     )
   }
 
   return (
-    <ResponsiveContainer width="100%" height={300}>
-      <LineChart data={data}>
-        <CartesianGrid strokeDasharray="3 3" vertical={false} />
-        <XAxis dataKey="name" />
-        <YAxis />
-        <Tooltip
-          formatter={(value, name) => {
-            const team = teams.find((t) => t.id === name)
-            return [`${value} goles`, team?.name || name]
+    <div className="h-[400px] w-full">
+      <ResponsiveContainer width="100%" height="100%">
+        <BarChart
+          data={data}
+          margin={{
+            top: 20,
+            right: 30,
+            left: 20,
+            bottom: 60,
           }}
-          labelFormatter={(label) => `${label}`}
-        />
-        <Legend
-          formatter={(value) => {
-            const team = teams.find((t) => t.id === value)
-            return team?.name || value
-          }}
-        />
-        {teams.map((team) => (
-          <Line
-            key={team.id}
-            type="monotone"
-            dataKey={team.id}
-            name={team.name}
-            stroke={team.color}
-            strokeWidth={2}
-            activeDot={{ r: 8 }}
+        >
+          <CartesianGrid strokeDasharray="3 3" />
+          <XAxis dataKey="name" angle={-45} textAnchor="end" height={80} fontSize={12} interval={0} />
+          <YAxis />
+          <Tooltip
+            formatter={(value, name) => {
+              if (name === "goles") {
+                const teamData = data.find((d) => d.goles === value)
+                if (teamData) {
+                  return [
+                    <div key="tooltip" className="text-left">
+                      <div className="font-semibold">{teamData.name}</div>
+                      <div>🏆 {teamData.goles} goles</div>
+                      <div>📊 {teamData.puntos} puntos</div>
+                      <div>⚖️ {teamData.kilos} kilos</div>
+                    </div>,
+                    "",
+                  ]
+                }
+              }
+              return [value, name]
+            }}
+            labelFormatter={() => ""}
           />
-        ))}
-      </LineChart>
-    </ResponsiveContainer>
+          <Bar dataKey="goles" name="goles" radius={[4, 4, 0, 0]}>
+            {data.map((entry, index) => (
+              <Cell key={`cell-${index}`} fill={entry.color} />
+            ))}
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
+
+      {/* Resumen de datos */}
+      <div className="mt-4 grid grid-cols-3 gap-4 text-center text-sm">
+        <div className="bg-yellow-50 p-2 rounded">
+          <div className="font-semibold text-yellow-700">Total Goles</div>
+          <div className="text-lg font-bold text-yellow-800">{data.reduce((sum, team) => sum + team.goles, 0)}</div>
+        </div>
+        <div className="bg-blue-50 p-2 rounded">
+          <div className="font-semibold text-blue-700">Total Puntos</div>
+          <div className="text-lg font-bold text-blue-800">
+            {data.reduce((sum, team) => sum + team.puntos, 0).toLocaleString()}
+          </div>
+        </div>
+        <div className="bg-green-50 p-2 rounded">
+          <div className="font-semibold text-green-700">Total Kilos</div>
+          <div className="text-lg font-bold text-green-800">
+            {Math.round(data.reduce((sum, team) => sum + team.kilos, 0) * 10) / 10}
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-2 flex justify-end">
+        <Button variant="outline" size="sm" onClick={handleRetry}>
+          Actualizar gráfico
+        </Button>
+      </div>
+    </div>
   )
 }
