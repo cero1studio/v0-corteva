@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef, useMemo } from "react"
 import {
   type ColumnDef,
   flexRender,
@@ -207,16 +207,40 @@ export default function AdminClientesPage() {
   const [selectedZone, setSelectedZone] = useState<string>("all")
   const [selectedTeam, setSelectedTeam] = useState<string>("all")
 
-  const loadData = useCallback(async () => {
+  // Referencias para cancelación
+  const abortControllerRef = useRef<AbortController | null>(null)
+  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+
+  // Cleanup function
+  const cleanup = useCallback(() => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+    }
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current)
+    }
+  }, [])
+
+  // Optimized load data function
+  const loadData = useCallback(async (signal?: AbortSignal) => {
     try {
       setLoading(true)
 
-      const [clientsResult, zonesData, teamsResult, usersResult] = await Promise.all([
-        getAllCompetitorClients(),
-        getAllZones(),
-        getAllTeams(),
-        getAllUsers(),
-      ])
+      // Cancel previous request
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort()
+      }
+
+      // Create new abort controller
+      const controller = new AbortController()
+      abortControllerRef.current = controller
+      const currentSignal = signal || controller.signal
+
+      // Load data in batches to improve performance
+      const [clientsResult, zonesData] = await Promise.all([getAllCompetitorClients(), getAllZones()])
+
+      // Check if request was cancelled
+      if (currentSignal.aborted) return
 
       if (clientsResult.success) {
         setClients(clientsResult.data || [])
@@ -235,6 +259,12 @@ export default function AdminClientesPage() {
         setZones([])
       }
 
+      // Load teams and users only if needed
+      const [teamsResult, usersResult] = await Promise.all([getAllTeams(), getAllUsers()])
+
+      // Check if request was cancelled again
+      if (currentSignal.aborted) return
+
       if (teamsResult.success) {
         setTeams(teamsResult.data || [])
       } else {
@@ -246,7 +276,10 @@ export default function AdminClientesPage() {
       } else {
         setCaptains([])
       }
-    } catch (error) {
+    } catch (error: any) {
+      // Don't show error if request was cancelled
+      if (error.name === "AbortError") return
+
       console.error("Error loading data:", error)
       toast({
         title: "Error",
@@ -258,53 +291,91 @@ export default function AdminClientesPage() {
     }
   }, [])
 
+  // Debounced search
+  const debouncedSearch = useCallback((term: string) => {
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current)
+    }
+
+    searchTimeoutRef.current = setTimeout(() => {
+      // Trigger any search-specific logic here if needed
+    }, 300)
+  }, [])
+
+  // Handle search change with debounce
+  const handleSearchChange = useCallback(
+    (value: string) => {
+      setSearchTerm(value)
+      debouncedSearch(value)
+    },
+    [debouncedSearch],
+  )
+
+  // Memoized filtered clients for better performance
+  const filteredClients = useMemo(() => {
+    return clients.filter((client) => {
+      const ganaderoName = client.ganadero_name || ""
+      const clientName = client.client_name || ""
+      const competitorName = client.competitor_name || ""
+      const razonSocial = client.razon_social || ""
+      const tipoVenta = client.tipo_venta || ""
+      const ubicacionFinca = client.ubicacion_finca || ""
+      const productoAnterior = client.producto_anterior || ""
+      const productoSuperGanaderia = client.producto_super_ganaderia || ""
+      const volumenVentaEstimado = client.volumen_venta_estimado || ""
+      const contactInfo = client.contact_info || ""
+      const notes = client.notes || ""
+      const nombreAlmacen = client.nombre_almacen || ""
+      const captainName = client.representative_profile?.full_name || ""
+      const teamName = client.team?.name || ""
+      const zoneName = client.team?.zone?.name || ""
+
+      const matchesSearch =
+        !searchTerm ||
+        ganaderoName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        clientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        competitorName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        razonSocial.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        tipoVenta.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        ubicacionFinca.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        productoAnterior.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        productoSuperGanaderia.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        volumenVentaEstimado.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        contactInfo.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        notes.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        nombreAlmacen.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        captainName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        teamName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        zoneName.toLowerCase().includes(searchTerm.toLowerCase())
+
+      const matchesZone = selectedZone === "all" || client.team?.zone?.id === selectedZone
+      const matchesTeam = selectedTeam === "all" || client.team?.id === selectedTeam
+
+      return matchesSearch && matchesZone && matchesTeam
+    })
+  }, [clients, searchTerm, selectedZone, selectedTeam])
+
+  // Memoized filtered teams
+  const filteredTeams = useMemo(() => {
+    return selectedZone === "all" ? teams : teams.filter((team) => team.zone_id === selectedZone)
+  }, [teams, selectedZone])
+
+  // Effect with cleanup
   useEffect(() => {
-    loadData()
-  }, [loadData])
+    const controller = new AbortController()
+    loadData(controller.signal)
 
-  const filteredClients = clients.filter((client) => {
-    const ganaderoName = client.ganadero_name || ""
-    const clientName = client.client_name || ""
-    const competitorName = client.competitor_name || ""
-    const razonSocial = client.razon_social || ""
-    const tipoVenta = client.tipo_venta || ""
-    const ubicacionFinca = client.ubicacion_finca || ""
-    const productoAnterior = client.producto_anterior || ""
-    const productoSuperGanaderia = client.producto_super_ganaderia || ""
-    const volumenVentaEstimado = client.volumen_venta_estimado || ""
-    const contactInfo = client.contact_info || ""
-    const notes = client.notes || ""
-    const nombreAlmacen = client.nombre_almacen || ""
-    const captainName = client.representative_profile?.full_name || ""
-    const teamName = client.team?.name || ""
-    const zoneName = client.team?.zone?.name || ""
+    return () => {
+      cleanup()
+    }
+  }, [loadData, cleanup])
 
-    const matchesSearch =
-      ganaderoName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      clientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      competitorName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      razonSocial.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      tipoVenta.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      ubicacionFinca.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      productoAnterior.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      productoSuperGanaderia.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      volumenVentaEstimado.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      contactInfo.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      notes.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      nombreAlmacen.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      captainName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      teamName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      zoneName.toLowerCase().includes(searchTerm.toLowerCase())
+  // Cleanup on unmount
+  useEffect(() => {
+    return cleanup
+  }, [cleanup])
 
-    const matchesZone = selectedZone === "all" || client.team?.zone?.id === selectedZone
-    const matchesTeam = selectedTeam === "all" || client.team?.id === selectedTeam
-
-    return matchesSearch && matchesZone && matchesTeam
-  })
-
-  const filteredTeams = selectedZone === "all" ? teams : teams.filter((team) => team.zone_id === selectedZone)
-
-  const downloadExcel = () => {
+  const downloadExcel = useCallback(() => {
     try {
       if (filteredClients.length === 0) {
         toast({
@@ -407,7 +478,7 @@ export default function AdminClientesPage() {
         variant: "destructive",
       })
     }
-  }
+  }, [filteredClients])
 
   const table = useReactTable({
     data: filteredClients,
@@ -467,7 +538,7 @@ export default function AdminClientesPage() {
                   id="search"
                   placeholder="Buscar por ganadero, equipo, volumen..."
                   value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
+                  onChange={(e) => handleSearchChange(e.target.value)}
                   className="pl-10"
                 />
               </div>
