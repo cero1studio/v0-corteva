@@ -60,16 +60,14 @@ export async function getTeamRankingByZone(zoneId?: string) {
     const puntosParaGol = puntosConfig?.value ? Number(puntosConfig.value) : 100
     console.log("DEBUG: Puntos para gol (getTeamRankingByZone):", puntosParaGol) // Log de depuración
 
-    // Obtener equipos con sus zonas, distribuidores y capitanes
+    // Obtener equipos con sus zonas y distribuidores (sin capitanes por ahora)
     let teamsQuery = supabase.from("teams").select(`
-    id,
-    name,
-    zone_id,
-    captain_id,
-    zones!left(id, name),
-    distributors!left(id, name, logo_url),
-    profiles!teams_captain_id_fkey(id, full_name)
-  `)
+  id,
+  name,
+  zone_id,
+  zones!left(id, name),
+  distributors!left(id, name, logo_url)
+`)
 
     if (zoneId) {
       teamsQuery = teamsQuery.eq("zone_id", zoneId)
@@ -85,6 +83,28 @@ export async function getTeamRankingByZone(zoneId?: string) {
 
     // Obtener todos los IDs de equipos para hacer consultas batch
     const teamIds = teams?.map((team) => team.id) || []
+
+    // Obtener capitanes de todos los equipos
+    const captainsMap = new Map<string, { id: string; name: string }>()
+    if (teamIds.length > 0) {
+      const { data: captains } = await supabase
+        .from("profiles")
+        .select("id, full_name, team_id")
+        .in("team_id", teamIds)
+        .eq("role", "capitan")
+
+      if (captains) {
+        captains.forEach((captain) => {
+          if (captain.team_id) {
+            captainsMap.set(captain.team_id, {
+              id: captain.id,
+              name: captain.full_name || "Sin nombre",
+            })
+          }
+        })
+      }
+    }
+
     const allMemberIds: string[] = []
     const teamMemberMap = new Map<string, string[]>()
 
@@ -260,17 +280,19 @@ export async function getTeamRankingByZone(zoneId?: string) {
 
       console.log(`DEBUG: Team ${team.name} - Final Total Points: ${finalTotalPoints}, Goals: ${goals}`)
 
+      const captainInfo = captainsMap.get(team.id)
+
       ranking.push({
         position: 0, // Se asignará después del ordenamiento
         team_id: team.id,
         team_name: team.name,
-        distributor_name: team.distributors?.name || "Sin distribuidor", // Manejar null
-        distributor_logo: team.distributors?.logo_url || null, // Manejar null
-        captain_name: team.profiles?.full_name || "Sin capitán", // Información del capitán
-        captain_id: team.captain_id || null,
+        distributor_name: team.distributors?.name || "Sin distribuidor",
+        distributor_logo: team.distributors?.logo_url || null,
+        captain_name: captainInfo?.name || "Sin capitán",
+        captain_id: captainInfo?.id || null,
         goals: goals,
         total_points: finalTotalPoints,
-        zone_name: team.zones?.name || "Sin zona", // Manejar null
+        zone_name: team.zones?.name || "Sin zona",
       })
     }
 
