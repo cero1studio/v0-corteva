@@ -42,9 +42,9 @@ export default async function DirectorTecnicoReportesPage({ searchParams }: Repo
     created_at,
     team_id,
     representative_id,
-    teams!left(name),
-    products!left(name),
-    profiles!left(full_name)
+    teams!sales_team_id_fkey(name),
+    products!sales_product_id_fkey(name),
+    profiles!sales_representative_id_fkey(full_name)
   `)
     .order("created_at", { ascending: false })
     .limit(100)
@@ -229,7 +229,7 @@ export default async function DirectorTecnicoReportesPage({ searchParams }: Repo
                       {sales.map((sale) => (
                         <tr key={sale.id}>
                           <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                            {sale.teams?.name || "Desconocido"}
+                            {sale.teams?.name || "Sin equipo"}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                             {sale.profiles?.full_name || "Desconocido"}
