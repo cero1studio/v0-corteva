@@ -42,9 +42,9 @@ export default async function DirectorTecnicoReportesPage({ searchParams }: Repo
     created_at,
     team_id,
     representative_id,
-    teams!sales_team_id_fkey(name),
-    products!sales_product_id_fkey(name),
-    profiles!sales_representative_id_fkey(full_name)
+    teams!left(name),
+    products!left(name),
+    profiles!left(full_name)
   `)
     .order("created_at", { ascending: false })
     .limit(100)
