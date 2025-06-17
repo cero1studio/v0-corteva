@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { useToast } from "@/components/ui/use-toast"
-import { PlusCircle, Edit, Trash2, Building } from "lucide-react"
+import { PlusCircle, Edit, Trash2, Building, RefreshCw } from "lucide-react"
 import { EmptyState } from "@/components/empty-state"
 import Link from "next/link"
 import { getDistributorLogoUrl } from "@/lib/utils/image"
@@ -23,30 +23,67 @@ export default function DistribuidoresPage() {
   const router = useRouter()
   const [distributors, setDistributors] = useState<Distributor[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [retryCount, setRetryCount] = useState(0)
   const { toast } = useToast()
 
   useEffect(() => {
-    fetchDistributors()
-  }, [])
+    let mounted = true
+    let timeoutId: NodeJS.Timeout
 
-  async function fetchDistributors() {
-    setLoading(true)
-    try {
-      const { data, error } = await supabase.from("distributors").select("*").order("name")
+    const loadDistributors = async () => {
+      setLoading(true)
+      setError(null)
 
-      if (error) throw error
+      // Timeout de seguridad para evitar loading infinito
+      timeoutId = setTimeout(() => {
+        if (mounted) {
+          console.log("DISTRIBUIDORES: Timeout reached, forcing loading to false")
+          setLoading(false)
+        }
+      }, 10000)
 
-      setDistributors(data || [])
-    } catch (error) {
-      console.error("Error al cargar distribuidores:", error)
-      toast({
-        title: "Error",
-        description: "No se pudieron cargar los distribuidores",
-        variant: "destructive",
-      })
-    } finally {
-      setLoading(false)
+      try {
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error("Timeout: La consulta tardó demasiado")), 5000),
+        )
+
+        const fetchPromise = supabase.from("distributors").select("*").order("name")
+
+        const result = (await Promise.race([fetchPromise, timeoutPromise])) as any
+
+        if (result.error) throw result.error
+
+        if (mounted) {
+          setDistributors(result.data || [])
+        }
+      } catch (error: any) {
+        if (mounted) {
+          console.error("Error al cargar distribuidores:", error)
+          setError(error.message || "Error al cargar distribuidores")
+          toast({
+            title: "Error",
+            description: "No se pudieron cargar los distribuidores. " + error.message,
+            variant: "destructive",
+          })
+        }
+      } finally {
+        if (mounted) {
+          setLoading(false)
+        }
+      }
     }
+
+    loadDistributors()
+
+    return () => {
+      mounted = false
+      clearTimeout(timeoutId)
+    }
+  }, [retryCount, toast])
+
+  const handleRetry = () => {
+    setRetryCount((prev) => prev + 1)
   }
 
   async function handleDeleteDistributor(id: string, name: string) {
@@ -54,10 +91,18 @@ export default function DistribuidoresPage() {
       return
     }
 
-    try {
-      const { error } = await supabase.from("distributors").delete().eq("id", id)
+    const abortController = new AbortController()
 
-      if (error) {
+    try {
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("Timeout al eliminar distribuidor")), 3000),
+      )
+
+      const deletePromise = supabase.from("distributors").delete().eq("id", id).abortSignal(abortController.signal)
+
+      const result = (await Promise.race([deletePromise, timeoutPromise])) as any
+
+      if (result.error) {
         toast({
           title: "Error",
           description: "No se pudo eliminar el distribuidor. Asegúrate de que no tenga equipos o usuarios asociados.",
@@ -66,17 +111,17 @@ export default function DistribuidoresPage() {
         return
       }
 
-      setDistributors(distributors.filter((distributor) => distributor.id !== id))
+      setDistributors((prev) => prev.filter((distributor) => distributor.id !== id))
 
       toast({
         title: "Distribuidor eliminado",
         description: "El distribuidor ha sido eliminado exitosamente",
       })
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error al eliminar distribuidor:", error)
       toast({
         title: "Error",
-        description: "No se pudo eliminar el distribuidor. Asegúrate de que no tenga equipos o usuarios asociados.",
+        description: "No se pudo eliminar el distribuidor: " + error.message,
         variant: "destructive",
       })
     }
@@ -113,16 +158,34 @@ export default function DistribuidoresPage() {
     )
   }
 
+  if (error) {
+    return (
+      <EmptyState
+        icon={Building}
+        title="Error al cargar distribuidores"
+        description={error}
+        actionLabel="Reintentar"
+        onClick={handleRetry}
+        className="py-10"
+      />
+    )
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h2 className="text-3xl font-bold tracking-tight">Gestión de Distribuidores</h2>
-        <Button asChild>
-          <Link href="/admin/distribuidores/nuevo">
-            <PlusCircle className="mr-2 h-4 w-4" />
-            Nuevo Distribuidor
-          </Link>
-        </Button>
+        <div className="flex gap-2">
+          <Button onClick={handleRetry} variant="outline" size="icon" title="Actualizar datos">
+            <RefreshCw className="h-4 w-4" />
+          </Button>
+          <Button asChild>
+            <Link href="/admin/distribuidores/nuevo">
+              <PlusCircle className="mr-2 h-4 w-4" />
+              Nuevo Distribuidor
+            </Link>
+          </Button>
+        </div>
       </div>
 
       <Card>
