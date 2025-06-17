@@ -151,7 +151,15 @@ function DirectorTecnicoDashboardContent() {
       console.log("Cargando datos de la zona (Director Técnico):", zoneId)
 
       // Simplificar consultas - hacer secuencialmente las más pesadas
-      const teamsResult = await supabase.from("teams").select("id, name, distributor_id").eq("zone_id", zoneId)
+      const teamsResult = await supabase
+        .from("teams")
+        .select(`
+  id,
+  name,
+  distributor_id,
+  distributors!left(id, name, logo_url)
+`)
+        .eq("zone_id", zoneId)
 
       if (teamsResult.error) throw teamsResult.error
 
@@ -181,6 +189,7 @@ function DirectorTecnicoDashboardContent() {
       setTeamsData(
         teams.map((team) => ({
           ...team,
+          distributor_name: team.distributors?.name || "Sin distribuidor", // Agregar esta línea
           calculated_total_points: 0, // Calcular después si es necesario
           calculated_total_goals: 0,
         })),

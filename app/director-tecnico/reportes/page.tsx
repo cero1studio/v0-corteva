@@ -36,16 +36,16 @@ export default async function DirectorTecnicoReportesPage({ searchParams }: Repo
   let salesQuery = supabase
     .from("sales")
     .select(`
-      id,
-      quantity,
-      points,
-      created_at,
-      team_id,
-      representative_id,
-      teams(name),
-      products(name),
-      profiles(full_name)
-    `)
+    id,
+    quantity,
+    points,
+    created_at,
+    team_id,
+    representative_id,
+    teams!left(name),
+    products!left(name),
+    profiles!left(full_name)
+  `)
     .order("created_at", { ascending: false })
     .limit(100)
 
@@ -59,14 +59,14 @@ export default async function DirectorTecnicoReportesPage({ searchParams }: Repo
   let clientsQuery = supabase
     .from("competitor_clients")
     .select(`
-      id,
-      client_name,
-      created_at,
-      team_id,
-      representative_id,
-      teams(name),
-      profiles(full_name)
-    `)
+    id,
+    client_name,
+    created_at,
+    team_id,
+    representative_id,
+    teams!left(name),
+    profiles!left(full_name)
+  `)
     .order("created_at", { ascending: false })
     .limit(100)
 
@@ -80,12 +80,12 @@ export default async function DirectorTecnicoReportesPage({ searchParams }: Repo
   let freeKicksQuery = supabase
     .from("free_kick_goals")
     .select(`
-      id,
-      points,
-      created_at,
-      team_id,
-      teams(name)
-    `)
+    id,
+    points,
+    created_at,
+    team_id,
+    teams!left(name)
+  `)
     .order("created_at", { ascending: false })
     .limit(100)
 
