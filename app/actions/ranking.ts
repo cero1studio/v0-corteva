@@ -8,6 +8,8 @@ export interface TeamRanking {
   team_name: string
   distributor_name: string
   distributor_logo?: string
+  captain_name?: string
+  captain_id?: string
   goals: number
   total_points: number
   zone_name: string
@@ -58,14 +60,16 @@ export async function getTeamRankingByZone(zoneId?: string) {
     const puntosParaGol = puntosConfig?.value ? Number(puntosConfig.value) : 100
     console.log("DEBUG: Puntos para gol (getTeamRankingByZone):", puntosParaGol) // Log de depuración
 
-    // Obtener equipos con sus zonas y distribuidores
+    // Obtener equipos con sus zonas, distribuidores y capitanes
     let teamsQuery = supabase.from("teams").select(`
-        id,
-        name,
-        zone_id,
-        zones!left(id, name),
-        distributors!left(id, name, logo_url)
-      `)
+    id,
+    name,
+    zone_id,
+    captain_id,
+    zones!left(id, name),
+    distributors!left(id, name, logo_url),
+    profiles!teams_captain_id_fkey(id, full_name)
+  `)
 
     if (zoneId) {
       teamsQuery = teamsQuery.eq("zone_id", zoneId)
@@ -262,6 +266,8 @@ export async function getTeamRankingByZone(zoneId?: string) {
         team_name: team.name,
         distributor_name: team.distributors?.name || "Sin distribuidor", // Manejar null
         distributor_logo: team.distributors?.logo_url || null, // Manejar null
+        captain_name: team.profiles?.full_name || "Sin capitán", // Información del capitán
+        captain_id: team.captain_id || null,
         goals: goals,
         total_points: finalTotalPoints,
         zone_name: team.zones?.name || "Sin zona", // Manejar null

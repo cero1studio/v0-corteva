@@ -19,6 +19,7 @@ import {
   type UserTeamInfo,
 } from "@/app/actions/ranking"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Badge } from "@/components/ui/badge"
 
 export default function CapitanRankingPage() {
   const { user } = useAuth()
@@ -212,6 +213,7 @@ export default function CapitanRankingPage() {
                   <TableRow>
                     <TableHead className="w-16">Pos.</TableHead>
                     <TableHead>Equipo</TableHead>
+                    <TableHead>Capitán</TableHead>
                     <TableHead className="text-right">Goles</TableHead>
                     <TableHead className="text-right">Puntos</TableHead>
                   </TableRow>
@@ -232,6 +234,11 @@ export default function CapitanRankingPage() {
                         {team.team_id === userTeamInfo?.team_id && (
                           <span className="ml-2 text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">Tu equipo</span>
                         )}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="bg-gray-50">
+                          {team.captain_name || "Sin capitán"}
+                        </Badge>
                       </TableCell>
                       <TableCell className="text-right font-bold text-green-600">{team.goals}</TableCell>
                       <TableCell className="text-right font-bold text-blue-600">{team.total_points}</TableCell>
