@@ -49,3 +49,6 @@ export const getSupabaseClient = () => {
 
 // Exportar para uso directo
 export const supabase = getSupabaseClient()
+
+// Export createClient for compatibility
+export { createClient } from "@supabase/supabase-js"

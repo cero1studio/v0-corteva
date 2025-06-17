@@ -92,4 +92,5 @@ export async function deleteDistributor(id: string) {
   }
 }
 
-import { getDistributors } from "@/app/actions/distributors"
+// Export alias for compatibility
+export const getDistributors = getAllDistributors
