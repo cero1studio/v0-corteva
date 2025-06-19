@@ -75,6 +75,128 @@ interface User {
   role: string
 }
 
+const columns: ColumnDef<CompetitorClient>[] = [
+  {
+    accessorKey: "ganadero_name",
+    header: "Ganadero",
+    cell: ({ row }) => {
+      return row.original.ganadero_name || row.original.client_name
+    },
+  },
+  {
+    accessorKey: "volumen_venta_estimado",
+    header: "Volumen de Venta Real",
+    cell: ({ row }) => {
+      return row.original.volumen_venta_estimado || "N/A"
+    },
+  },
+  {
+    accessorKey: "representative_profile.full_name",
+    header: "Capitán",
+    cell: ({ row }) => {
+      const captain = row.original.representative_profile
+      return captain ? <Badge variant="outline">{captain.full_name}</Badge> : "N/A"
+    },
+  },
+  {
+    accessorKey: "team.name",
+    header: "Equipo",
+    cell: ({ row }) => {
+      const team = row.original.team
+      return team ? <Badge variant="outline">{team.name}</Badge> : "N/A"
+    },
+  },
+  {
+    accessorKey: "team.zone.name",
+    header: "Zona",
+    cell: ({ row }) => {
+      const zone = row.original.team?.zone
+      return zone ? <Badge variant="secondary">{zone.name}</Badge> : "N/A"
+    },
+  },
+  {
+    accessorKey: "tipo_venta",
+    header: "Tipo Venta",
+  },
+  {
+    accessorKey: "area_finca_hectareas",
+    header: "Área (Ha)",
+    cell: ({ row }) => {
+      const area = row.original.area_finca_hectareas
+      return area ? `${area} ha` : "N/A"
+    },
+  },
+  {
+    accessorKey: "points",
+    header: "Puntos",
+    cell: ({ row }) => {
+      return <Badge variant="default">{row.original.points}</Badge>
+    },
+  },
+  {
+    accessorKey: "created_at",
+    header: "Fecha Registro",
+    cell: ({ row }) => {
+      return new Date(row.original.created_at).toLocaleDateString()
+    },
+  },
+  {
+    id: "actions",
+    cell: ({ row }) => {
+      const client = row.original
+
+      const handleDeleteClient = async (clientId: string) => {
+        if (!confirm("¿Estás seguro de que quieres eliminar este cliente?")) return
+
+        try {
+          const result = await deleteCompetitorClient(clientId)
+          if (result.success) {
+            toast({
+              title: "Éxito",
+              description: "Cliente eliminado correctamente",
+            })
+            setClients((prevClients) => prevClients.filter((client) => client.id !== clientId))
+          } else {
+            toast({
+              title: "Error",
+              description: result.error || "Error al eliminar cliente",
+              variant: "destructive",
+            })
+          }
+        } catch (error) {
+          console.error("Error deleting client:", error)
+          toast({
+            title: "Error",
+            description: "Error al eliminar cliente",
+            variant: "destructive",
+          })
+        }
+      }
+
+      return (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" className="h-8 w-8 p-0">
+              <span className="sr-only">Abrir menú</span>
+              <MoreHorizontal className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => alert("Editar - Por implementar")}>
+              <Edit className="mr-2 h-4 w-4" />
+              Editar
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => handleDeleteClient(client.id)} className="text-red-600">
+              <Trash2 className="mr-2 h-4 w-4" />
+              Eliminar
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )
+    },
+  },
+]
+
 export default function AdminClientesPage() {
   const [clients, setClients] = useState<CompetitorClient[]>([])
   const [zones, setZones] = useState<Zone[]>([])
@@ -357,132 +479,6 @@ export default function AdminClientesPage() {
       })
     }
   }, [filteredClients])
-
-  const handleDeleteClient = async (clientId: string) => {
-    if (!confirm("¿Estás seguro de que quieres eliminar este cliente?")) return
-
-    try {
-      const result = await deleteCompetitorClient(clientId)
-      if (result.success) {
-        toast({
-          title: "Éxito",
-          description: "Cliente eliminado correctamente",
-        })
-        // Recargar los datos después de eliminar
-        loadData()
-      } else {
-        toast({
-          title: "Error",
-          description: result.error || "Error al eliminar cliente",
-          variant: "destructive",
-        })
-      }
-    } catch (error) {
-      console.error("Error deleting client:", error)
-      toast({
-        title: "Error",
-        description: "Error al eliminar cliente",
-        variant: "destructive",
-      })
-    }
-  }
-
-  const columns = useMemo(
-    (): ColumnDef<CompetitorClient>[] => [
-      {
-        accessorKey: "ganadero_name",
-        header: "Ganadero",
-        cell: ({ row }) => {
-          return row.original.ganadero_name || row.original.client_name
-        },
-      },
-      {
-        accessorKey: "volumen_venta_estimado",
-        header: "Volumen de Venta Real",
-        cell: ({ row }) => {
-          return row.original.volumen_venta_estimado || "N/A"
-        },
-      },
-      {
-        accessorKey: "representative_profile.full_name",
-        header: "Capitán",
-        cell: ({ row }) => {
-          const captain = row.original.representative_profile
-          return captain ? <Badge variant="outline">{captain.full_name}</Badge> : "N/A"
-        },
-      },
-      {
-        accessorKey: "team.name",
-        header: "Equipo",
-        cell: ({ row }) => {
-          const team = row.original.team
-          return team ? <Badge variant="outline">{team.name}</Badge> : "N/A"
-        },
-      },
-      {
-        accessorKey: "team.zone.name",
-        header: "Zona",
-        cell: ({ row }) => {
-          const zone = row.original.team?.zone
-          return zone ? <Badge variant="secondary">{zone.name}</Badge> : "N/A"
-        },
-      },
-      {
-        accessorKey: "tipo_venta",
-        header: "Tipo Venta",
-      },
-      {
-        accessorKey: "area_finca_hectareas",
-        header: "Área (Ha)",
-        cell: ({ row }) => {
-          const area = row.original.area_finca_hectareas
-          return area ? `${area} ha` : "N/A"
-        },
-      },
-      {
-        accessorKey: "points",
-        header: "Puntos",
-        cell: ({ row }) => {
-          return <Badge variant="default">{row.original.points}</Badge>
-        },
-      },
-      {
-        accessorKey: "created_at",
-        header: "Fecha Registro",
-        cell: ({ row }) => {
-          return new Date(row.original.created_at).toLocaleDateString()
-        },
-      },
-      {
-        id: "actions",
-        cell: ({ row }) => {
-          const client = row.original
-
-          return (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="h-8 w-8 p-0">
-                  <span className="sr-only">Abrir menú</span>
-                  <MoreHorizontal className="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => alert("Editar - Por implementar")}>
-                  <Edit className="mr-2 h-4 w-4" />
-                  Editar
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleDeleteClient(client.id)} className="text-red-600">
-                  <Trash2 className="mr-2 h-4 w-4" />
-                  Eliminar
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )
-        },
-      },
-    ],
-    [],
-  )
 
   const table = useReactTable({
     data: filteredClients,
