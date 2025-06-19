@@ -142,18 +142,29 @@ export async function deleteFreeKickGoal(id: string) {
     const { error } = await adminSupabase.from("free_kick_goals").delete().eq("id", id)
     if (error) throw error
 
-    // 3. RESTAR los puntos del equipo
+    // 3. RESTAR los puntos del equipo de manera segura
     if (freeKick?.team_id && freeKick?.points) {
-      const { error: updateError } = await adminSupabase
+      // Obtener total_points actual
+      const { data: team, error: teamFetchError } = await adminSupabase
         .from("teams")
-        .update({
-          total_points: adminSupabase.raw(`GREATEST(total_points - ${freeKick.points}, 0)`),
-        })
+        .select("total_points")
         .eq("id", freeKick.team_id)
+        .single()
 
-      if (updateError) {
-        console.error("Error updating team points:", updateError)
-        // No lanzar error aquí para no fallar la eliminación
+      if (!teamFetchError && team) {
+        const newTotal = Math.max((team.total_points ?? 0) - freeKick.points, 0)
+
+        const { error: updateError } = await adminSupabase
+          .from("teams")
+          .update({ total_points: newTotal })
+          .eq("id", freeKick.team_id)
+
+        if (updateError) {
+          console.error("Error updating team points:", updateError)
+          // No lanzamos para no revertir la eliminación
+        }
+      } else if (teamFetchError) {
+        console.error("Error fetching team points:", teamFetchError)
       }
     }
 

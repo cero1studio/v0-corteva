@@ -67,35 +67,35 @@ export async function getAllCompetitorClients() {
     .from("competitor_clients")
     .select(
       `
+    id,
+    client_name,
+    competitor_name,
+    ganadero_name,
+    razon_social,
+    tipo_venta,
+    ubicacion_finca,
+    area_finca_hectareas,
+    producto_anterior,
+    producto_super_ganaderia,
+    volumen_venta_estimado,
+    contact_info,
+    notes,
+    nombre_almacen,
+    points,
+    created_at,
+    representative_profile:profiles!representative_id (
       id,
-      client_name,
-      competitor_name,
-      ganadero_name,
-      razon_social,
-      tipo_venta,
-      ubicacion_finca,
-      area_finca_hectareas,
-      producto_anterior,
-      producto_super_ganaderia,
-      volumen_venta_estimado,
-      contact_info,
-      notes,
-      nombre_almacen,
-      points,
-      created_at,
-      representative_profile:profiles!representative_id (
+      full_name
+    ),
+    team:teams!inner (
+      id,
+      name,
+      zone:zones!zone_id (
         id,
-        full_name
-      ),
-      team:teams!inner (
-        id,
-        name,
-        zone:zones!zone_id (
-          id,
-          name
-        )
+        name
       )
-    `,
+    )
+  `,
     )
     .order("created_at", { ascending: false })
 
@@ -137,16 +137,28 @@ export async function deleteCompetitorClient(clientId: string) {
 
     // 3. RESTAR los puntos del equipo
     if (client.team_id && client.points) {
-      const { error: updateError } = await supabase
+      // Obtener el total_points actual del equipo
+      const { data: teamData, error: teamError } = await supabase
         .from("teams")
-        .update({
-          total_points: supabase.raw(`GREATEST(COALESCE(total_points, 0) - ${client.points}, 0)`),
-        })
+        .select("total_points")
         .eq("id", client.team_id)
+        .single()
 
-      if (updateError) {
-        console.error("Error updating team points:", updateError)
-        // No lanzamos error aquí para no revertir la eliminación
+      if (!teamError && teamData) {
+        const currentPoints = teamData.total_points ?? 0
+        const newTotalPoints = Math.max(currentPoints - client.points, 0)
+
+        const { error: updateError } = await supabase
+          .from("teams")
+          .update({ total_points: newTotalPoints })
+          .eq("id", client.team_id)
+
+        if (updateError) {
+          console.error("Error updating team points:", updateError)
+          // No lanzamos error aquí para no revertir la eliminación
+        }
+      } else {
+        console.error("Error fetching team points:", teamError)
       }
     }
 
