@@ -129,9 +129,33 @@ export async function getFreeKickGoalsByTeam(teamId: string) {
 
 export async function deleteFreeKickGoal(id: string) {
   try {
-    const { error } = await adminSupabase.from("free_kick_goals").delete().eq("id", id)
+    // 1. Obtener datos del tiro libre ANTES de eliminar
+    const { data: freeKick, error: fetchError } = await adminSupabase
+      .from("free_kick_goals")
+      .select("points, team_id")
+      .eq("id", id)
+      .single()
 
+    if (fetchError) throw fetchError
+
+    // 2. Eliminar el tiro libre
+    const { error } = await adminSupabase.from("free_kick_goals").delete().eq("id", id)
     if (error) throw error
+
+    // 3. RESTAR los puntos del equipo
+    if (freeKick?.team_id && freeKick?.points) {
+      const { error: updateError } = await adminSupabase
+        .from("teams")
+        .update({
+          total_points: adminSupabase.raw(`GREATEST(total_points - ${freeKick.points}, 0)`),
+        })
+        .eq("id", freeKick.team_id)
+
+      if (updateError) {
+        console.error("Error updating team points:", updateError)
+        // No lanzar error aquí para no fallar la eliminación
+      }
+    }
 
     revalidatePath("/admin/tiros-libres")
     return { success: true }

@@ -111,11 +111,43 @@ export async function deleteCompetitorClient(clientId: string) {
   const supabase = createServerClient()
 
   try {
-    const { error } = await supabase.from("competitor_clients").delete().eq("id", clientId)
+    // 1. Obtener datos del cliente ANTES de eliminar
+    const { data: client, error: fetchError } = await supabase
+      .from("competitor_clients")
+      .select("points, team_id")
+      .eq("id", clientId)
+      .single()
 
-    if (error) {
-      console.error("Error al eliminar cliente de la competencia:", error)
-      return { success: false, error: error.message }
+    if (fetchError) {
+      console.error("Error fetching client before delete:", fetchError)
+      throw fetchError
+    }
+
+    if (!client) {
+      throw new Error("Cliente no encontrado")
+    }
+
+    // 2. Eliminar el cliente
+    const { error: deleteError } = await supabase.from("competitor_clients").delete().eq("id", clientId)
+
+    if (deleteError) {
+      console.error("Error deleting competitor client:", deleteError)
+      throw deleteError
+    }
+
+    // 3. RESTAR los puntos del equipo
+    if (client.team_id && client.points) {
+      const { error: updateError } = await supabase
+        .from("teams")
+        .update({
+          total_points: supabase.raw(`GREATEST(COALESCE(total_points, 0) - ${client.points}, 0)`),
+        })
+        .eq("id", client.team_id)
+
+      if (updateError) {
+        console.error("Error updating team points:", updateError)
+        // No lanzamos error aquí para no revertir la eliminación
+      }
     }
 
     revalidatePath("/admin/clientes")
