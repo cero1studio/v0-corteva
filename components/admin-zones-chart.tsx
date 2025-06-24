@@ -27,19 +27,22 @@ export function AdminZonesChart({ zonesData: propZonesData }: AdminZonesChartPro
       setLoading(true)
       setError(null)
 
-      // 1. Obtener zonas con sus equipos y puntos
-      const { data: zonesData, error: zonesError } = await supabase
-        .from("zones")
-        .select(`
-        id,
-        name,
-        teams(
-          id,
-          name,
-          total_points
-        )
-      `)
-        .order("name")
+      // Cambiar la query compleja:
+      // const { data: zonesData, error: zonesError } = await supabase
+      //   .from("zones")
+      //   .select(`
+      //   id,
+      //   name,
+      //   teams(
+      //     id,
+      //     name,
+      //     total_points
+      //   )
+      // `)
+      //   .order("name")
+
+      // Por consultas separadas más simples:
+      const { data: zonesData, error: zonesError } = await supabase.from("zones").select("id, name").order("name")
 
       if (zonesError) throw zonesError
 
@@ -49,7 +52,7 @@ export function AdminZonesChart({ zonesData: propZonesData }: AdminZonesChartPro
         return
       }
 
-      // 2. Obtener configuración de puntos para gol
+      // Obtener configuración de puntos para gol
       const { data: configData } = await supabase
         .from("system_config")
         .select("value")
@@ -58,21 +61,17 @@ export function AdminZonesChart({ zonesData: propZonesData }: AdminZonesChartPro
 
       const puntosParaGol = configData?.value ? Number(configData.value) : 100
 
-      // 3. Procesar datos por zona
-      let allTotalPoints = 0
-      let allTotalGoles = 0
+      // Obtener equipos para cada zona por separado
+      const zoneStatsData = []
+      for (const zone of zonesData) {
+        const { data: teamsData } = await supabase.from("teams").select("id, name, total_points").eq("zone_id", zone.id)
 
-      const zoneStatsData = zonesData.map((zone, index) => {
-        const teams = Array.isArray(zone.teams) ? zone.teams : []
+        const teams = teamsData || []
         const totalZonePoints = teams.reduce((sum, team) => sum + (team.total_points || 0), 0)
         const totalZoneGoals = Math.floor(totalZonePoints / puntosParaGol)
         const totalZoneKilos = Math.round((totalZonePoints / 10) * 10) / 10
 
-        // Acumular totales generales
-        allTotalPoints += totalZonePoints
-        allTotalGoles += totalZoneGoals
-
-        return {
+        zoneStatsData.push({
           id: zone.id,
           name: zone.name,
           teams: teams.length,
@@ -80,7 +79,16 @@ export function AdminZonesChart({ zonesData: propZonesData }: AdminZonesChartPro
           puntos: totalZonePoints,
           kilos: totalZoneKilos,
           fill: getRandomColor(zone.id),
-        }
+        })
+      }
+
+      // Calcular totales después del bucle
+      let allTotalPoints = 0
+      let allTotalGoles = 0
+
+      zoneStatsData.forEach((zone) => {
+        allTotalPoints += zone.puntos
+        allTotalGoles += zone.goles
       })
 
       // Ordenar por goles (mayor a menor)

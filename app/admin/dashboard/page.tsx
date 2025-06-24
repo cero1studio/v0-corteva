@@ -92,22 +92,36 @@ export default function AdminDashboardPage() {
     try {
       const { data, error } = await supabase
         .from("teams")
-        .select(`
-        id, 
-        name, 
-        total_points,
-        zones(name)
-      `)
+        .select("id, name, total_points, zone_id")
         .order("total_points", { ascending: false })
         .limit(5)
 
       if (error) throw error
 
+      // Obtener nombres de zonas por separado
+      let zonesMap: Record<string, string> = {}
+      if (data && data.length > 0) {
+        const zoneIds = [...new Set(data.map((team) => team.zone_id).filter(Boolean))]
+        if (zoneIds.length > 0) {
+          const { data: zonesData } = await supabase.from("zones").select("id, name").in("id", zoneIds)
+
+          if (zonesData) {
+            zonesMap = zonesData.reduce(
+              (acc, zone) => {
+                acc[zone.id] = zone.name
+                return acc
+              },
+              {} as Record<string, string>,
+            )
+          }
+        }
+      }
+
       const formattedTeams = (data || []).map((team) => ({
         id: team.id,
         name: team.name,
         goals: team.total_points || 0,
-        zone: team.zones?.name || "Sin zona",
+        zone: team.zone_id ? zonesMap[team.zone_id] || "Sin zona" : "Sin zona",
       }))
 
       setTopTeams(formattedTeams)
@@ -361,8 +375,8 @@ export default function AdminDashboardPage() {
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
             <Card className="col-span-4">
               <CardHeader>
-                <CardTitle>Evolución del Concurso</CardTitle>
-                <CardDescription>Goles acumulados por equipo y semana</CardDescription>
+                <CardTitle>Top 20 Equipos</CardTitle>
+                <CardDescription>Ranking de equipos por goles acumulados</CardDescription>
               </CardHeader>
               <CardContent className="pl-2">
                 <div className="h-[400px]">

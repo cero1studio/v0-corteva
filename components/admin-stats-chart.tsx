@@ -36,14 +36,22 @@ export function AdminStatsChart() {
       setError(null)
 
       // Consulta más simple y directa
+      // Cambiar esta query compleja:
+      // const { data: teamsData, error: teamsError } = await supabase
+      //   .from("teams")
+      //   .select(`
+      //   id,
+      //   name,
+      //   total_points,
+      //   zones(name)
+      // `)
+      //   .order("total_points", { ascending: false })
+      //   .limit(20)
+
+      // Por esta query más simple:
       const { data: teamsData, error: teamsError } = await supabase
         .from("teams")
-        .select(`
-        id, 
-        name, 
-        total_points,
-        zones(name)
-      `)
+        .select("id, name, total_points, zone_id")
         .order("total_points", { ascending: false })
         .limit(20)
 
@@ -53,6 +61,25 @@ export function AdminStatsChart() {
         setData([])
         setLoading(false)
         return
+      }
+
+      // Después de obtener los equipos, obtener las zonas
+      let zonesMap: Record<string, string> = {}
+      if (teamsData && teamsData.length > 0) {
+        const zoneIds = [...new Set(teamsData.map((team) => team.zone_id).filter(Boolean))]
+        if (zoneIds.length > 0) {
+          const { data: zonesData } = await supabase.from("zones").select("id, name").in("id", zoneIds)
+
+          if (zonesData) {
+            zonesMap = zonesData.reduce(
+              (acc, zone) => {
+                acc[zone.id] = zone.name
+                return acc
+              },
+              {} as Record<string, string>,
+            )
+          }
+        }
       }
 
       // Obtener configuración de puntos para gol
@@ -90,7 +117,7 @@ export function AdminStatsChart() {
           puntos: puntos,
           kilos: kilos,
           color: colors[index % colors.length],
-          zone: team.zones?.name || null,
+          zone: team.zone_id ? zonesMap[team.zone_id] || "Sin zona" : "Sin zona",
         }
       })
 
