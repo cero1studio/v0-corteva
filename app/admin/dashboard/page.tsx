@@ -458,7 +458,7 @@ export default function AdminDashboardPage() {
             <CardContent>
               <div className="h-[400px]">
                 {/* Pasar las top 2 zonas ordenadas por goles */}
-                <AdminZonesChart zonesData={zoneStats.sort((a, b) => b.total_goals - a.total_goals).slice(0, 2)} />
+                <AdminZonesChart />
               </div>
             </CardContent>
           </Card>
