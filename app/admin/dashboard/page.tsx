@@ -25,6 +25,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton"
 import { EmptyState } from "@/components/empty-state"
 import { useRouter } from "next/navigation"
+import { Badge } from "@/components/ui/badge"
 
 export default function AdminDashboardPage() {
   const router = useRouter()
@@ -352,8 +353,8 @@ export default function AdminDashboardPage() {
 
       <Tabs defaultValue="general" className="space-y-4">
         <TabsList>
-          <TabsTrigger value="general">Estadísticas Generales</TabsTrigger>
-          <TabsTrigger value="zonas">Rendimiento por Zonas</TabsTrigger>
+          <TabsTrigger value="general">Ranking General</TabsTrigger>
+          <TabsTrigger value="zonas">Zonas</TabsTrigger>
           <TabsTrigger value="productos">Ventas por Producto</TabsTrigger>
         </TabsList>
         <TabsContent value="general" className="space-y-4">
@@ -398,17 +399,20 @@ export default function AdminDashboardPage() {
                         <div key={team.id} className="space-y-2">
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2">
-                              {index < 3 && (
-                                <span
-                                  className={`flex items-center justify-center w-6 h-6 rounded-full text-white text-xs font-medium ${
-                                    index === 0 ? "bg-yellow-500" : index === 1 ? "bg-gray-400" : "bg-amber-700"
-                                  }`}
-                                >
-                                  {index + 1}
-                                </span>
-                              )}
+                              <Badge
+                                className={`mr-2 ${
+                                  index === 0
+                                    ? "bg-yellow-500 text-white"
+                                    : index === 1
+                                      ? "bg-gray-400 text-white"
+                                      : index === 2
+                                        ? "bg-amber-700 text-white"
+                                        : "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"
+                                }`}
+                              >
+                                {index + 1}
+                              </Badge>
                               <span className="font-medium">{team.name}</span>
-                              <span className="text-xs text-muted-foreground">({team.zone})</span>
                             </div>
                             <span className="font-bold text-green-600">{team.goals}</span>
                           </div>

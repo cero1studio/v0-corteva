@@ -15,6 +15,7 @@ type TeamData = {
   puntos: number
   kilos: number
   color: string
+  zone: string | null
 }
 
 export function AdminStatsChart() {
@@ -44,7 +45,7 @@ export function AdminStatsChart() {
         zones(name)
       `)
         .order("total_points", { ascending: false })
-        .limit(15)
+        .limit(20)
 
       if (teamsError) throw teamsError
 
@@ -89,6 +90,7 @@ export function AdminStatsChart() {
           puntos: puntos,
           kilos: kilos,
           color: colors[index % colors.length],
+          zone: team.zones?.name || null,
         }
       })
 
@@ -160,7 +162,10 @@ export function AdminStatsChart() {
               if (name === "goles") {
                 const teamData = data.find((d) => d.goles === value)
                 if (teamData) {
-                  return [`${teamData.goles} goles (${teamData.puntos} pts, ${teamData.kilos} kg)`, teamData.name]
+                  return [
+                    `${teamData.name} - ${teamData.goles} goles ${teamData.zone ? `(${teamData.zone})` : ""}`,
+                    "Equipo",
+                  ]
                 }
               }
               return [value, name]
@@ -175,7 +180,7 @@ export function AdminStatsChart() {
       </ResponsiveContainer>
 
       {/* Resumen de datos */}
-      <div className="mt-4 grid grid-cols-3 gap-4 text-center text-sm">
+      <div className="mt-4 grid grid-cols-2 gap-2 text-center text-sm">
         <div className="bg-yellow-50 p-2 rounded">
           <div className="font-semibold text-yellow-700">Total Goles</div>
           <div className="text-lg font-bold text-yellow-800">{data.reduce((sum, team) => sum + team.goles, 0)}</div>
@@ -184,12 +189,6 @@ export function AdminStatsChart() {
           <div className="font-semibold text-blue-700">Total Puntos</div>
           <div className="text-lg font-bold text-blue-800">
             {data.reduce((sum, team) => sum + team.puntos, 0).toLocaleString()}
-          </div>
-        </div>
-        <div className="bg-green-50 p-2 rounded">
-          <div className="font-semibold text-green-700">Total Kilos</div>
-          <div className="text-lg font-bold text-green-800">
-            {Math.round(data.reduce((sum, team) => sum + team.kilos, 0) * 10) / 10}
           </div>
         </div>
       </div>
