@@ -32,66 +32,80 @@ export function AdminStatsChart() {
 
   const fetchData = async () => {
     try {
+      console.log("🔄 AdminStatsChart: Iniciando carga de datos...")
       setLoading(true)
       setError(null)
 
-      // Consulta más simple y directa
-      // Cambiar esta query compleja:
-      // const { data: teamsData, error: teamsError } = await supabase
-      //   .from("teams")
-      //   .select(`
-      //   id,
-      //   name,
-      //   total_points,
-      //   zones(name)
-      // `)
-      //   .order("total_points", { ascending: false })
-      //   .limit(20)
-
-      // Por esta query más simple:
+      // Paso 1: Obtener equipos
+      console.log("📊 AdminStatsChart: Obteniendo equipos...")
       const { data: teamsData, error: teamsError } = await supabase
         .from("teams")
         .select("id, name, total_points, zone_id")
         .order("total_points", { ascending: false })
         .limit(20)
 
-      if (teamsError) throw teamsError
+      console.log("📊 AdminStatsChart: Respuesta de equipos:", { teamsData, teamsError })
+
+      if (teamsError) {
+        console.error("❌ AdminStatsChart: Error en query de equipos:", teamsError)
+        throw new Error(`Error al obtener equipos: ${teamsError.message}`)
+      }
 
       if (!teamsData || teamsData.length === 0) {
+        console.log("⚠️ AdminStatsChart: No se encontraron equipos")
         setData([])
         setLoading(false)
         return
       }
 
-      // Después de obtener los equipos, obtener las zonas
-      let zonesMap: Record<string, string> = {}
-      if (teamsData && teamsData.length > 0) {
-        const zoneIds = [...new Set(teamsData.map((team) => team.zone_id).filter(Boolean))]
-        if (zoneIds.length > 0) {
-          const { data: zonesData } = await supabase.from("zones").select("id, name").in("id", zoneIds)
+      console.log(`✅ AdminStatsChart: ${teamsData.length} equipos encontrados`)
 
-          if (zonesData) {
-            zonesMap = zonesData.reduce(
-              (acc, zone) => {
-                acc[zone.id] = zone.name
-                return acc
-              },
-              {} as Record<string, string>,
-            )
-          }
+      // Paso 2: Obtener zonas si hay equipos con zone_id
+      let zonesMap: Record<string, string> = {}
+      const zoneIds = [...new Set(teamsData.map((team) => team.zone_id).filter(Boolean))]
+
+      console.log("🗺️ AdminStatsChart: Zone IDs encontrados:", zoneIds)
+
+      if (zoneIds.length > 0) {
+        console.log("🗺️ AdminStatsChart: Obteniendo nombres de zonas...")
+        const { data: zonesData, error: zonesError } = await supabase.from("zones").select("id, name").in("id", zoneIds)
+
+        console.log("🗺️ AdminStatsChart: Respuesta de zonas:", { zonesData, zonesError })
+
+        if (zonesError) {
+          console.error("❌ AdminStatsChart: Error en query de zonas:", zonesError)
+          // No lanzar error, continuar sin nombres de zonas
+        } else if (zonesData) {
+          zonesMap = zonesData.reduce(
+            (acc, zone) => {
+              acc[zone.id] = zone.name
+              return acc
+            },
+            {} as Record<string, string>,
+          )
+          console.log("✅ AdminStatsChart: Mapa de zonas creado:", zonesMap)
         }
       }
 
-      // Obtener configuración de puntos para gol
-      const { data: configData } = await supabase
+      // Paso 3: Obtener configuración de puntos para gol
+      console.log("⚙️ AdminStatsChart: Obteniendo configuración de puntos...")
+      const { data: configData, error: configError } = await supabase
         .from("system_config")
         .select("value")
         .eq("key", "puntos_para_gol")
         .maybeSingle()
 
-      const puntosParaGol = configData?.value ? Number(configData.value) : 100
+      console.log("⚙️ AdminStatsChart: Respuesta de configuración:", { configData, configError })
 
-      // Colores para las barras
+      if (configError) {
+        console.error("❌ AdminStatsChart: Error en configuración:", configError)
+      }
+
+      const puntosParaGol = configData?.value ? Number(configData.value) : 100
+      console.log(`⚙️ AdminStatsChart: Puntos para gol: ${puntosParaGol}`)
+
+      // Paso 4: Formatear datos para el gráfico
+      console.log("🎨 AdminStatsChart: Formateando datos para gráfico...")
       const colors = [
         "#f59e0b",
         "#4ade80",
@@ -105,7 +119,6 @@ export function AdminStatsChart() {
         "#a855f7",
       ]
 
-      // Formatear datos para el gráfico
       const chartData: TeamData[] = teamsData.map((team, index) => {
         const puntos = team.total_points || 0
         const goles = Math.floor(puntos / puntosParaGol)
@@ -121,11 +134,15 @@ export function AdminStatsChart() {
         }
       })
 
+      console.log("✅ AdminStatsChart: Datos formateados:", chartData)
+      console.log(`📈 AdminStatsChart: Total goles: ${chartData.reduce((sum, team) => sum + team.goles, 0)}`)
+
       setData(chartData)
       setLoading(false)
+      console.log("🎉 AdminStatsChart: Carga completada exitosamente")
     } catch (err: any) {
-      console.error("Error al cargar datos del gráfico:", err)
-      setError(`Error al cargar datos: ${err.message || "Desconocido"}`)
+      console.error("💥 AdminStatsChart: Error crítico:", err)
+      setError(`Error detallado: ${err.message || "Error desconocido"}`)
       setLoading(false)
     }
   }
@@ -144,15 +161,26 @@ export function AdminStatsChart() {
 
   if (error) {
     return (
-      <EmptyState
-        icon={AlertCircle}
-        title="Error al cargar datos"
-        description={error}
-        actionLabel="Reintentar"
-        onClick={handleRetry}
-        className="h-[400px]"
-        iconClassName="bg-red-50"
-      />
+      <div className="h-[400px] flex flex-col items-center justify-center p-4">
+        <AlertCircle className="h-12 w-12 text-red-500 mb-4" />
+        <h3 className="text-lg font-semibold text-red-700 mb-2">Error al cargar gráfico</h3>
+        <p className="text-sm text-red-600 text-center mb-4">{error}</p>
+        <div className="flex gap-2">
+          <Button onClick={handleRetry} variant="outline" size="sm">
+            Reintentar
+          </Button>
+          <Button
+            onClick={() => {
+              console.log("🔍 AdminStatsChart: Abriendo consola para debug")
+              console.log("🔍 AdminStatsChart: Estado actual:", { loading, data, error })
+            }}
+            variant="ghost"
+            size="sm"
+          >
+            Debug en Consola
+          </Button>
+        </div>
+      </div>
     )
   }
 

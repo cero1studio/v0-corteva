@@ -24,52 +24,75 @@ export function AdminZonesChart({ zonesData: propZonesData }: AdminZonesChartPro
 
   const fetchData = useCallback(async () => {
     try {
+      console.log("🔄 AdminZonesChart: Iniciando carga de datos...")
       setLoading(true)
       setError(null)
 
-      // Cambiar la query compleja:
-      // const { data: zonesData, error: zonesError } = await supabase
-      //   .from("zones")
-      //   .select(`
-      //   id,
-      //   name,
-      //   teams(
-      //     id,
-      //     name,
-      //     total_points
-      //   )
-      // `)
-      //   .order("name")
-
-      // Por consultas separadas más simples:
+      // Paso 1: Obtener zonas
+      console.log("🗺️ AdminZonesChart: Obteniendo zonas...")
       const { data: zonesData, error: zonesError } = await supabase.from("zones").select("id, name").order("name")
 
-      if (zonesError) throw zonesError
+      console.log("🗺️ AdminZonesChart: Respuesta de zonas:", { zonesData, zonesError })
+
+      if (zonesError) {
+        console.error("❌ AdminZonesChart: Error en query de zonas:", zonesError)
+        throw new Error(`Error al obtener zonas: ${zonesError.message}`)
+      }
 
       if (!zonesData || zonesData.length === 0) {
+        console.log("⚠️ AdminZonesChart: No se encontraron zonas")
         setData([])
         setLoading(false)
         return
       }
 
-      // Obtener configuración de puntos para gol
-      const { data: configData } = await supabase
+      console.log(`✅ AdminZonesChart: ${zonesData.length} zonas encontradas`)
+
+      // Paso 2: Obtener configuración de puntos para gol
+      console.log("⚙️ AdminZonesChart: Obteniendo configuración...")
+      const { data: configData, error: configError } = await supabase
         .from("system_config")
         .select("value")
         .eq("key", "puntos_para_gol")
         .maybeSingle()
 
-      const puntosParaGol = configData?.value ? Number(configData.value) : 100
+      console.log("⚙️ AdminZonesChart: Respuesta de configuración:", { configData, configError })
 
-      // Obtener equipos para cada zona por separado
+      const puntosParaGol = configData?.value ? Number(configData.value) : 100
+      console.log(`⚙️ AdminZonesChart: Puntos para gol: ${puntosParaGol}`)
+
+      // Paso 3: Obtener equipos para cada zona
+      console.log("👥 AdminZonesChart: Obteniendo equipos por zona...")
       const zoneStatsData = []
-      for (const zone of zonesData) {
-        const { data: teamsData } = await supabase.from("teams").select("id, name, total_points").eq("zone_id", zone.id)
+
+      for (let i = 0; i < zonesData.length; i++) {
+        const zone = zonesData[i]
+        console.log(`👥 AdminZonesChart: Procesando zona ${i + 1}/${zonesData.length}: ${zone.name}`)
+
+        const { data: teamsData, error: teamsError } = await supabase
+          .from("teams")
+          .select("id, name, total_points")
+          .eq("zone_id", zone.id)
+
+        console.log(`👥 AdminZonesChart: Equipos en ${zone.name}:`, { teamsData, teamsError })
+
+        if (teamsError) {
+          console.error(`❌ AdminZonesChart: Error obteniendo equipos para zona ${zone.name}:`, teamsError)
+          // Continuar con la siguiente zona
+          continue
+        }
 
         const teams = teamsData || []
         const totalZonePoints = teams.reduce((sum, team) => sum + (team.total_points || 0), 0)
         const totalZoneGoals = Math.floor(totalZonePoints / puntosParaGol)
         const totalZoneKilos = Math.round((totalZonePoints / 10) * 10) / 10
+
+        console.log(`📊 AdminZonesChart: Estadísticas de ${zone.name}:`, {
+          equipos: teams.length,
+          puntos: totalZonePoints,
+          goles: totalZoneGoals,
+          kilos: totalZoneKilos,
+        })
 
         zoneStatsData.push({
           id: zone.id,
@@ -82,27 +105,33 @@ export function AdminZonesChart({ zonesData: propZonesData }: AdminZonesChartPro
         })
       }
 
-      // Calcular totales después del bucle
-      let allTotalPoints = 0
-      let allTotalGoles = 0
+      // Calcular totales
+      const allTotalPoints = zoneStatsData.reduce((sum, zone) => sum + zone.puntos, 0)
+      const allTotalGoles = zoneStatsData.reduce((sum, zone) => sum + zone.goles, 0)
 
-      zoneStatsData.forEach((zone) => {
-        allTotalPoints += zone.puntos
-        allTotalGoles += zone.goles
+      console.log("📈 AdminZonesChart: Totales calculados:", {
+        totalPuntos: allTotalPoints,
+        totalGoles: allTotalGoles,
+        totalKilos: Math.round((allTotalPoints / 10) * 10) / 10,
       })
 
       // Ordenar por goles (mayor a menor)
       zoneStatsData.sort((a, b) => b.goles - a.goles)
+      console.log(
+        "🏆 AdminZonesChart: Zonas ordenadas por goles:",
+        zoneStatsData.map((z) => `${z.name}: ${z.goles}`),
+      )
 
-      // Actualizar totales
+      // Actualizar estados
       setTotalGoles(allTotalGoles)
       setTotalPuntos(allTotalPoints)
       setTotalKilos(Math.round((allTotalPoints / 10) * 10) / 10)
-
       setData(zoneStatsData)
+
+      console.log("🎉 AdminZonesChart: Carga completada exitosamente")
     } catch (err: any) {
-      console.error("Error al cargar datos del gráfico de zonas:", err)
-      setError(`Error al cargar datos: ${err.message || "Desconocido"}`)
+      console.error("💥 AdminZonesChart: Error crítico:", err)
+      setError(`Error detallado: ${err.message || "Error desconocido"}`)
     } finally {
       setLoading(false)
     }
@@ -172,15 +201,26 @@ export function AdminZonesChart({ zonesData: propZonesData }: AdminZonesChartPro
 
   if (error) {
     return (
-      <EmptyState
-        icon={AlertCircle}
-        title="Error al cargar datos"
-        description={error}
-        actionLabel="Reintentar"
-        onClick={fetchData}
-        className="h-[400px]"
-        iconClassName="bg-red-50"
-      />
+      <div className="h-[400px] flex flex-col items-center justify-center p-4">
+        <AlertCircle className="h-12 w-12 text-red-500 mb-4" />
+        <h3 className="text-lg font-semibold text-red-700 mb-2">Error al cargar gráfico de zonas</h3>
+        <p className="text-sm text-red-600 text-center mb-4">{error}</p>
+        <div className="flex gap-2">
+          <Button onClick={fetchData} variant="outline" size="sm">
+            Reintentar
+          </Button>
+          <Button
+            onClick={() => {
+              console.log("🔍 AdminZonesChart: Abriendo consola para debug")
+              console.log("🔍 AdminZonesChart: Estado actual:", { loading, data, error, totalGoles, totalPuntos })
+            }}
+            variant="ghost"
+            size="sm"
+          >
+            Debug en Consola
+          </Button>
+        </div>
+      </div>
     )
   }
 
