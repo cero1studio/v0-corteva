@@ -27,106 +27,46 @@ export function AdminZonesChart({ zonesData: propZonesData }: AdminZonesChartPro
       setLoading(true)
       setError(null)
 
-      // 1. Obtener todos los datos necesarios en paralelo
-      const [
-        zonesResult,
-        teamsResult,
-        profilesResult,
-        salesResult,
-        clientsResult,
-        freeKicksResult,
-        puntosConfigResult,
-      ] = await Promise.all([
-        supabase.from("zones").select("id, name").order("name"),
-        supabase.from("teams").select("id, name, zone_id"),
-        supabase.from("profiles").select("id, team_id"),
-        supabase.from("sales").select("points, representative_id, team_id"),
-        supabase.from("competitor_clients").select("id, points, representative_id, team_id"),
-        supabase.from("free_kick_goals").select("points, team_id"),
-        supabase.from("system_config").select("value").eq("key", "puntos_para_gol").maybeSingle(),
-      ])
+      // 1. Obtener zonas con sus equipos y puntos
+      const { data: zonesData, error: zonesError } = await supabase
+        .from("zones")
+        .select(`
+        id,
+        name,
+        teams(
+          id,
+          name,
+          total_points
+        )
+      `)
+        .order("name")
 
-      // Manejar errores de las llamadas en paralelo
-      if (zonesResult.error) throw zonesResult.error
-      if (teamsResult.error) throw teamsResult.error
-      if (profilesResult.error) throw profilesResult.error
-      if (salesResult.error) throw salesResult.error
-      if (clientsResult.error) throw clientsResult.error
-      if (freeKicksResult.error) throw freeKicksResult.error
-      if (puntosConfigResult.error) throw puntosConfigResult.error
+      if (zonesError) throw zonesError
 
-      const zones = zonesResult.data || []
-      const teams = teamsResult.data || []
-      const profiles = profilesResult.data || []
-      const sales = salesResult.data || []
-      const clients = clientsResult.data || []
-      const freeKicks = freeKicksResult.data || []
-      const puntosParaGol = puntosConfigResult.data?.value ? Number(puntosConfigResult.data.value) : 100
-
-      if (zones.length === 0) {
+      if (!zonesData || zonesData.length === 0) {
         setData([])
         setLoading(false)
         return
       }
 
-      // Crear mapas para búsquedas eficientes
-      const profileTeamMap = new Map(profiles.map((p) => [p.id, p.team_id]))
-      const teamPointsMap = new Map<string, { sales: number; clients: number; freeKicks: number }>()
+      // 2. Obtener configuración de puntos para gol
+      const { data: configData } = await supabase
+        .from("system_config")
+        .select("value")
+        .eq("key", "puntos_para_gol")
+        .maybeSingle()
 
-      // Aggregate sales points per team
-      sales.forEach((s) => {
-        let teamId = s.team_id
-        if (!teamId && s.representative_id) {
-          teamId = profileTeamMap.get(s.representative_id) || null
-        }
-        if (teamId) {
-          const current = teamPointsMap.get(teamId) || { sales: 0, clients: 0, freeKicks: 0 }
-          current.sales += s.points || 0
-          teamPointsMap.set(teamId, current)
-        }
-      })
+      const puntosParaGol = configData?.value ? Number(configData.value) : 100
 
-      // Aggregate client points per team
-      clients.forEach((c) => {
-        let teamId = c.team_id
-        if (!teamId && c.representative_id) {
-          teamId = profileTeamMap.get(c.representative_id) || null
-        }
-        if (teamId) {
-          const current = teamPointsMap.get(teamId) || { sales: 0, clients: 0, freeKicks: 0 }
-          current.clients += c.points || 200
-          teamPointsMap.set(teamId, current)
-        }
-      })
-
-      // Aggregate free kick points per team
-      freeKicks.forEach((fk) => {
-        if (fk.team_id) {
-          const current = teamPointsMap.get(fk.team_id) || { sales: 0, clients: 0, freeKicks: 0 }
-          current.freeKicks += fk.points || 0
-          teamPointsMap.set(fk.team_id, current)
-        }
-      })
-
-      // Agregación de puntos por zona
+      // 3. Procesar datos por zona
       let allTotalPoints = 0
       let allTotalGoles = 0
 
-      const zoneStatsData = zones.map((zone) => {
-        let totalZonePoints = 0
-        let totalZoneTeamsCount = 0
-
-        const teamsInZone = teams.filter((t) => t.zone_id === zone.id)
-        totalZoneTeamsCount = teamsInZone.length
-
-        teamsInZone.forEach((team) => {
-          const teamAggregatedPoints = teamPointsMap.get(team.id) || { sales: 0, clients: 0, freeKicks: 0 }
-          const teamTotalPoints =
-            teamAggregatedPoints.sales + teamAggregatedPoints.clients + teamAggregatedPoints.freeKicks
-          totalZonePoints += teamTotalPoints
-        })
-
+      const zoneStatsData = zonesData.map((zone, index) => {
+        const teams = Array.isArray(zone.teams) ? zone.teams : []
+        const totalZonePoints = teams.reduce((sum, team) => sum + (team.total_points || 0), 0)
         const totalZoneGoals = Math.floor(totalZonePoints / puntosParaGol)
+        const totalZoneKilos = Math.round((totalZonePoints / 10) * 10) / 10
 
         // Acumular totales generales
         allTotalPoints += totalZonePoints
@@ -135,11 +75,11 @@ export function AdminZonesChart({ zonesData: propZonesData }: AdminZonesChartPro
         return {
           id: zone.id,
           name: zone.name,
-          teams: totalZoneTeamsCount,
+          teams: teams.length,
           goles: totalZoneGoals,
           puntos: totalZonePoints,
-          kilos: Math.floor(totalZonePoints / 10),
-          fill: getRandomColor(zone.id), // Color único para cada zona
+          kilos: totalZoneKilos,
+          fill: getRandomColor(zone.id),
         }
       })
 
@@ -149,7 +89,7 @@ export function AdminZonesChart({ zonesData: propZonesData }: AdminZonesChartPro
       // Actualizar totales
       setTotalGoles(allTotalGoles)
       setTotalPuntos(allTotalPoints)
-      setTotalKilos(Math.floor(allTotalPoints / 10))
+      setTotalKilos(Math.round((allTotalPoints / 10) * 10) / 10)
 
       setData(zoneStatsData)
     } catch (err: any) {
@@ -203,13 +143,21 @@ export function AdminZonesChart({ zonesData: propZonesData }: AdminZonesChartPro
     if (active && payload && payload.length) {
       const data = payload[0].payload
       return (
-        <div className="bg-white p-4 border rounded-md shadow-md">
-          <p className="font-bold text-lg">{data.name}</p>
-          <p className="text-sm text-gray-600">{data.teams} equipos</p>
-          <div className="mt-2">
-            <p className="font-medium">🏆 Goles: {data.goles}</p>
-            <p className="font-medium">📊 Puntos: {data.puntos.toLocaleString()}</p>
-            <p className="font-medium">⚖️ Kilos: {data.kilos.toLocaleString()}</p>
+        <div className="bg-white p-3 border rounded-lg shadow-lg">
+          <p className="font-bold text-base">{data.name}</p>
+          <div className="mt-1 space-y-1 text-sm">
+            <p>
+              🏆 <span className="font-medium">{data.goles} goles</span>
+            </p>
+            <p>
+              👥 <span className="font-medium">{data.teams} equipos</span>
+            </p>
+            <p>
+              📊 <span className="font-medium">{data.puntos.toLocaleString()} puntos</span>
+            </p>
+            <p>
+              ⚖️ <span className="font-medium">{data.kilos} kilos</span>
+            </p>
           </div>
         </div>
       )

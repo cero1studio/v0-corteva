@@ -52,8 +52,15 @@ export default function AdminDashboardPage() {
   // Función para obtener estadísticas básicas
   const fetchBasicStats = useCallback(async () => {
     try {
-      // Usar consultas más simples y secuenciales en lugar de paralelas
-      const [capitanes, directores, teams, zones, products, sales] = await Promise.all([
+      // Consultas más simples y con mejor manejo de errores
+      const [
+        { count: totalCapitanes },
+        { count: totalDirectores },
+        { count: totalTeams },
+        { count: totalZones },
+        { count: totalProducts },
+        { count: totalSales },
+      ] = await Promise.all([
         supabase.from("profiles").select("*", { count: "exact", head: true }).eq("role", "capitan"),
         supabase.from("profiles").select("*", { count: "exact", head: true }).eq("role", "director_tecnico"),
         supabase.from("teams").select("*", { count: "exact", head: true }),
@@ -63,12 +70,12 @@ export default function AdminDashboardPage() {
       ])
 
       setStats({
-        totalCapitanes: capitanes.count || 0,
-        totalDirectores: directores.count || 0,
-        totalTeams: teams.count || 0,
-        totalZones: zones.count || 0,
-        totalProducts: products.count || 0,
-        totalSales: sales.count || 0,
+        totalCapitanes: totalCapitanes || 0,
+        totalDirectores: totalDirectores || 0,
+        totalTeams: totalTeams || 0,
+        totalZones: totalZones || 0,
+        totalProducts: totalProducts || 0,
+        totalSales: totalSales || 0,
       })
 
       setDataLoaded((prev) => ({ ...prev, basicStats: true }))
@@ -82,38 +89,24 @@ export default function AdminDashboardPage() {
   // Función separada para cargar equipos destacados
   const fetchTopTeams = useCallback(async () => {
     try {
-      // Consulta simplificada para top teams
       const { data, error } = await supabase
         .from("teams")
-        .select("id, name, total_points, zone_id")
+        .select(`
+        id, 
+        name, 
+        total_points,
+        zones(name)
+      `)
         .order("total_points", { ascending: false })
         .limit(5)
 
       if (error) throw error
 
-      // Obtener nombres de zonas en una consulta separada
-      const zoneIds = data.map((team) => team.zone_id).filter(Boolean)
-      let zoneNames: Record<string, string> = {}
-
-      if (zoneIds.length > 0) {
-        const { data: zonesData } = await supabase.from("zones").select("id, name").in("id", zoneIds)
-
-        if (zonesData) {
-          zoneNames = zonesData.reduce(
-            (acc, zone) => {
-              acc[zone.id] = zone.name
-              return acc
-            },
-            {} as Record<string, string>,
-          )
-        }
-      }
-
-      const formattedTeams = data.map((team) => ({
+      const formattedTeams = (data || []).map((team) => ({
         id: team.id,
         name: team.name,
         goals: team.total_points || 0,
-        zone: team.zone_id ? zoneNames[team.zone_id] || "Sin zona" : "Sin zona",
+        zone: team.zones?.name || "Sin zona",
       }))
 
       setTopTeams(formattedTeams)

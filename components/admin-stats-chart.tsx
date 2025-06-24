@@ -34,15 +34,19 @@ export function AdminStatsChart() {
       setLoading(true)
       setError(null)
 
-      // 1. Obtener equipos con sus puntos totales
+      // Consulta más simple y directa
       const { data: teamsData, error: teamsError } = await supabase
         .from("teams")
-        .select("id, name, total_points")
+        .select(`
+        id, 
+        name, 
+        total_points,
+        zones(name)
+      `)
         .order("total_points", { ascending: false })
+        .limit(15)
 
-      if (teamsError) {
-        throw new Error(`Error al obtener equipos: ${teamsError.message}`)
-      }
+      if (teamsError) throw teamsError
 
       if (!teamsData || teamsData.length === 0) {
         setData([])
@@ -50,7 +54,7 @@ export function AdminStatsChart() {
         return
       }
 
-      // 2. Obtener configuración de puntos para gol
+      // Obtener configuración de puntos para gol
       const { data: configData } = await supabase
         .from("system_config")
         .select("value")
@@ -61,47 +65,34 @@ export function AdminStatsChart() {
 
       // Colores para las barras
       const colors = [
-        "#f59e0b", // Amarillo/Oro para el primero
-        "#4ade80", // Verde
-        "#3b82f6", // Azul
-        "#ec4899", // Rosa
-        "#8b5cf6", // Púrpura
-        "#14b8a6", // Teal
-        "#f43f5e", // Rojo
-        "#06b6d4", // Cyan
-        "#eab308", // Amarillo
-        "#a855f7", // Violeta
-        "#10b981", // Esmeralda
-        "#ef4444", // Rojo brillante
-        "#6366f1", // Índigo
-        "#84cc16", // Lima
-        "#d946ef", // Fucsia
-        "#0ea5e9", // Azul cielo
-        "#f97316", // Naranja
-        "#22c55e", // Verde brillante
-        "#8b5cf6", // Púrpura claro
-        "#06b6d4", // Cian
+        "#f59e0b",
+        "#4ade80",
+        "#3b82f6",
+        "#ec4899",
+        "#8b5cf6",
+        "#14b8a6",
+        "#f43f5e",
+        "#06b6d4",
+        "#eab308",
+        "#a855f7",
       ]
 
       // Formatear datos para el gráfico
       const chartData: TeamData[] = teamsData.map((team, index) => {
         const puntos = team.total_points || 0
         const goles = Math.floor(puntos / puntosParaGol)
-        const kilos = puntos / 10 // 1 gol = 100 puntos = 10 kilos, entonces kilos = puntos/10
+        const kilos = Math.round((puntos / 10) * 10) / 10
 
         return {
-          name: team.name,
+          name: team.name || "Sin nombre",
           goles: goles,
           puntos: puntos,
-          kilos: Math.round(kilos * 10) / 10, // Redondear a 1 decimal
+          kilos: kilos,
           color: colors[index % colors.length],
         }
       })
 
-      // Filtrar equipos con al menos 1 gol para el gráfico
-      const filteredData = chartData.filter((team) => team.goles > 0)
-
-      setData(filteredData.length > 0 ? filteredData : chartData.slice(0, 10)) // Mostrar top 10 si no hay goles
+      setData(chartData)
       setLoading(false)
     } catch (err: any) {
       console.error("Error al cargar datos del gráfico:", err)
@@ -169,20 +160,11 @@ export function AdminStatsChart() {
               if (name === "goles") {
                 const teamData = data.find((d) => d.goles === value)
                 if (teamData) {
-                  return [
-                    <div key="tooltip" className="text-left">
-                      <div className="font-semibold">{teamData.name}</div>
-                      <div>🏆 {teamData.goles} goles</div>
-                      <div>📊 {teamData.puntos} puntos</div>
-                      <div>⚖️ {teamData.kilos} kilos</div>
-                    </div>,
-                    "",
-                  ]
+                  return [`${teamData.goles} goles (${teamData.puntos} pts, ${teamData.kilos} kg)`, teamData.name]
                 }
               }
               return [value, name]
             }}
-            labelFormatter={() => ""}
           />
           <Bar dataKey="goles" name="goles" radius={[4, 4, 0, 0]}>
             {data.map((entry, index) => (
