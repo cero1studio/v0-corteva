@@ -441,9 +441,43 @@ export async function deleteSale(id: string) {
   const supabase = createServerSupabaseClient()
 
   try {
-    const { error } = await supabase.from("sales").delete().eq("id", id)
+    // 1. Obtener datos de la venta ANTES de eliminar
+    const { data: sale, error: fetchError } = await supabase
+      .from("sales")
+      .select("points, team_id")
+      .eq("id", id)
+      .single()
 
-    if (error) throw error
+    if (fetchError) {
+      console.error("Error fetching sale before delete:", fetchError)
+      throw fetchError
+    }
+
+    if (!sale) {
+      throw new Error("Venta no encontrada")
+    }
+
+    // 2. Eliminar la venta
+    const { error: deleteError } = await supabase.from("sales").delete().eq("id", id)
+    if (deleteError) {
+      console.error("Error deleting sale:", deleteError)
+      throw deleteError
+    }
+
+    // 3. RESTAR los puntos del equipo
+    if (sale.team_id && sale.points) {
+      const { error: updateError } = await supabase
+        .from("teams")
+        .update({
+          total_points: supabase.raw(`GREATEST(COALESCE(total_points, 0) - ${sale.points}, 0)`),
+        })
+        .eq("id", sale.team_id)
+
+      if (updateError) {
+        console.error("Error updating team points:", updateError)
+        // No lanzamos error aquí para no revertir la eliminación
+      }
+    }
 
     revalidatePath("/admin/ventas")
     revalidatePath("/capitan/ventas")
