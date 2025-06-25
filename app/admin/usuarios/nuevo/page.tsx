@@ -41,15 +41,10 @@ export default function NuevoUsuario() {
 
     const loadInitialData = async () => {
       try {
-        // Resetear estado inmediatamente
-        setLoadingData(true)
+        // Reset completo del estado al inicio
         setZones([])
         setDistributors([])
         setTeams([])
-
-        console.log("Iniciando carga de datos para nuevo usuario...")
-
-        // Reset form data
         setFormData({
           email: "",
           password: "",
@@ -59,6 +54,9 @@ export default function NuevoUsuario() {
           distributor_id: "",
           team_id: "",
         })
+        setLoadingData(true)
+
+        console.log("Iniciando carga de datos para nuevo usuario...")
 
         // Timeout de seguridad
         timeoutId = setTimeout(() => {
@@ -258,7 +256,7 @@ export default function NuevoUsuario() {
   }
 
   return (
-    <div className="space-y-6">
+    <div key={`new-user-${Date.now()}`} className="space-y-6">
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="sm" asChild>
           <Link href="/admin/usuarios">

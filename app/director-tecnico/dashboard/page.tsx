@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Trophy, Flag, User, Package, Users, TrendingUp, Zap, Target } from "lucide-react"
+import { Trophy, Flag, User, Package, Users, Zap, Target, RefreshCw } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
@@ -22,6 +22,7 @@ const PUNTOS_POR_GOL = 100
 function DirectorTecnicoDashboardContent() {
   const [user, setUser] = useState<any>(null)
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
   const router = useRouter()
   const { toast } = useToast()
   const [userData, setUserData] = useState<any>(null)
@@ -30,91 +31,109 @@ function DirectorTecnicoDashboardContent() {
   const [teamsData, setTeamsData] = useState<any[]>([])
   const [freeKickData, setFreeKickData] = useState<any[]>([])
   const [zoneRanking, setZoneRanking] = useState<any[]>([])
-  const [nationalRanking, setNationalRanking] = useState<any[]>([])
   const [zoneData, setZoneData] = useState<any>(null)
   const [puntosParaGol, setPuntosParaGol] = useState(PUNTOS_POR_GOL)
-  const [systemConfig, setSystemConfig] = useState<any>(null)
   const [distributorData, setDistributorData] = useState<any>(null)
   const [retoActual, setRetoActual] = useState<string>("")
   const [retoActivo, setRetoActivo] = useState(false)
 
   useEffect(() => {
-    let isMounted = true
-
-    const checkUserAndLoadData = async () => {
-      if (!isMounted) return
-      try {
-        setLoading(true)
-
-        // Obtener el usuario actual
-        const {
-          data: { user: authUser },
-        } = await supabase.auth.getUser()
-
-        if (!authUser) {
-          router.push("/login")
-          return
-        }
-
-        // Obtener el perfil del usuario con información detallada incluyendo el distribuidor
-        const { data: profileData, error: profileError } = await supabase
-          .from("profiles")
-          .select(`
-           *,
-           zones:zone_id(*),
-           teams:team_id(*, distributors:distributor_id(*))
-         `)
-          .eq("id", authUser.id)
-          .single()
-
-        if (profileError) throw profileError
-
-        setUser(profileData)
-        setUserData(profileData)
-
-        // Guardar datos de zona del perfil del usuario
-        if (profileData.zones) {
-          setZoneData(profileData.zones)
-        }
-
-        // Guardar datos del distribuidor del equipo del director técnico
-        if (profileData.teams?.distributors) {
-          setDistributorData(profileData.teams.distributors)
-        }
-
-        // Cargar datos de la zona
-        if (profileData.zone_id) {
-          await loadZoneData(profileData.zone_id)
-        }
-      } catch (error: any) {
-        console.error("Error al verificar usuario:", error)
-        toast({
-          title: "Error",
-          description: error?.message || "No se pudo cargar la información del usuario",
-          variant: "destructive",
-        })
-      } finally {
-        setLoading(false)
-      }
-    }
-
     checkUserAndLoadData()
-
-    return () => {
-      isMounted = false
-    }
   }, [])
+
+  const checkUserAndLoadData = async () => {
+    try {
+      setLoading(true)
+
+      // Obtener el usuario actual
+      const {
+        data: { user: authUser },
+      } = await supabase.auth.getUser()
+
+      if (!authUser) {
+        router.push("/login")
+        return
+      }
+
+      console.log("Director Técnico - Usuario autenticado:", authUser.id)
+
+      // Obtener el perfil del usuario con información detallada
+      const { data: profileData, error: profileError } = await supabase
+        .from("profiles")
+        .select(`
+          *,
+          zones:zone_id(*),
+          teams:team_id(*, distributors:distributor_id(*))
+        `)
+        .eq("id", authUser.id)
+        .single()
+
+      if (profileError) {
+        console.error("Error al obtener perfil:", profileError)
+        throw profileError
+      }
+
+      console.log("Director Técnico - Perfil obtenido:", profileData)
+
+      setUser(profileData)
+      setUserData(profileData)
+
+      // Guardar datos de zona del perfil del usuario
+      if (profileData.zones) {
+        setZoneData(profileData.zones)
+        console.log("Director Técnico - Zona asignada:", profileData.zones)
+      }
+
+      // Guardar datos del distribuidor del equipo del director técnico
+      if (profileData.teams?.distributors) {
+        setDistributorData(profileData.teams.distributors)
+      }
+
+      // Cargar configuración del sistema
+      await loadSystemConfig()
+
+      // Cargar datos de la zona
+      if (profileData.zone_id) {
+        console.log("Director Técnico - Cargando datos de zona:", profileData.zone_id)
+        await loadZoneData(profileData.zone_id)
+      } else {
+        console.warn("Director Técnico - No tiene zona asignada")
+      }
+    } catch (error: any) {
+      console.error("Error al verificar usuario:", error)
+      toast({
+        title: "Error",
+        description: error?.message || "No se pudo cargar la información del usuario",
+        variant: "destructive",
+      })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleRefresh = async () => {
+    setRefreshing(true)
+    await checkUserAndLoadData()
+    setRefreshing(false)
+    toast({
+      title: "Actualizado",
+      description: "Los datos han sido actualizados correctamente",
+    })
+  }
 
   async function loadSystemConfig() {
     try {
+      console.log("Director Técnico - Cargando configuración del sistema...")
+
+      // Cargar configuración de puntos para gol
       const { data: configData, error: configError } = await supabase
         .from("system_config")
         .select("*")
         .eq("key", "puntos_para_gol")
-        .single()
+        .maybeSingle()
 
       if (!configError && configData) {
-        setSystemConfig(configData)
+        console.log("Director Técnico - Configuración puntos para gol:", configData)
         setPuntosParaGol(Number(configData.value) || PUNTOS_POR_GOL)
       }
 
@@ -123,7 +142,7 @@ function DirectorTecnicoDashboardContent() {
         .from("system_config")
         .select("*")
         .eq("key", "reto_actual")
-        .single()
+        .maybeSingle()
 
       if (!retoError && retoData && retoData.value) {
         setRetoActual(retoData.value)
@@ -134,7 +153,7 @@ function DirectorTecnicoDashboardContent() {
         .from("system_config")
         .select("*")
         .eq("key", "reto_activo")
-        .single()
+        .maybeSingle()
 
       if (!activoError && activoData) {
         setRetoActivo(activoData.value === "true" || activoData.value === true)
@@ -146,56 +165,201 @@ function DirectorTecnicoDashboardContent() {
 
   async function loadZoneData(zoneId: string) {
     try {
-      if (!zoneId) return
+      if (!zoneId) {
+        console.warn("Director Técnico - No se proporcionó zoneId")
+        return
+      }
 
-      console.log("Cargando datos de la zona (Director Técnico):", zoneId)
+      console.log("Director Técnico - Iniciando carga de datos para zona:", zoneId)
 
-      // Simplificar consultas - hacer secuencialmente las más pesadas
-      const teamsResult = await supabase
+      // 1. Obtener equipos de la zona
+      const { data: teams, error: teamsError } = await supabase
         .from("teams")
         .select(`
-  id,
-  name,
-  distributor_id,
-  distributors!left(id, name, logo_url)
-`)
+          id,
+          name,
+          zone_id,
+          distributor_id,
+          distributors!left(id, name, logo_url)
+        `)
         .eq("zone_id", zoneId)
 
-      if (teamsResult.error) throw teamsResult.error
+      if (teamsError) {
+        console.error("Director Técnico - Error al obtener equipos:", teamsError)
+        throw teamsError
+      }
 
-      const teams = teamsResult.data || []
-      const teamIds = teams.map((t) => t.id)
+      console.log("Director Técnico - Equipos encontrados:", teams?.length || 0, teams)
 
-      // Solo continuar si hay equipos
-      if (teamIds.length === 0) {
+      if (!teams || teams.length === 0) {
+        console.log("Director Técnico - No hay equipos en esta zona")
         setTeamsData([])
         setSalesData([])
         setClientsData([])
         setFreeKickData([])
+        setZoneRanking([])
         return
       }
 
-      // Cargar datos básicos en paralelo (más simple)
-      const [salesResult, clientsResult, freeKicksResult] = await Promise.all([
-        supabase.from("sales").select("id, points, quantity, created_at, product_id, representative_id").limit(100),
-        supabase.from("competitor_clients").select("id, ganadero_name, created_at, representative_id").limit(100),
-        supabase.from("free_kick_goals").select("id, points, reason, created_at, team_id").in("team_id", teamIds),
+      const teamIds = teams.map((t) => t.id)
+      console.log("Director Técnico - IDs de equipos:", teamIds)
+
+      // 2. Obtener todos los miembros de los equipos de la zona
+      const { data: allMembers, error: membersError } = await supabase
+        .from("profiles")
+        .select("id, team_id, full_name")
+        .in("team_id", teamIds)
+
+      if (membersError) {
+        console.error("Director Técnico - Error al obtener miembros:", membersError)
+      }
+
+      const memberIds = allMembers?.map((m) => m.id) || []
+      console.log("Director Técnico - Miembros encontrados:", allMembers?.length || 0)
+
+      // 3. Cargar datos en paralelo
+      const [salesResult, clientsResult, freeKicksResult] = await Promise.allSettled([
+        // Ventas: buscar por representative_id (miembros) Y por team_id (equipos)
+        Promise.all([
+          memberIds.length > 0
+            ? supabase
+                .from("sales")
+                .select(`
+                  id, points, quantity, created_at, product_id, representative_id, team_id,
+                  products(name, image_url),
+                  profiles(full_name, team_id)
+                `)
+                .in("representative_id", memberIds)
+            : Promise.resolve({ data: [], error: null }),
+          supabase
+            .from("sales")
+            .select(`
+              id, points, quantity, created_at, product_id, representative_id, team_id,
+              products(name, image_url),
+              profiles(full_name, team_id)
+            `)
+            .in("team_id", teamIds),
+        ]).then(([salesByRep, salesByTeam]) => {
+          const allSales = [...(salesByRep.data || []), ...(salesByTeam.data || [])]
+          // Eliminar duplicados por ID
+          const uniqueSales = allSales.filter((sale, index, self) => index === self.findIndex((s) => s.id === sale.id))
+          return { data: uniqueSales, error: null }
+        }),
+
+        // Clientes: buscar por representative_id (miembros) Y por team_id (equipos)
+        Promise.all([
+          memberIds.length > 0
+            ? supabase
+                .from("competitor_clients")
+                .select(`
+                  id, ganadero_name, client_name, created_at, representative_id, team_id,
+                  profiles(full_name, team_id)
+                `)
+                .in("representative_id", memberIds)
+            : Promise.resolve({ data: [], error: null }),
+          supabase
+            .from("competitor_clients")
+            .select(`
+              id, ganadero_name, client_name, created_at, representative_id, team_id,
+              profiles(full_name, team_id)
+            `)
+            .in("team_id", teamIds),
+        ]).then(([clientsByRep, clientsByTeam]) => {
+          const allClients = [...(clientsByRep.data || []), ...(clientsByTeam.data || [])]
+          // Eliminar duplicados por ID
+          const uniqueClients = allClients.filter(
+            (client, index, self) => index === self.findIndex((c) => c.id === client.id),
+          )
+          return { data: uniqueClients, error: null }
+        }),
+
+        // Tiros libres: buscar por team_id
+        supabase
+          .from("free_kick_goals")
+          .select(`
+            id, points, reason, created_at, team_id,
+            teams(name)
+          `)
+          .in("team_id", teamIds),
       ])
 
-      // Procesar datos de forma más simple
-      setSalesData(salesResult.data || [])
-      setClientsData(clientsResult.data || [])
-      setFreeKickData(freeKicksResult.data || [])
-      setTeamsData(
-        teams.map((team) => ({
+      // Procesar resultados
+      const salesData = salesResult.status === "fulfilled" ? salesResult.value.data || [] : []
+      const clientsData = clientsResult.status === "fulfilled" ? clientsResult.value.data || [] : []
+      const freeKicksData = freeKicksResult.status === "fulfilled" ? freeKicksResult.value.data || [] : []
+
+      console.log("Director Técnico - Datos cargados:")
+      console.log("- Ventas:", salesData.length)
+      console.log("- Clientes:", clientsData.length)
+      console.log("- Tiros libres:", freeKicksData.length)
+
+      // 4. Calcular estadísticas por equipo y crear ranking
+      const teamsWithStats = teams.map((team) => {
+        // Ventas del equipo
+        const teamSales = salesData.filter(
+          (sale) => sale.team_id === team.id || (sale.profiles && sale.profiles.team_id === team.id),
+        )
+        const salesPoints = teamSales.reduce((sum, sale) => sum + (sale.points || 0), 0)
+
+        // Clientes del equipo
+        const teamClients = clientsData.filter(
+          (client) => client.team_id === team.id || (client.profiles && client.profiles.team_id === team.id),
+        )
+        const clientsPoints = teamClients.length * 200 // 200 puntos por cliente
+
+        // Tiros libres del equipo
+        const teamFreeKicks = freeKicksData.filter((fk) => fk.team_id === team.id)
+        const freeKickPoints = teamFreeKicks.reduce((sum, fk) => sum + (fk.points || 0), 0)
+
+        // Total
+        const totalPoints = salesPoints + clientsPoints + freeKickPoints
+        const goals = Math.floor(totalPoints / puntosParaGol)
+
+        console.log(`Director Técnico - Estadísticas ${team.name}:`)
+        console.log(`  - Ventas: ${teamSales.length} (${salesPoints} pts)`)
+        console.log(`  - Clientes: ${teamClients.length} (${clientsPoints} pts)`)
+        console.log(`  - Tiros libres: ${teamFreeKicks.length} (${freeKickPoints} pts)`)
+        console.log(`  - Total: ${totalPoints} pts, ${goals} goles`)
+
+        return {
           ...team,
-          distributor_name: team.distributors?.name || "Sin distribuidor", // Agregar esta línea
-          calculated_total_points: 0, // Calcular después si es necesario
-          calculated_total_goals: 0,
-        })),
-      )
+          distributor_name: team.distributors?.name || "Sin distribuidor",
+          sales_count: teamSales.length,
+          clients_count: teamClients.length,
+          free_kick_count: teamFreeKicks.length,
+          calculated_total_points: totalPoints,
+          calculated_total_goals: goals,
+        }
+      })
+
+      // Crear ranking ordenado por puntos
+      const ranking = teamsWithStats
+        .sort((a, b) => b.calculated_total_points - a.calculated_total_points)
+        .map((team, index) => ({
+          position: index + 1,
+          team_id: team.id,
+          team_name: team.name,
+          distributor_name: team.distributor_name,
+          goals: team.calculated_total_goals,
+          total_points: team.calculated_total_points,
+        }))
+
+      // Actualizar estados
+      setTeamsData(teamsWithStats)
+      setSalesData(salesData)
+      setClientsData(clientsData)
+      setFreeKickData(freeKicksData)
+      setZoneRanking(ranking)
+
+      console.log("Director Técnico - Datos actualizados en estado")
+      console.log("Director Técnico - Ranking:", ranking)
     } catch (error: any) {
-      console.error("Error al cargar datos de la zona:", error)
+      console.error("Director Técnico - Error al cargar datos de la zona:", error)
+      toast({
+        title: "Error",
+        description: "No se pudieron cargar los datos de la zona",
+        variant: "destructive",
+      })
     }
   }
 
@@ -262,6 +426,10 @@ function DirectorTecnicoDashboardContent() {
             </div>
           </div>
         </div>
+        <Button onClick={handleRefresh} disabled={refreshing} variant="outline">
+          <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? "animate-spin" : ""}`} />
+          Actualizar
+        </Button>
       </div>
 
       {/* Tiro libre sin arquero - Solo mostrar si está activo */}
@@ -388,7 +556,7 @@ function DirectorTecnicoDashboardContent() {
         </TabsList>
 
         <TabsContent value="ranking" className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid gap-4 md:grid-cols-1">
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -412,48 +580,6 @@ function DirectorTecnicoDashboardContent() {
                           <div>
                             <div className="font-medium text-sm">{team.team_name}</div>
                             <div className="text-xs text-muted-foreground">{team.distributor_name}</div>
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <div className="font-medium text-green-600 text-sm">{team.goals} goles</div>
-                          <div className="text-xs text-muted-foreground">{team.total_points.toLocaleString()} pts</div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <EmptyState
-                    icon="trophy"
-                    title="No hay ranking disponible"
-                    description="Cuando los equipos acumulen puntos, aparecerá el ranking"
-                  />
-                )}
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <TrendingUp className="h-5 w-5 text-blue-500" />
-                  Ranking Nacional (Top 5)
-                </CardTitle>
-                <CardDescription>Los mejores equipos a nivel nacional</CardDescription>
-              </CardHeader>
-              <CardContent>
-                {nationalRanking.length > 0 ? (
-                  <div className="space-y-3">
-                    {nationalRanking.slice(0, 5).map((team) => (
-                      <div key={team.team_id} className="flex justify-between items-center">
-                        <div className="flex items-center gap-3">
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-medium text-gray-500">#{team.position}</span>
-                            {team.position === 1 && <span className="text-lg">🥇</span>}
-                            {team.position === 2 && <span className="text-lg">🥈</span>}
-                            {team.position === 3 && <span className="text-lg">🥉</span>}
-                          </div>
-                          <div>
-                            <div className="font-medium text-sm">{team.team_name}</div>
-                            <div className="text-xs text-muted-foreground">{team.zone_name}</div>
                           </div>
                         </div>
                         <div className="text-right">
@@ -497,7 +623,7 @@ function DirectorTecnicoDashboardContent() {
                       <CardTitle className="text-lg">{team.name}</CardTitle>
                       <CardDescription>
                         <Badge variant="outline" className="mt-1">
-                          {team.distributors?.name || "Sin distribuidor"}
+                          {team.distributor_name}
                         </Badge>
                       </CardDescription>
                     </div>
@@ -587,7 +713,7 @@ function DirectorTecnicoDashboardContent() {
                           <div>
                             <div className="font-medium">{sale.products?.name || "Producto"}</div>
                             <div className="text-sm text-muted-foreground">
-                              {sale.representative_name} - {sale.team_name}
+                              {sale.profiles?.full_name || "Representante"}
                             </div>
                             <div className="text-xs text-muted-foreground">
                               {new Date(sale.created_at).toLocaleDateString()}
@@ -630,14 +756,14 @@ function DirectorTecnicoDashboardContent() {
                       <div>
                         <div className="font-medium">{client.ganadero_name || client.client_name || "Cliente"}</div>
                         <div className="text-sm text-muted-foreground">
-                          Registrado por: {client.representative_name} - {client.team_name}
+                          Registrado por: {client.profiles?.full_name || "Representante"}
                         </div>
                         <div className="text-xs text-muted-foreground">
                           {new Date(client.created_at).toLocaleDateString()}
                         </div>
                       </div>
                       <div className="text-right">
-                        <Badge variant="outline">{client.producto_anterior || "Competidor no especificado"}</Badge>
+                        <Badge variant="outline">+200 puntos</Badge>
                       </div>
                     </div>
                   ))}
@@ -668,7 +794,7 @@ function DirectorTecnicoDashboardContent() {
                   {freeKickData.slice(0, 8).map((freeKick) => (
                     <div key={freeKick.id} className="flex justify-between items-center border-b pb-2">
                       <div>
-                        <div className="font-medium">{freeKick.team_name}</div>
+                        <div className="font-medium">{freeKick.teams?.name || "Equipo"}</div>
                         <div className="text-sm text-muted-foreground">{freeKick.reason}</div>
                         <div className="text-xs text-muted-foreground">
                           {new Date(freeKick.created_at).toLocaleDateString()}
@@ -700,7 +826,7 @@ function DirectorTecnicoDashboardContent() {
 
 export default function DirectorTecnicoDashboard() {
   return (
-    <AuthGuard allowedRoles={["Director Tecnico"]}>
+    <AuthGuard allowedRoles={["Director Tecnico", "arbitro"]}>
       <DirectorTecnicoDashboardContent />
     </AuthGuard>
   )

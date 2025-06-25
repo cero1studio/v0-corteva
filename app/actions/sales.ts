@@ -447,6 +447,13 @@ export async function deleteSale(id: string) {
 
     revalidatePath("/admin/ventas")
     revalidatePath("/capitan/ventas")
+    revalidatePath("/admin/ranking")
+    revalidatePath("/admin/dashboard")
+    revalidatePath("/capitan/dashboard")
+    revalidatePath("/capitan/ranking")
+    revalidatePath("/director-tecnico/ranking")
+    revalidatePath("/ranking")
+    revalidatePath("/ranking-publico")
     return { success: true }
   } catch (error: any) {
     console.error("Error deleting sale:", error)

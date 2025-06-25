@@ -134,6 +134,13 @@ export async function deleteFreeKickGoal(id: string) {
     if (error) throw error
 
     revalidatePath("/admin/tiros-libres")
+    revalidatePath("/admin/ranking")
+    revalidatePath("/admin/dashboard")
+    revalidatePath("/capitan/dashboard")
+    revalidatePath("/capitan/ranking")
+    revalidatePath("/director-tecnico/ranking")
+    revalidatePath("/ranking")
+    revalidatePath("/ranking-publico")
     return { success: true }
   } catch (error: any) {
     console.error("Error deleting free kick goal:", error)

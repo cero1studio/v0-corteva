@@ -18,8 +18,6 @@ import {
   Download,
   AlertCircle,
   ShoppingBag,
-  Award,
-  MapPin,
   RefreshCw,
 } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -37,17 +35,26 @@ export default function AdminDashboardPage() {
     totalProducts: 0,
     totalSales: 0,
   })
-  const [topTeams, setTopTeams] = useState<any[]>([])
   const [zoneStats, setZoneStats] = useState<any[]>([])
   const [productStats, setProductStats] = useState<any[]>([])
   const [error, setError] = useState<string | null>(null)
   const [retryCount, setRetryCount] = useState(0)
   const [dataLoaded, setDataLoaded] = useState({
     basicStats: false,
-    topTeams: false,
     zoneStats: false,
     productStats: false,
   })
+
+  // --- helper to fetch dynamic ranking from the API route ---
+  async function fetchRanking(zoneId?: string) {
+    const url = zoneId ? `/api/ranking-list?zoneId=${zoneId}` : "/api/ranking-list"
+    const res = await fetch(url)
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    const json = await res.json()
+    // the route returns { success, data }
+    if (!json.success) throw new Error("Ranking API error")
+    return json.data as any[]
+  }
 
   // Función para obtener estadísticas básicas
   const fetchBasicStats = useCallback(async () => {
@@ -79,79 +86,22 @@ export default function AdminDashboardPage() {
     }
   }, [])
 
-  // Función separada para cargar equipos destacados
-  const fetchTopTeams = useCallback(async () => {
-    try {
-      // Consulta simplificada para top teams
-      const { data, error } = await supabase
-        .from("teams")
-        .select("id, name, total_points, zone_id")
-        .order("total_points", { ascending: false })
-        .limit(5)
-
-      if (error) throw error
-
-      // Obtener nombres de zonas en una consulta separada
-      const zoneIds = data.map((team) => team.zone_id).filter(Boolean)
-      let zoneNames: Record<string, string> = {}
-
-      if (zoneIds.length > 0) {
-        const { data: zonesData } = await supabase.from("zones").select("id, name").in("id", zoneIds)
-
-        if (zonesData) {
-          zoneNames = zonesData.reduce(
-            (acc, zone) => {
-              acc[zone.id] = zone.name
-              return acc
-            },
-            {} as Record<string, string>,
-          )
-        }
-      }
-
-      const formattedTeams = data.map((team) => ({
-        id: team.id,
-        name: team.name,
-        goals: team.total_points || 0,
-        zone: team.zone_id ? zoneNames[team.zone_id] || "Sin zona" : "Sin zona",
-      }))
-
-      setTopTeams(formattedTeams)
-      setDataLoaded((prev) => ({ ...prev, topTeams: true }))
-      return true
-    } catch (error) {
-      console.error("Error al cargar equipos destacados:", error)
-      return false
-    }
-  }, [])
-
-  // Función separada para cargar estadísticas de zonas
+  // Función separada para cargar estadísticas de zonas (simplificada)
   const fetchZoneStats = useCallback(async () => {
     try {
-      // Consulta simplificada para zonas
-      const { data, error } = await supabase.from("zones").select("id, name")
+      // Solo obtener conteo básico de zonas sin cálculos complejos
+      const { data: zones, error: zonesError } = await supabase.from("zones").select("id, name")
+      if (zonesError) throw zonesError
 
-      if (error) throw error
+      // Crear estadísticas básicas sin llamar al ranking por zona
+      const basicZoneStats = zones.map((zone) => ({
+        id: zone.id,
+        name: zone.name,
+        teams: 0, // Simplificado
+        total_goals: 0, // Simplificado
+      }))
 
-      // Para cada zona, obtener equipos en consultas separadas
-      const zoneStatsPromises = data.map(async (zone) => {
-        const { data: teamsData, count } = await supabase
-          .from("teams")
-          .select("id, total_points", { count: "exact" })
-          .eq("zone_id", zone.id)
-
-        const totalGoals = teamsData?.reduce((sum, team) => sum + (team.total_points || 0), 0) || 0
-
-        return {
-          id: zone.id,
-          name: zone.name,
-          teams: count || 0,
-          total_goals: totalGoals,
-        }
-      })
-
-      const zoneStatsResults = await Promise.all(zoneStatsPromises)
-      setZoneStats(zoneStatsResults)
+      setZoneStats(basicZoneStats)
       setDataLoaded((prev) => ({ ...prev, zoneStats: true }))
       return true
     } catch (error) {
@@ -221,7 +171,7 @@ export default function AdminDashboardPage() {
         // Cargar el resto con delay para no sobrecargar
         setTimeout(() => {
           if (isMounted) {
-            Promise.allSettled([fetchTopTeams(), fetchZoneStats(), fetchProductStats()])
+            Promise.allSettled([fetchZoneStats(), fetchProductStats()])
           }
         }, 100)
       }
@@ -364,76 +314,16 @@ export default function AdminDashboardPage() {
           <TabsTrigger value="productos">Ventas por Producto</TabsTrigger>
         </TabsList>
         <TabsContent value="general" className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
-            <Card className="col-span-4">
+          <div className="grid gap-4">
+            <Card>
               <CardHeader>
                 <CardTitle>Evolución del Concurso</CardTitle>
-                <CardDescription>Goles acumulados por equipo y semana</CardDescription>
+                <CardDescription>Goles acumulados por equipo y semana - Todos los equipos del ranking</CardDescription>
               </CardHeader>
               <CardContent className="pl-2">
-                <div className="h-[400px]">
+                <div className="h-[500px]">
                   <AdminStatsChart />
                 </div>
-              </CardContent>
-            </Card>
-            <Card className="col-span-3">
-              <CardHeader>
-                <CardTitle>Equipos Destacados</CardTitle>
-                <CardDescription>Top 5 equipos con mayor rendimiento</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {loading && !dataLoaded.topTeams ? (
-                    <>
-                      <Skeleton className="h-12 w-full" />
-                      <Skeleton className="h-12 w-full" />
-                      <Skeleton className="h-12 w-full" />
-                      <Skeleton className="h-12 w-full" />
-                      <Skeleton className="h-12 w-full" />
-                    </>
-                  ) : topTeams.length === 0 ? (
-                    <EmptyState
-                      icon={Award}
-                      title="No hay equipos destacados"
-                      description="Registra ventas para ver los equipos con mejor rendimiento."
-                      className="py-6"
-                      iconClassName="bg-amber-50"
-                    />
-                  ) : (
-                    <>
-                      {topTeams.map((team, index) => (
-                        <div key={team.id} className="space-y-2">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                              {index < 3 && (
-                                <span
-                                  className={`flex items-center justify-center w-6 h-6 rounded-full text-white text-xs font-medium ${
-                                    index === 0 ? "bg-yellow-500" : index === 1 ? "bg-gray-400" : "bg-amber-700"
-                                  }`}
-                                >
-                                  {index + 1}
-                                </span>
-                              )}
-                              <span className="font-medium">{team.name}</span>
-                              <span className="text-xs text-muted-foreground">({team.zone})</span>
-                            </div>
-                            <span className="font-bold text-green-600">{team.goals}</span>
-                          </div>
-                        </div>
-                      ))}
-                    </>
-                  )}
-                </div>
-                {!loading && (
-                  <div className="mt-4 flex justify-end gap-3">
-                    <Button asChild variant="default" size="sm">
-                      <Link href="/admin/equipos/nuevo">Crear Equipo</Link>
-                    </Button>
-                    <Button asChild variant="outline" size="sm">
-                      <Link href="/admin/ranking">Ver ranking completo</Link>
-                    </Button>
-                  </div>
-                )}
               </CardContent>
             </Card>
           </div>
@@ -446,42 +336,19 @@ export default function AdminDashboardPage() {
             </CardHeader>
             <CardContent>
               <div className="h-[400px]">
-                {/* Pasar las top 2 zonas ordenadas por goles */}
                 <AdminZonesChart zonesData={zoneStats.sort((a, b) => b.total_goals - a.total_goals).slice(0, 2)} />
               </div>
             </CardContent>
           </Card>
-          <div className="grid gap-4 md:grid-cols-3">
-            {loading && !dataLoaded.zoneStats ? (
-              <>
-                <Skeleton className="h-32 w-full" />
-                <Skeleton className="h-32 w-full" />
-                <Skeleton className="h-32 w-full" />
-              </>
-            ) : zoneStats.length === 0 ? (
-              <div className="col-span-3">
-                <EmptyState
-                  icon={MapPin}
-                  title="No hay zonas registradas"
-                  description="Crea zonas geográficas para organizar tus equipos y ver su rendimiento."
-                  actionLabel="Crear Zona"
-                  actionHref="/admin/zonas/nuevo"
-                  className="py-10"
-                />
-              </div>
-            ) : (
-              zoneStats.map((zone) => (
-                <Card key={zone.id}>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm">{zone.name}</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold text-green-600">{zone.total_goals}</div>
-                    <p className="text-xs text-muted-foreground">{zone.teams} equipos</p>
-                  </CardContent>
-                </Card>
-              ))
-            )}
+
+          {/* Simplificar las cards de zonas */}
+          <div className="text-center py-8">
+            <p className="text-muted-foreground">
+              Las estadísticas detalladas por zona están disponibles en el ranking completo.
+            </p>
+            <Button asChild variant="outline" className="mt-4">
+              <Link href="/admin/ranking">Ver ranking por zonas</Link>
+            </Button>
           </div>
         </TabsContent>
         <TabsContent value="productos" className="space-y-4">

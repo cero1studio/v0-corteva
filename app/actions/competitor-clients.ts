@@ -119,6 +119,13 @@ export async function deleteCompetitorClient(clientId: string) {
     }
 
     revalidatePath("/admin/clientes")
+    revalidatePath("/admin/ranking")
+    revalidatePath("/admin/dashboard")
+    revalidatePath("/capitan/dashboard")
+    revalidatePath("/capitan/ranking")
+    revalidatePath("/director-tecnico/ranking")
+    revalidatePath("/ranking")
+    revalidatePath("/ranking-publico")
     return { success: true, message: "Cliente de la competencia eliminado exitosamente" }
   } catch (error: any) {
     console.error("Error inesperado al eliminar cliente de la competencia:", error)

@@ -75,128 +75,6 @@ interface User {
   role: string
 }
 
-const columns: ColumnDef<CompetitorClient>[] = [
-  {
-    accessorKey: "ganadero_name",
-    header: "Ganadero",
-    cell: ({ row }) => {
-      return row.original.ganadero_name || row.original.client_name
-    },
-  },
-  {
-    accessorKey: "volumen_venta_estimado",
-    header: "Volumen de Venta Real",
-    cell: ({ row }) => {
-      return row.original.volumen_venta_estimado || "N/A"
-    },
-  },
-  {
-    accessorKey: "representative_profile.full_name",
-    header: "Capitán",
-    cell: ({ row }) => {
-      const captain = row.original.representative_profile
-      return captain ? <Badge variant="outline">{captain.full_name}</Badge> : "N/A"
-    },
-  },
-  {
-    accessorKey: "team.name",
-    header: "Equipo",
-    cell: ({ row }) => {
-      const team = row.original.team
-      return team ? <Badge variant="outline">{team.name}</Badge> : "N/A"
-    },
-  },
-  {
-    accessorKey: "team.zone.name",
-    header: "Zona",
-    cell: ({ row }) => {
-      const zone = row.original.team?.zone
-      return zone ? <Badge variant="secondary">{zone.name}</Badge> : "N/A"
-    },
-  },
-  {
-    accessorKey: "tipo_venta",
-    header: "Tipo Venta",
-  },
-  {
-    accessorKey: "area_finca_hectareas",
-    header: "Área (Ha)",
-    cell: ({ row }) => {
-      const area = row.original.area_finca_hectareas
-      return area ? `${area} ha` : "N/A"
-    },
-  },
-  {
-    accessorKey: "points",
-    header: "Puntos",
-    cell: ({ row }) => {
-      return <Badge variant="default">{row.original.points}</Badge>
-    },
-  },
-  {
-    accessorKey: "created_at",
-    header: "Fecha Registro",
-    cell: ({ row }) => {
-      return new Date(row.original.created_at).toLocaleDateString()
-    },
-  },
-  {
-    id: "actions",
-    cell: ({ row }) => {
-      const client = row.original
-
-      const handleDeleteClient = async (clientId: string) => {
-        if (!confirm("¿Estás seguro de que quieres eliminar este cliente?")) return
-
-        try {
-          const result = await deleteCompetitorClient(clientId)
-          if (result.success) {
-            toast({
-              title: "Éxito",
-              description: "Cliente eliminado correctamente",
-            })
-            setClients((prevClients) => prevClients.filter((client) => client.id !== clientId))
-          } else {
-            toast({
-              title: "Error",
-              description: result.error || "Error al eliminar cliente",
-              variant: "destructive",
-            })
-          }
-        } catch (error) {
-          console.error("Error deleting client:", error)
-          toast({
-            title: "Error",
-            description: "Error al eliminar cliente",
-            variant: "destructive",
-          })
-        }
-      }
-
-      return (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" className="h-8 w-8 p-0">
-              <span className="sr-only">Abrir menú</span>
-              <MoreHorizontal className="h-4 w-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => alert("Editar - Por implementar")}>
-              <Edit className="mr-2 h-4 w-4" />
-              Editar
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => handleDeleteClient(client.id)} className="text-red-600">
-              <Trash2 className="mr-2 h-4 w-4" />
-              Eliminar
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      )
-    },
-  },
-]
-
 export default function AdminClientesPage() {
   const [clients, setClients] = useState<CompetitorClient[]>([])
   const [zones, setZones] = useState<Zone[]>([])
@@ -222,74 +100,195 @@ export default function AdminClientesPage() {
   }, [])
 
   // Optimized load data function
-  const loadData = useCallback(async (signal?: AbortSignal) => {
-    try {
-      setLoading(true)
+  const loadData = useCallback(
+    async (signal?: AbortSignal) => {
+      try {
+        setLoading(true)
 
-      // Cancel previous request
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort()
-      }
+        // Cancel previous request
+        if (abortControllerRef.current) {
+          abortControllerRef.current.abort()
+        }
 
-      // Create new abort controller
-      const controller = new AbortController()
-      abortControllerRef.current = controller
-      const currentSignal = signal || controller.signal
+        // Create new abort controller
+        const controller = new AbortController()
+        abortControllerRef.current = controller
+        const currentSignal = signal || controller.signal
 
-      // Load data in batches to improve performance
-      const [clientsResult, zonesData] = await Promise.all([getAllCompetitorClients(), getAllZones()])
+        // Load data in batches to improve performance
+        const [clientsResult, zonesData] = await Promise.all([getAllCompetitorClients(), getAllZones()])
 
-      // Check if request was cancelled
-      if (currentSignal.aborted) return
+        // Check if request was cancelled
+        if (currentSignal.aborted) return
 
-      if (clientsResult.success) {
-        setClients(clientsResult.data || [])
-      } else {
-        console.error("Error loading clients:", clientsResult.error)
+        if (clientsResult.success) {
+          setClients(clientsResult.data || [])
+        } else {
+          console.error("Error loading clients:", clientsResult.error)
+          toast({
+            title: "Error",
+            description: "Error al cargar los clientes",
+            variant: "destructive",
+          })
+        }
+
+        if (zonesData && Array.isArray(zonesData)) {
+          setZones(zonesData)
+        } else {
+          setZones([])
+        }
+
+        // Load teams and users only if needed
+        const [teamsResult, usersResult] = await Promise.all([getAllTeams(), getAllUsers()])
+
+        // Check if request was cancelled again
+        if (currentSignal.aborted) return
+
+        if (teamsResult.success) {
+          setTeams(teamsResult.data || [])
+        } else {
+          setTeams([])
+        }
+
+        if (usersResult.data) {
+          setCaptains(usersResult.data.filter((user) => user.role === "capitan") || [])
+        } else {
+          setCaptains([])
+        }
+      } catch (error: any) {
+        // Don't show error if request was cancelled
+        if (error.name === "AbortError") return
+
+        console.error("Error loading data:", error)
         toast({
           title: "Error",
-          description: "Error al cargar los clientes",
+          description: "Error al cargar los datos",
           variant: "destructive",
         })
+      } finally {
+        setLoading(false)
       }
+    },
+    [
+      setClients,
+      setZones,
+      setTeams,
+      setCaptains,
+      setLoading,
+      toast,
+      getAllCompetitorClients,
+      getAllZones,
+      getAllTeams,
+      getAllUsers,
+    ],
+  )
 
-      if (zonesData && Array.isArray(zonesData)) {
-        setZones(zonesData)
-      } else {
-        setZones([])
+  // --- column definition must live inside the component so it can access state ---
+  const columns: ColumnDef<CompetitorClient>[] = useMemo(() => {
+    // helper with access to setClients & loadData
+    const handleDeleteClient = async (clientId: string) => {
+      if (!confirm("¿Estás seguro de que quieres eliminar este cliente?")) return
+      try {
+        const result = await deleteCompetitorClient(clientId)
+        if (result.success) {
+          toast({ title: "Éxito", description: "Cliente eliminado correctamente" })
+          // remove from local table
+          setClients((prev) => prev.filter((c) => c.id !== clientId))
+          // tiny delay -> guarantee DB finished & ISR revalidated
+          setTimeout(() => loadData(), 100)
+        } else {
+          toast({
+            title: "Error",
+            description: result.error || "Error al eliminar cliente",
+            variant: "destructive",
+          })
+        }
+      } catch (err) {
+        console.error("Error deleting client:", err)
+        toast({ title: "Error", description: "Error al eliminar cliente", variant: "destructive" })
       }
-
-      // Load teams and users only if needed
-      const [teamsResult, usersResult] = await Promise.all([getAllTeams(), getAllUsers()])
-
-      // Check if request was cancelled again
-      if (currentSignal.aborted) return
-
-      if (teamsResult.success) {
-        setTeams(teamsResult.data || [])
-      } else {
-        setTeams([])
-      }
-
-      if (usersResult.data) {
-        setCaptains(usersResult.data.filter((user) => user.role === "capitan") || [])
-      } else {
-        setCaptains([])
-      }
-    } catch (error: any) {
-      // Don't show error if request was cancelled
-      if (error.name === "AbortError") return
-
-      console.error("Error loading data:", error)
-      toast({
-        title: "Error",
-        description: "Error al cargar los datos",
-        variant: "destructive",
-      })
-    } finally {
-      setLoading(false)
     }
-  }, [])
+
+    return [
+      {
+        accessorKey: "ganadero_name",
+        header: "Ganadero",
+        cell: ({ row }) => row.original.ganadero_name || row.original.client_name,
+      },
+      {
+        accessorKey: "volumen_venta_estimado",
+        header: "Volumen de Venta Real",
+        cell: ({ row }) => row.original.volumen_venta_estimado || "N/A",
+      },
+      {
+        accessorKey: "representative_profile.full_name",
+        header: "Capitán",
+        cell: ({ row }) =>
+          row.original.representative_profile ? (
+            <Badge variant="outline">{row.original.representative_profile.full_name}</Badge>
+          ) : (
+            "N/A"
+          ),
+      },
+      {
+        accessorKey: "team.name",
+        header: "Equipo",
+        cell: ({ row }) => (row.original.team ? <Badge variant="outline">{row.original.team.name}</Badge> : "N/A"),
+      },
+      {
+        accessorKey: "team.zone.name",
+        header: "Zona",
+        cell: ({ row }) =>
+          row.original.team?.zone ? <Badge variant="secondary">{row.original.team.zone.name}</Badge> : "N/A",
+      },
+      { accessorKey: "tipo_venta", header: "Tipo Venta" },
+      {
+        accessorKey: "area_finca_hectareas",
+        header: "Área (Ha)",
+        cell: ({ row }) => (row.original.area_finca_hectareas ? `${row.original.area_finca_hectareas} ha` : "N/A"),
+      },
+      {
+        accessorKey: "points",
+        header: "Puntos",
+        cell: ({ row }) => <Badge variant="default">{row.original.points}</Badge>,
+      },
+      {
+        accessorKey: "created_at",
+        header: "Fecha Registro",
+        cell: ({ row }) => new Date(row.original.created_at).toLocaleDateString(),
+      },
+      // ---- actions ----
+      {
+        id: "actions",
+        cell: ({ row }) => {
+          const client = row.original
+          return (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" className="h-8 w-8 p-0">
+                  <span className="sr-only">Abrir menú</span>
+                  <MoreHorizontal className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => alert("Editar - Por implementar")}>
+                  <Edit className="mr-2 h-4 w-4" />
+                  Editar
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => handleDeleteClient(client.id)}
+                  className="text-red-600 focus:text-red-600"
+                >
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Eliminar
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )
+        },
+      },
+    ] as ColumnDef<CompetitorClient>[]
+  }, [setClients, loadData, toast])
 
   // Debounced search
   const debouncedSearch = useCallback((term: string) => {
@@ -478,7 +477,7 @@ export default function AdminClientesPage() {
         variant: "destructive",
       })
     }
-  }, [filteredClients])
+  }, [filteredClients, toast])
 
   const table = useReactTable({
     data: filteredClients,

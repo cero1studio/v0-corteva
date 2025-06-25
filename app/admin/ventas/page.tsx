@@ -536,7 +536,10 @@ export default function AdminVentasPage() {
           title: "Éxito",
           description: "Venta eliminada correctamente",
         })
-        loadData()
+        // Pequeño delay para asegurar sincronización
+        setTimeout(() => {
+          loadData()
+        }, 100)
       } else {
         toast({
           title: "Error",

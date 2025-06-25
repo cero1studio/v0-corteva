@@ -20,6 +20,7 @@ import {
   Zap,
 } from "lucide-react"
 import { useAuth } from "@/components/auth-provider"
+import { useRouter } from "next/navigation"
 
 interface NavProps {
   role: "admin" | "capitan" | "supervisor" | "director-tecnico" | "representante" | "arbitro"
@@ -29,6 +30,7 @@ interface NavProps {
 export function DashboardNav({ role, onMobileMenuClose }: NavProps) {
   const pathname = usePathname()
   const { profile, signOut, isLoading } = useAuth()
+  const router = useRouter()
 
   // Función para obtener las iniciales del nombre
   const getInitials = (name: string) => {
@@ -47,8 +49,8 @@ export function DashboardNav({ role, onMobileMenuClose }: NavProps) {
       await signOut()
     } catch (error) {
       console.error("Dashboard: Error al cerrar sesión:", error)
-      // Forzar redirección en caso de error
-      window.location.href = "/login"
+      // En caso de error, forzar redirección
+      router.push("/login")
     }
   }
 
@@ -203,10 +205,10 @@ export function DashboardNav({ role, onMobileMenuClose }: NavProps) {
         <button
           onClick={handleSignOut}
           disabled={isLoading}
-          className="mt-4 flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 disabled:opacity-50"
+          className="mt-4 flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <LogOut className="h-4 w-4" />
-          <span>{isLoading ? "Cerrando..." : "Cerrar Sesión"}</span>
+          <span>{isLoading ? "Cerrando sesión..." : "Cerrar Sesión"}</span>
         </button>
       </div>
     </div>

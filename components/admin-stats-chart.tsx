@@ -7,6 +7,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { AlertCircle, BarChart3Icon } from "lucide-react"
 import { EmptyState } from "./empty-state"
 import { Button } from "@/components/ui/button"
+import { getTeamRankingByZone } from "@/app/actions/ranking"
 
 // Estructura para datos del gráfico
 type TeamData = {
@@ -34,23 +35,16 @@ export function AdminStatsChart() {
       setLoading(true)
       setError(null)
 
-      // 1. Obtener equipos con sus puntos totales
-      const { data: teamsData, error: teamsError } = await supabase
-        .from("teams")
-        .select("id, name, total_points")
-        .order("total_points", { ascending: false })
+      // Usar el sistema de ranking dinámico
+      const rankingResult = await getTeamRankingByZone()
 
-      if (teamsError) {
-        throw new Error(`Error al obtener equipos: ${teamsError.message}`)
-      }
-
-      if (!teamsData || teamsData.length === 0) {
+      if (!rankingResult.success || !rankingResult.data) {
         setData([])
         setLoading(false)
         return
       }
 
-      // 2. Obtener configuración de puntos para gol
+      // Obtener configuración de puntos para gol
       const { data: configData } = await supabase
         .from("system_config")
         .select("value")
@@ -59,49 +53,48 @@ export function AdminStatsChart() {
 
       const puntosParaGol = configData?.value ? Number(configData.value) : 100
 
-      // Colores para las barras
+      // Colores para las barras (mantener los existentes)
       const colors = [
-        "#f59e0b", // Amarillo/Oro para el primero
-        "#4ade80", // Verde
-        "#3b82f6", // Azul
-        "#ec4899", // Rosa
-        "#8b5cf6", // Púrpura
-        "#14b8a6", // Teal
-        "#f43f5e", // Rojo
-        "#06b6d4", // Cyan
-        "#eab308", // Amarillo
-        "#a855f7", // Violeta
-        "#10b981", // Esmeralda
-        "#ef4444", // Rojo brillante
-        "#6366f1", // Índigo
-        "#84cc16", // Lima
-        "#d946ef", // Fucsia
-        "#0ea5e9", // Azul cielo
-        "#f97316", // Naranja
-        "#22c55e", // Verde brillante
-        "#8b5cf6", // Púrpura claro
-        "#06b6d4", // Cian
+        "#f59e0b",
+        "#4ade80",
+        "#3b82f6",
+        "#ec4899",
+        "#8b5cf6",
+        "#14b8a6",
+        "#f43f5e",
+        "#06b6d4",
+        "#eab308",
+        "#a855f7",
+        "#10b981",
+        "#ef4444",
+        "#6366f1",
+        "#84cc16",
+        "#d946ef",
+        "#0ea5e9",
+        "#f97316",
+        "#22c55e",
+        "#8b5cf6",
+        "#06b6d4",
       ]
 
-      // Formatear datos para el gráfico
-      const chartData: TeamData[] = teamsData.map((team, index) => {
-        const puntos = team.total_points || 0
+      // Formatear datos para el gráfico usando datos del ranking
+      const chartData: TeamData[] = rankingResult.data.map((team, index) => {
+        const puntos = team.total_points
         const goles = Math.floor(puntos / puntosParaGol)
-        const kilos = puntos / 10 // 1 gol = 100 puntos = 10 kilos, entonces kilos = puntos/10
+        const kilos = puntos / 10
 
         return {
-          name: team.name,
+          name: team.team_name,
           goles: goles,
           puntos: puntos,
-          kilos: Math.round(kilos * 10) / 10, // Redondear a 1 decimal
+          kilos: Math.round(kilos * 10) / 10,
           color: colors[index % colors.length],
         }
       })
 
       // Filtrar equipos con al menos 1 gol para el gráfico
       const filteredData = chartData.filter((team) => team.goles > 0)
-
-      setData(filteredData.length > 0 ? filteredData : chartData.slice(0, 10)) // Mostrar top 10 si no hay goles
+      setData(filteredData.length > 0 ? filteredData : chartData.slice(0, 10))
       setLoading(false)
     } catch (err: any) {
       console.error("Error al cargar datos del gráfico:", err)

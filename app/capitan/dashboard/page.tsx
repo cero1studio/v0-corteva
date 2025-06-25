@@ -17,8 +17,6 @@ import { Progress } from "@/components/ui/progress"
 import { getImageUrl } from "@/lib/utils/image"
 import { getTeamRankingByZone } from "@/app/actions/ranking"
 import { AuthGuard } from "@/components/auth-guard"
-import { getCompetitorClientsByTeam } from "@/app/actions/clients"
-import { getFreeKickGoalsByTeam } from "@/app/actions/free-kick-goals"
 
 // Constante para la conversión de puntos a goles
 const PUNTOS_POR_GOL = 100
@@ -143,13 +141,13 @@ function CapitanDashboardContent() {
       const { data: profileData, error: profileError } = await supabase
         .from("profiles")
         .select(`
-         *,
-         zones:zone_id(*),
-         teams:team_id(
-           *,
-           distributors:distributor_id(*)
-         )
-       `)
+        *,
+        zones:zone_id(*),
+        teams:team_id(
+          *,
+          distributors:distributor_id(*)
+        )
+      `)
         .eq("id", authUser.id)
         .single()
 
@@ -160,14 +158,12 @@ function CapitanDashboardContent() {
 
       console.log("CAPITAN DASHBOARD: Profile data:", profileData)
 
-      if (userData) {
-        setUser(profileData)
-        setUserData(profileData)
+      setUser(profileData)
+      setUserData(profileData)
 
-        // Guardar datos de zona del perfil del usuario
-        if (profileData.zones) {
-          setZoneData(profileData.zones)
-        }
+      // Guardar datos de zona del perfil del usuario
+      if (profileData.zones) {
+        setZoneData(profileData.zones)
       }
 
       // Verificar si el usuario tiene un equipo
@@ -186,10 +182,10 @@ function CapitanDashboardContent() {
         const { data: teamData, error: teamError } = await supabase
           .from("teams")
           .select(`
-           *,
-           zones:zone_id(*),
-           distributors:distributor_id(*)
-         `)
+          *,
+          zones:zone_id(*),
+          distributors:distributor_id(*)
+        `)
           .eq("id", profileData.team_id)
           .single()
 
@@ -235,57 +231,123 @@ function CapitanDashboardContent() {
     try {
       console.log("CAPITAN DASHBOARD: Loading team data for:", teamId)
 
-      const [teamMembersResult, salesResult, clientsResult, freeKickResult, rankingResult, puntosConfigResult] =
-        await Promise.all([
-          supabase.from("profiles").select("id").eq("team_id", teamId),
-          supabase
-            .from("sales")
-            .select(`*, products(id, name, image_url)`)
-            .in("representative_id", [userId])
-            .order("created_at", { ascending: false }),
-          getCompetitorClientsByTeam(teamId),
-          getFreeKickGoalsByTeam(teamId),
-          getTeamRankingByZone(teamData?.zone_id || userData?.zone_id),
-          supabase.from("system_config").select("value").eq("key", "puntos_para_gol").maybeSingle(),
-        ])
+      // Obtener todos los miembros del equipo
+      const { data: teamMembers, error: teamMembersError } = await supabase
+        .from("profiles")
+        .select("id")
+        .eq("team_id", teamId)
 
-      if (teamMembersResult.error) throw teamMembersResult.error
-      if (salesResult.error) throw salesResult.error
-      if (clientsResult.error) throw clientsResult.error
-      if (freeKickResult.error) throw rankingResult.error
-      if (puntosConfigResult.error) throw puntosConfigResult.error
+      if (teamMembersError) throw teamMembersError
 
-      const teamMembers = teamMembersResult.data || []
-      const salesData = salesResult.data || []
-      const clientsData = clientsResult.data || []
-      const freeKickData = freeKickResult.data || []
-      const zoneRanking = rankingResult.data || []
-      const puntosParaGol = puntosConfigResult.data?.value ? Number(puntosConfigResult.data.value) : PUNTOS_POR_GOL
+      const memberIds = teamMembers?.map((member) => member.id) || []
+      console.log("CAPITAN DASHBOARD: Team member IDs:", memberIds)
 
-      if (userData) {
-        setSalesData(salesData)
-        setClientsData(clientsData)
-        setFreeKickData(freeKickData)
-        setZoneRanking(zoneRanking)
-        setPuntosParaGol(puntosParaGol)
+      // Obtener configuración de puntos para gol
+      const { data: puntosConfig } = await supabase
+        .from("system_config")
+        .select("value")
+        .eq("key", "puntos_para_gol")
+        .maybeSingle()
 
-        const position = zoneRanking.findIndex((t: any) => t.team_id === teamId) + 1
-        setRankingPosition(position > 0 ? position : null)
+      const puntosParaGol = puntosConfig?.value ? Number(puntosConfig.value) : PUNTOS_POR_GOL
+      setPuntosParaGol(puntosParaGol)
+
+      // Obtener ventas del equipo (por miembros + ventas directas)
+      const [salesByMembersResult, salesByTeamResult] = await Promise.all([
+        memberIds.length > 0
+          ? supabase
+              .from("sales")
+              .select(`*, products(id, name, image_url)`)
+              .in("representative_id", memberIds)
+              .order("created_at", { ascending: false })
+          : Promise.resolve({ data: [], error: null }),
+        supabase
+          .from("sales")
+          .select(`*, products(id, name, image_url)`)
+          .eq("team_id", teamId)
+          .order("created_at", { ascending: false }),
+      ])
+
+      const salesByMembers = salesByMembersResult.data || []
+      const salesByTeam = salesByTeamResult.data || []
+      const allSales = [...salesByMembers, ...salesByTeam]
+
+      console.log("CAPITAN DASHBOARD: Sales by members:", salesByMembers.length)
+      console.log("CAPITAN DASHBOARD: Sales by team:", salesByTeam.length)
+      console.log("CAPITAN DASHBOARD: Total sales:", allSales.length)
+
+      // Obtener clientes del equipo
+      const [clientsByMembersResult, clientsByTeamResult] = await Promise.all([
+        memberIds.length > 0
+          ? supabase
+              .from("competitor_clients")
+              .select(`*, profiles(full_name)`)
+              .in("representative_id", memberIds)
+              .order("created_at", { ascending: false })
+          : Promise.resolve({ data: [], error: null }),
+        supabase
+          .from("competitor_clients")
+          .select(`*, profiles(full_name)`)
+          .eq("team_id", teamId)
+          .order("created_at", { ascending: false }),
+      ])
+
+      const clientsByMembers = clientsByMembersResult.data || []
+      const clientsByTeam = clientsByTeamResult.data || []
+
+      // Eliminar duplicados por ID
+      const uniqueClientsMap = new Map()
+      ;[...clientsByMembers, ...clientsByTeam].forEach((client) => {
+        if (!uniqueClientsMap.has(client.id)) {
+          uniqueClientsMap.set(client.id, client)
+        }
+      })
+      const allClients = Array.from(uniqueClientsMap.values())
+
+      console.log("CAPITAN DASHBOARD: Clients by members:", clientsByMembers.length)
+      console.log("CAPITAN DASHBOARD: Clients by team:", clientsByTeam.length)
+      console.log("CAPITAN DASHBOARD: Unique clients:", allClients.length)
+
+      // Obtener tiros libres del equipo
+      const { data: freeKicks, error: freeKicksError } = await supabase
+        .from("free_kick_goals")
+        .select("*")
+        .eq("team_id", teamId)
+        .order("created_at", { ascending: false })
+
+      if (freeKicksError) {
+        console.error("Error loading free kicks:", freeKicksError)
       }
 
-      console.log("CAPITAN DASHBOARD: Sales loaded:", salesData.length)
-      console.log("CAPITAN DASHBOARD: Clients loaded:", clientsData.length)
-      console.log("CAPITAN DASHBOARD: Free kicks loaded:", freeKickData.length)
-      console.log("CAPITAN DASHBOARD: Zone ranking loaded:", zoneRanking.length)
+      const allFreeKicks = freeKicks || []
+      console.log("CAPITAN DASHBOARD: Free kicks:", allFreeKicks.length)
+
+      // Obtener ranking de la zona
+      const rankingResult = await getTeamRankingByZone(teamData?.zone_id || userData?.zone_id)
+      const zoneRanking = rankingResult.success ? rankingResult.data || [] : []
+
+      // Actualizar estados
+      setSalesData(allSales)
+      setClientsData(allClients)
+      setFreeKickData(allFreeKicks)
+      setZoneRanking(zoneRanking)
+
+      // Calcular posición en el ranking
+      const position = zoneRanking.findIndex((t: any) => t.team_id === teamId) + 1
+      setRankingPosition(position > 0 ? position : null)
+
+      console.log("CAPITAN DASHBOARD: Final data loaded:")
+      console.log("- Sales:", allSales.length)
+      console.log("- Clients:", allClients.length)
+      console.log("- Free kicks:", allFreeKicks.length)
+      console.log("- Zone ranking position:", position)
     } catch (error) {
       console.error("CAPITAN DASHBOARD: Error loading team data:", error)
-      if (userData) {
-        toast({
-          title: "Error",
-          description: "Error al cargar datos del equipo: " + (error as Error).message,
-          variant: "destructive",
-        })
-      }
+      toast({
+        title: "Error",
+        description: "Error al cargar datos del equipo: " + (error as Error).message,
+        variant: "destructive",
+      })
     }
   }
 

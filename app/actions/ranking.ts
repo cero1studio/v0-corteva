@@ -1,5 +1,6 @@
 "use server"
 
+import { rankingCache } from "@/lib/ranking-cache"
 import { createServerClient } from "@/lib/supabase/server"
 
 export interface TeamRanking {
@@ -48,6 +49,15 @@ export interface UserTeamInfo {
 
 export async function getTeamRankingByZone(zoneId?: string) {
   try {
+    // Intentar obtener del cache primero
+    const cacheKey = zoneId || "all"
+    const cachedData = rankingCache.get(cacheKey)
+    if (cachedData) {
+      console.log("DEBUG: Returning cached ranking data")
+      return { success: true, data: cachedData }
+    }
+
+    // Si no está en cache, continuar con la lógica existente...
     const supabase = createServerClient()
 
     // Obtener configuración de puntos para gol
@@ -168,7 +178,6 @@ export async function getTeamRankingByZone(zoneId?: string) {
     console.log("DEBUG: Sales Rep Data:", salesRepData.length)
     console.log("DEBUG: Sales Team Data:", salesTeamData.length)
     console.log("DEBUG: Clients Rep Data:", clientsRepData.length)
-    console.log("DEBUG: Clients Team Data:", clientsTeamData.length)
     console.log("DEBUG: Free Kicks Data:", freeKicksData.length)
 
     // Crear mapas para acceso rápido
@@ -304,7 +313,10 @@ export async function getTeamRankingByZone(zoneId?: string) {
         position: index + 1,
       }))
 
-    console.log("DEBUG: Final sorted ranking data:", sortedRanking) // Log de depuración
+    // Guardar en cache antes de retornar
+    rankingCache.set(cacheKey, sortedRanking)
+
+    console.log("DEBUG: Final sorted ranking data:", sortedRanking)
     return { success: true, data: sortedRanking }
   } catch (error) {
     console.error("Error in getTeamRankingByZone:", error)

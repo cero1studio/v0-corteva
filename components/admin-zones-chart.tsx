@@ -8,6 +8,7 @@ import { AlertCircle, MapPin, RefreshCw } from "lucide-react"
 import { EmptyState } from "./empty-state"
 import { Button } from "./ui/button"
 import { Card, CardContent, CardFooter } from "./ui/card"
+import { getTeamRankingByZone } from "@/app/actions/ranking"
 
 type AdminZonesChartProps = {
   zonesData?: any[] // Optional prop to pass pre-calculated zone data from parent
@@ -27,130 +28,62 @@ export function AdminZonesChart({ zonesData: propZonesData }: AdminZonesChartPro
       setLoading(true)
       setError(null)
 
-      // 1. Obtener todos los datos necesarios en paralelo
-      const [
-        zonesResult,
-        teamsResult,
-        profilesResult,
-        salesResult,
-        clientsResult,
-        freeKicksResult,
-        puntosConfigResult,
-      ] = await Promise.all([
-        supabase.from("zones").select("id, name").order("name"),
-        supabase.from("teams").select("id, name, zone_id"),
-        supabase.from("profiles").select("id, team_id"),
-        supabase.from("sales").select("points, representative_id, team_id"),
-        supabase.from("competitor_clients").select("id, points, representative_id, team_id"),
-        supabase.from("free_kick_goals").select("points, team_id"),
-        supabase.from("system_config").select("value").eq("key", "puntos_para_gol").maybeSingle(),
-      ])
+      // Obtener todas las zonas
+      const { data: zones, error: zonesError } = await supabase.from("zones").select("id, name").order("name")
 
-      // Manejar errores de las llamadas en paralelo
-      if (zonesResult.error) throw zonesResult.error
-      if (teamsResult.error) throw teamsResult.error
-      if (profilesResult.error) throw profilesResult.error
-      if (salesResult.error) throw salesResult.error
-      if (clientsResult.error) throw clientsResult.error
-      if (freeKicksResult.error) throw freeKicksResult.error
-      if (puntosConfigResult.error) throw puntosConfigResult.error
+      if (zonesError) throw zonesError
 
-      const zones = zonesResult.data || []
-      const teams = teamsResult.data || []
-      const profiles = profilesResult.data || []
-      const sales = salesResult.data || []
-      const clients = clientsResult.data || []
-      const freeKicks = freeKicksResult.data || []
-      const puntosParaGol = puntosConfigResult.data?.value ? Number(puntosConfigResult.data.value) : 100
-
-      if (zones.length === 0) {
+      if (!zones || zones.length === 0) {
         setData([])
         setLoading(false)
         return
       }
 
-      // Crear mapas para búsquedas eficientes
-      const profileTeamMap = new Map(profiles.map((p) => [p.id, p.team_id]))
-      const teamPointsMap = new Map<string, { sales: number; clients: number; freeKicks: number }>()
+      // Obtener ranking dinámico para cada zona
+      const zoneStatsPromises = zones.map(async (zone) => {
+        const rankingResult = await getTeamRankingByZone(zone.id)
 
-      // Aggregate sales points per team
-      sales.forEach((s) => {
-        let teamId = s.team_id
-        if (!teamId && s.representative_id) {
-          teamId = profileTeamMap.get(s.representative_id) || null
+        if (!rankingResult.success || !rankingResult.data) {
+          return {
+            id: zone.id,
+            name: zone.name,
+            teams: 0,
+            goles: 0,
+            puntos: 0,
+            kilos: 0,
+            fill: getRandomColor(zone.id),
+          }
         }
-        if (teamId) {
-          const current = teamPointsMap.get(teamId) || { sales: 0, clients: 0, freeKicks: 0 }
-          current.sales += s.points || 0
-          teamPointsMap.set(teamId, current)
-        }
-      })
 
-      // Aggregate client points per team
-      clients.forEach((c) => {
-        let teamId = c.team_id
-        if (!teamId && c.representative_id) {
-          teamId = profileTeamMap.get(c.representative_id) || null
-        }
-        if (teamId) {
-          const current = teamPointsMap.get(teamId) || { sales: 0, clients: 0, freeKicks: 0 }
-          current.clients += c.points || 200
-          teamPointsMap.set(teamId, current)
-        }
-      })
-
-      // Aggregate free kick points per team
-      freeKicks.forEach((fk) => {
-        if (fk.team_id) {
-          const current = teamPointsMap.get(fk.team_id) || { sales: 0, clients: 0, freeKicks: 0 }
-          current.freeKicks += fk.points || 0
-          teamPointsMap.set(fk.team_id, current)
-        }
-      })
-
-      // Agregación de puntos por zona
-      let allTotalPoints = 0
-      let allTotalGoles = 0
-
-      const zoneStatsData = zones.map((zone) => {
-        let totalZonePoints = 0
-        let totalZoneTeamsCount = 0
-
-        const teamsInZone = teams.filter((t) => t.zone_id === zone.id)
-        totalZoneTeamsCount = teamsInZone.length
-
-        teamsInZone.forEach((team) => {
-          const teamAggregatedPoints = teamPointsMap.get(team.id) || { sales: 0, clients: 0, freeKicks: 0 }
-          const teamTotalPoints =
-            teamAggregatedPoints.sales + teamAggregatedPoints.clients + teamAggregatedPoints.freeKicks
-          totalZonePoints += teamTotalPoints
-        })
-
-        const totalZoneGoals = Math.floor(totalZonePoints / puntosParaGol)
-
-        // Acumular totales generales
-        allTotalPoints += totalZonePoints
-        allTotalGoles += totalZoneGoals
+        // Sumar todos los puntos y goles de los equipos de esta zona
+        const totalPuntos = rankingResult.data.reduce((sum, team) => sum + team.total_points, 0)
+        const totalGoles = rankingResult.data.reduce((sum, team) => sum + team.goals, 0)
+        const totalKilos = Math.floor(totalPuntos / 10)
 
         return {
           id: zone.id,
           name: zone.name,
-          teams: totalZoneTeamsCount,
-          goles: totalZoneGoals,
-          puntos: totalZonePoints,
-          kilos: Math.floor(totalZonePoints / 10),
-          fill: getRandomColor(zone.id), // Color único para cada zona
+          teams: rankingResult.data.length,
+          goles: totalGoles,
+          puntos: totalPuntos,
+          kilos: totalKilos,
+          fill: getRandomColor(zone.id),
         }
       })
+
+      const zoneStatsData = await Promise.all(zoneStatsPromises)
 
       // Ordenar por goles (mayor a menor)
       zoneStatsData.sort((a, b) => b.goles - a.goles)
 
-      // Actualizar totales
-      setTotalGoles(allTotalGoles)
-      setTotalPuntos(allTotalPoints)
-      setTotalKilos(Math.floor(allTotalPoints / 10))
+      // Calcular totales generales
+      const allTotalGoles = zoneStatsData.reduce((sum, zone) => sum + zone.goles, 0)
+      const allTotalPuntos = zoneStatsData.reduce((sum, zone) => sum + zone.puntos, 0)
+      const allTotalKilos = zoneStatsData.reduce((sum, zone) => sum + zone.kilos, 0)
 
+      setTotalGoles(allTotalGoles)
+      setTotalPuntos(allTotalPuntos)
+      setTotalKilos(allTotalKilos)
       setData(zoneStatsData)
     } catch (err: any) {
       console.error("Error al cargar datos del gráfico de zonas:", err)

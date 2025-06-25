@@ -1,6 +1,11 @@
-import { redirect } from "next/navigation"
-
-export default function RepresentanteDashboardRedirect() {
-  redirect("/capitan/dashboard")
-  return null
+const DashboardPage = () => {
+  return (
+    <div>
+      <h1>Representante Dashboard</h1>
+      <p>Welcome to your dashboard!</p>
+      {/* Add more dashboard content here */}
+    </div>
+  )
 }
+
+export default DashboardPage

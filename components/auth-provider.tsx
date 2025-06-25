@@ -288,24 +288,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       console.log("AUTH: Starting sign out process...")
       setIsLoading(true)
-
-      // Limpiar caché y estado local ANTES de llamar a Supabase
-      clearAllCache()
-      setSession(null)
-      setUser(null)
-      setProfile(null)
       setError(null)
 
-      // Limpiar almacenamiento local y cookies
-      if (typeof window !== "undefined") {
-        localStorage.clear()
-        sessionStorage.clear()
-        document.cookie = "session=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/;"
-        document.cookie = "sb-access-token=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/;"
-        document.cookie = "sb-refresh-token=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/;"
-      }
-
-      // Cerrar sesión en Supabase
+      // Primero cerrar sesión en Supabase y esperar
       const { error } = await supabase.auth.signOut()
       if (error) {
         console.error("AUTH: Error signing out from Supabase:", error)
@@ -313,24 +298,51 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         console.log("AUTH: Successfully signed out from Supabase")
       }
 
+      // Después de cerrar sesión exitosamente, limpiar todo
+      clearAllCache()
+      setSession(null)
+      setUser(null)
+      setProfile(null)
+
+      // Limpiar almacenamiento local y cookies después del signOut
+      if (typeof window !== "undefined") {
+        localStorage.clear()
+        sessionStorage.clear()
+
+        // Limpiar cookies específicas de Supabase
+        const cookiesToClear = [
+          "sb-access-token",
+          "sb-refresh-token",
+          "session",
+          "supabase-auth-token",
+          "sb-" + process.env.NEXT_PUBLIC_SUPABASE_URL?.split("//")[1]?.split(".")[0] + "-auth-token",
+        ]
+
+        cookiesToClear.forEach((cookieName) => {
+          document.cookie = `${cookieName}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; domain=${window.location.hostname}`
+          document.cookie = `${cookieName}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/`
+        })
+      }
+
+      // Esperar un momento para asegurar que todo se limpie
+      await new Promise((resolve) => setTimeout(resolve, 100))
+
       setIsLoading(false)
 
-      // Forzar redirección a login
-      if (typeof window !== "undefined") {
-        window.location.href = "/login"
-      } else {
-        router.push("/login")
-      }
+      // Ahora sí redirigir a login
+      console.log("AUTH: Redirecting to login after successful sign out")
+      router.push("/login")
     } catch (err: any) {
       console.error("AUTH: Error during sign out:", err)
       setIsLoading(false)
 
-      // En caso de error, forzar redirección de todas formas
-      if (typeof window !== "undefined") {
-        window.location.href = "/login"
-      } else {
-        router.push("/login")
-      }
+      // En caso de error, limpiar de todas formas y redirigir
+      clearAllCache()
+      setSession(null)
+      setUser(null)
+      setProfile(null)
+
+      router.push("/login")
     }
   }
 

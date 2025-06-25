@@ -113,9 +113,11 @@ export default function TirosLibresPage() {
 
       if (result.success) {
         setMessage({ type: "success", text: "Tiro libre eliminado exitosamente" })
-        // Recargar los datos
-        const goalsData = await getFreeKickGoals()
-        setFreeKickGoals(goalsData)
+        // Pequeño delay para asegurar sincronización
+        setTimeout(async () => {
+          const goalsData = await getFreeKickGoals()
+          setFreeKickGoals(goalsData)
+        }, 100)
       } else {
         setMessage({ type: "error", text: result.error || "Error al eliminar tiro libre" })
       }
