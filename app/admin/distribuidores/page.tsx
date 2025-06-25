@@ -32,6 +32,13 @@ export default function DistribuidoresPage() {
     let timeoutId: NodeJS.Timeout
 
     const loadDistributors = async () => {
+      // 🚀 CACHE SIMPLE: Si ya tenemos distribuidores y no es retry, no recargar
+      if (distributors.length > 0 && retryCount === 0) {
+        console.log("📦 Distribuidores ya cargados - usando cache")
+        setLoading(false)
+        return
+      }
+
       setLoading(true)
       setError(null)
 
@@ -80,7 +87,7 @@ export default function DistribuidoresPage() {
       mounted = false
       clearTimeout(timeoutId)
     }
-  }, [retryCount, toast])
+  }, [retryCount, toast, distributors.length])
 
   const handleRetry = () => {
     setRetryCount((prev) => prev + 1)

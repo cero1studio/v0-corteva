@@ -40,6 +40,13 @@ export default function ZonasPage() {
     const abortController = new AbortController()
 
     const fetchZonesWithCleanup = async () => {
+      // 🚀 CACHE SIMPLE: Si ya tenemos zonas cargadas, no recargar
+      if (zones.length > 0) {
+        console.log("📦 Zonas ya cargadas - usando cache")
+        setLoading(false)
+        return
+      }
+
       setLoading(true)
       setError(null)
 
@@ -78,7 +85,7 @@ export default function ZonasPage() {
     return () => {
       abortController.abort()
     }
-  }, [toast])
+  }, [toast, zones])
 
   // Filtrar zonas basándose en el término de búsqueda
   const filteredZones = useMemo(() => {

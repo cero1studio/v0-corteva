@@ -151,6 +151,13 @@ export default function AdminDashboardPage() {
     const loadData = async () => {
       if (!isMounted) return
 
+      // 🚀 CACHE SIMPLE: Si ya tenemos datos básicos y no es un retry forzado, no recargar
+      if (dataLoaded.basicStats && stats.totalTeams > 0 && retryCount === 0) {
+        console.log("📦 Usando datos en cache - no recargando")
+        setLoading(false)
+        return
+      }
+
       setLoading(true)
       setError(null)
 

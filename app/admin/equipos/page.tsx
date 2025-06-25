@@ -125,6 +125,13 @@ export default function EquiposPage() {
   }
 
   async function fetchTeams() {
+    // 🚀 CACHE SIMPLE: Si ya tenemos equipos cargados, no recargar
+    if (teams.length > 0) {
+      console.log("📦 Equipos ya cargados - usando cache")
+      setLoading(false)
+      return
+    }
+
     setLoading(true)
     setError(null)
     try {
@@ -593,12 +600,7 @@ export default function EquiposPage() {
                           <div className="flex justify-start">
                             {team.distributor_logo ? (
                               <img
-                                src={
-                                  getDistributorLogoUrl({
-                                    name: team.distributor_name,
-                                    logo_url: team.distributor_logo,
-                                  }) || "/placeholder.svg"
-                                }
+                                src={getDistributorLogoUrl(team) || "/placeholder.svg"}
                                 alt={team.distributor_name}
                                 title={team.distributor_name}
                                 className="h-8 w-16 object-contain"
