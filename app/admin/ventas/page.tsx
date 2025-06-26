@@ -103,6 +103,7 @@ export default function AdminVentasPage() {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [editingSale, setEditingSale] = useState<Sale | null>(null)
+  let timeoutId: NodeJS.Timeout | null = null // Declare timeoutId here
 
   // Form states
   const [formData, setFormData] = useState({
@@ -138,7 +139,6 @@ export default function AdminVentasPage() {
 
   useEffect(() => {
     let mounted = true
-    let timeoutId: NodeJS.Timeout
 
     const loadDataSafe = async () => {
       if (!mounted) return
@@ -213,6 +213,9 @@ export default function AdminVentasPage() {
       } finally {
         if (mounted) {
           setLoading(false)
+          if (timeoutId) {
+            clearTimeout(timeoutId) // Cancelar el timeout cuando termine la carga
+          }
         }
       }
     }
@@ -227,13 +230,15 @@ export default function AdminVentasPage() {
           variant: "destructive",
         })
       }
-    }, 15000)
+    }, 30000)
 
     loadDataSafe()
 
     return () => {
       mounted = false
-      clearTimeout(timeoutId)
+      if (timeoutId) {
+        clearTimeout(timeoutId)
+      }
     }
   }, [])
 
@@ -299,6 +304,9 @@ export default function AdminVentasPage() {
       })
     } finally {
       setLoading(false)
+      if (timeoutId) {
+        clearTimeout(timeoutId) // Cancelar el timeout al final del finally en loadData también
+      }
     }
   }
 
@@ -341,7 +349,7 @@ export default function AdminVentasPage() {
         Zona: sale.zone?.name || "N/A",
         Cantidad: sale.quantity,
         Puntos: sale.points,
-        Kilos: calculateKilos(sale.points || 0).toFixed(1), // Calcular kilos dinámicamente
+        Kilos: Number(calculateKilos(sale.points || 0).toFixed(1)), // Calcular kilos dinámicamente como número
         "Fecha de Venta": sale.sale_date ? new Date(sale.sale_date).toLocaleDateString() : "N/A",
         "Fecha de Registro": new Date(sale.created_at).toLocaleDateString(),
       }))

@@ -21,7 +21,7 @@ export function AdminZonesChart({ zonesData: propZonesData }: AdminZonesChartPro
   const [error, setError] = useState<string | null>(null)
   const [totalGoles, setTotalGoles] = useState(0)
   const [totalPuntos, setTotalPuntos] = useState(0)
-  const [totalKilos, setTotalKilos] = useState(0)
+
 
   const fetchData = useCallback(async () => {
     try {
@@ -50,7 +50,6 @@ export function AdminZonesChart({ zonesData: propZonesData }: AdminZonesChartPro
             teams: 0,
             goles: 0,
             puntos: 0,
-            kilos: 0,
             fill: getRandomColor(zone.id),
           }
         }
@@ -58,7 +57,6 @@ export function AdminZonesChart({ zonesData: propZonesData }: AdminZonesChartPro
         // Sumar todos los puntos y goles de los equipos de esta zona
         const totalPuntos = rankingResult.data.reduce((sum, team) => sum + team.total_points, 0)
         const totalGoles = rankingResult.data.reduce((sum, team) => sum + team.goals, 0)
-        const totalKilos = Math.floor(totalPuntos / 10)
 
         return {
           id: zone.id,
@@ -66,7 +64,6 @@ export function AdminZonesChart({ zonesData: propZonesData }: AdminZonesChartPro
           teams: rankingResult.data.length,
           goles: totalGoles,
           puntos: totalPuntos,
-          kilos: totalKilos,
           fill: getRandomColor(zone.id),
         }
       })
@@ -79,11 +76,9 @@ export function AdminZonesChart({ zonesData: propZonesData }: AdminZonesChartPro
       // Calcular totales generales
       const allTotalGoles = zoneStatsData.reduce((sum, zone) => sum + zone.goles, 0)
       const allTotalPuntos = zoneStatsData.reduce((sum, zone) => sum + zone.puntos, 0)
-      const allTotalKilos = zoneStatsData.reduce((sum, zone) => sum + zone.kilos, 0)
 
       setTotalGoles(allTotalGoles)
       setTotalPuntos(allTotalPuntos)
-      setTotalKilos(allTotalKilos)
       setData(zoneStatsData)
     } catch (err: any) {
       console.error("Error al cargar datos del gráfico de zonas:", err)
@@ -142,7 +137,6 @@ export function AdminZonesChart({ zonesData: propZonesData }: AdminZonesChartPro
           <div className="mt-2">
             <p className="font-medium">🏆 Goles: {data.goles}</p>
             <p className="font-medium">📊 Puntos: {data.puntos.toLocaleString()}</p>
-            <p className="font-medium">⚖️ Kilos: {data.kilos.toLocaleString()}</p>
           </div>
         </div>
       )
@@ -234,10 +228,7 @@ export function AdminZonesChart({ zonesData: propZonesData }: AdminZonesChartPro
             <p className="text-sm text-gray-500">Total Puntos</p>
             <p className="text-xl font-bold">{totalPuntos.toLocaleString()}</p>
           </div>
-          <div>
-            <p className="text-sm text-gray-500">Total Kilos</p>
-            <p className="text-xl font-bold">{totalKilos.toLocaleString()}</p>
-          </div>
+
         </div>
       </CardFooter>
     </Card>

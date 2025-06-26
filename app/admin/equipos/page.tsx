@@ -42,6 +42,8 @@ interface Team {
   zone_id: string | null
   zone_name: string
   created_at: string
+  distributors?: Distributor | null
+  zones?: Zone | null
 }
 
 export default function EquiposPage() {
@@ -55,9 +57,15 @@ export default function EquiposPage() {
     zone_id: "",
     distributor_id: "",
   })
+  // Controla el estado de “añadiendo equipo” (loading)
   const [isAddingTeam, setIsAddingTeam] = useState(false)
   const [editingTeam, setEditingTeam] = useState<Team | null>(null)
   const [error, setError] = useState<string | null>(null)
+
+  // Estados para cache
+  const [isTeamsLoaded, setIsTeamsLoaded] = useState(false)
+  const [isZonesLoaded, setIsZonesLoaded] = useState(false)
+  const [isDistributorsLoaded, setIsDistributorsLoaded] = useState(false)
 
   // Estados para filtros
   const [searchTerm, setSearchTerm] = useState("")
@@ -67,117 +75,164 @@ export default function EquiposPage() {
 
   useEffect(() => {
     let isMounted = true
+    const abortController = new AbortController()
 
     const loadData = async () => {
       if (!isMounted) return
-      await Promise.all([fetchZones(), fetchDistributors(), fetchTeams()])
+
+      // ✅ Cache definitivo con estados separados
+      if (isTeamsLoaded) {
+        console.log("📦 Todos los datos ya cargados - usando cache")
+        setLoading(false)
+        return
+      }
+
+      try {
+        // Cargar datos en paralelo con abort signal
+        const promises = []
+
+        if (!isTeamsLoaded) {
+          promises.push(fetchTeams(abortController.signal))
+        }
+
+        await Promise.allSettled(promises)
+      } catch (error) {
+        console.error("Error en carga paralela:", error)
+      }
     }
 
     loadData()
 
     return () => {
       isMounted = false
+      abortController.abort()
     }
-  }, [])
+  }, []) // ✅ Sin dependencias problemáticas
 
-  async function fetchZones() {
+  async function fetchZones(signal?: AbortSignal) {
+    if (isZonesLoaded) return
+
     try {
       console.log("📍 Cargando zonas...")
-      const { data, error } = await supabase.from("zones").select("id, name").order("name")
+      const { data, error } = await supabase.from("zones").select("id, name").order("name").abortSignal(signal)
 
-      if (error) {
-        console.error("❌ Error al cargar zonas:", error)
-        throw error
+      if (error) throw error
+      if (!signal?.aborted) {
+        setZones(data || [])
+        setIsZonesLoaded(true)
+        console.log("✅ Zonas cargadas:", data?.length || 0)
       }
-
-      console.log("✅ Zonas cargadas:", data?.length || 0)
-      setZones(data || [])
     } catch (error) {
-      console.error("Error al cargar zonas:", error)
-      toast({
-        title: "Error",
-        description: "No se pudieron cargar las zonas",
-        variant: "destructive",
-      })
+      if (!signal?.aborted) {
+        console.error("Error al cargar zonas:", error)
+        toast({
+          title: "Error",
+          description: "No se pudieron cargar las zonas",
+          variant: "destructive",
+        })
+      }
     }
   }
 
-  async function fetchDistributors() {
+  async function fetchDistributors(signal?: AbortSignal) {
+    if (isDistributorsLoaded) return
+
     try {
       console.log("🏢 Cargando distribuidores...")
-      const { data, error } = await supabase.from("distributors").select("id, name, logo_url").order("name")
+      const { data, error } = await supabase
+        .from("distributors")
+        .select("id, name, logo_url")
+        .order("name")
+        .abortSignal(signal)
 
-      if (error) {
-        console.error("❌ Error al cargar distribuidores:", error)
-        throw error
+      if (error) throw error
+      if (!signal?.aborted) {
+        setDistributors(data || [])
+        setIsDistributorsLoaded(true)
+        console.log("✅ Distribuidores cargados:", data?.length || 0)
       }
-
-      console.log("✅ Distribuidores cargados:", data?.length || 0)
-      setDistributors(data || [])
     } catch (error) {
-      console.error("Error al cargar distribuidores:", error)
-      toast({
-        title: "Error",
-        description: "No se pudieron cargar los distribuidores",
-        variant: "destructive",
-      })
+      if (!signal?.aborted) {
+        console.error("Error al cargar distribuidores:", error)
+        toast({
+          title: "Error",
+          description: "No se pudieron cargar los distribuidores",
+          variant: "destructive",
+        })
+      }
     }
   }
 
-  async function fetchTeams() {
-    // 🚀 CACHE SIMPLE: Si ya tenemos equipos cargados, no recargar
-    if (teams.length > 0) {
-      console.log("📦 Equipos ya cargados - usando cache")
-      setLoading(false)
-      return
-    }
+  async function fetchTeams(signal?: AbortSignal) {
+    if (isTeamsLoaded) return
 
     setLoading(true)
     setError(null)
     try {
-      // Consulta simple sin JOINs complejos
       const { data: teamsData, error } = await supabase
         .from("teams")
-        .select("id, name, distributor_id, zone_id, created_at")
+        .select(`
+    id, 
+    name, 
+    distributor_id, 
+    zone_id, 
+    created_at,
+    distributors!distributor_id (
+      id,
+      name,
+      logo_url
+    ),
+    zones!zone_id (
+      id,
+      name
+    )
+  `)
         .order("name")
+        .abortSignal(signal)
 
       if (error) throw error
+      if (signal?.aborted) return
 
-      // Obtener distribuidores y zonas por separado
-      const distributorIds = [...new Set(teamsData?.map((t) => t.distributor_id).filter(Boolean))]
-      const zoneIds = [...new Set(teamsData?.map((t) => t.zone_id).filter(Boolean))]
+      // Resto de la lógica existente...
+      // const distributorIds = [...new Set(teamsData?.map((t) => t.distributor_id).filter(Boolean))]
+      // const zoneIds = [...new Set(teamsData?.map((t) => t.zone_id).filter(Boolean))]
 
-      const [distributorsData, zonesData] = await Promise.all([
-        distributorIds.length > 0
-          ? supabase.from("distributors").select("id, name, logo_url").in("id", distributorIds)
-          : Promise.resolve({ data: [] }),
-        zoneIds.length > 0
-          ? supabase.from("zones").select("id, name").in("id", zoneIds)
-          : Promise.resolve({ data: [] }),
-      ])
+      // const [distributorsData, zonesData] = await Promise.all([
+      //   distributorIds.length > 0
+      //     ? supabase.from("distributors").select("id, name, logo_url").in("id", distributorIds).abortSignal(signal)
+      //     : Promise.resolve({ data: [] }),
+      //   zoneIds.length > 0
+      //     ? supabase.from("zones").select("id, name").in("id", zoneIds).abortSignal(signal)
+      //     : Promise.resolve({ data: [] }),
+      // ])
 
-      // Crear mapas para lookup rápido
-      const distributorMap = new Map((distributorsData.data || []).map((d) => [d.id, d]))
-      const zoneMap = new Map((zonesData.data || []).map((z) => [z.id, z]))
+      if (signal?.aborted) return
 
-      // Formatear datos
+      // const distributorMap = new Map((distributorsData.data || []).map((d) => [d.id, d]))
+      // const zoneMap = new Map((zonesData.data || []).map((z) => [z.id, z]))
+
       const formattedData = (teamsData || []).map((team) => ({
         id: team.id,
         name: team.name || "Sin nombre",
         distributor_id: team.distributor_id,
-        distributor_name: distributorMap.get(team.distributor_id)?.name || "Sin distribuidor",
-        distributor_logo: distributorMap.get(team.distributor_id)?.logo_url || null,
+        distributor_name: team.distributors?.name || "Sin distribuidor",
+        distributor_logo: team.distributors?.logo_url || null,
         zone_id: team.zone_id,
-        zone_name: zoneMap.get(team.zone_id)?.name || "Sin zona",
+        zone_name: team.zones?.name || "Sin zona",
         created_at: team.created_at,
       }))
 
       setTeams(formattedData)
+      setIsTeamsLoaded(true)
     } catch (error: any) {
-      console.error("❌ Error al cargar equipos:", error)
-      setError(error.message || "Error al cargar equipos")
+      if (!signal?.aborted) {
+        console.error("❌ Error al cargar equipos:", error)
+        setError(error.message || "Error al cargar equipos")
+      }
     } finally {
-      setLoading(false)
+      if (!signal?.aborted) {
+        setLoading(false)
+      }
     }
   }
 

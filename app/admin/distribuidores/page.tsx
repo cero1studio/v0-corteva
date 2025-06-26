@@ -26,14 +26,16 @@ export default function DistribuidoresPage() {
   const [error, setError] = useState<string | null>(null)
   const [retryCount, setRetryCount] = useState(0)
   const { toast } = useToast()
+  const [isDistributorsLoaded, setIsDistributorsLoaded] = useState(false)
 
   useEffect(() => {
     let mounted = true
     let timeoutId: NodeJS.Timeout
+    const abortController = new AbortController()
 
     const loadDistributors = async () => {
-      // 🚀 CACHE SIMPLE: Si ya tenemos distribuidores y no es retry, no recargar
-      if (distributors.length > 0 && retryCount === 0) {
+      // 🚀 CACHE DEFINITIVO: Usar estado separado
+      if (isDistributorsLoaded && retryCount === 0) {
         console.log("📦 Distribuidores ya cargados - usando cache")
         setLoading(false)
         return
@@ -42,30 +44,27 @@ export default function DistribuidoresPage() {
       setLoading(true)
       setError(null)
 
-      // Timeout de seguridad para evitar loading infinito
+      // Timeout de seguridad que se limpia correctamente
       timeoutId = setTimeout(() => {
         if (mounted) {
-          console.log("DISTRIBUIDORES: Timeout reached, forcing loading to false")
+          console.log("DISTRIBUIDORES: Timeout reached, aborting query")
+          abortController.abort()
           setLoading(false)
+          setError("Timeout - intenta nuevamente")
         }
-      }, 10000)
+      }, 8000)
 
       try {
-        const timeoutPromise = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error("Timeout: La consulta tardó demasiado")), 5000),
-        )
-
-        const fetchPromise = supabase.from("distributors").select("*").order("name")
-
-        const result = (await Promise.race([fetchPromise, timeoutPromise])) as any
+        const result = await supabase.from("distributors").select("*").order("name").abortSignal(abortController.signal)
 
         if (result.error) throw result.error
 
-        if (mounted) {
+        if (mounted && !abortController.signal.aborted) {
           setDistributors(result.data || [])
+          setIsDistributorsLoaded(true) // ✅ Marcar como cargado
         }
       } catch (error: any) {
-        if (mounted) {
+        if (mounted && !abortController.signal.aborted) {
           console.error("Error al cargar distribuidores:", error)
           setError(error.message || "Error al cargar distribuidores")
           toast({
@@ -75,9 +74,10 @@ export default function DistribuidoresPage() {
           })
         }
       } finally {
-        if (mounted) {
+        if (mounted && !abortController.signal.aborted) {
           setLoading(false)
         }
+        if (timeoutId) clearTimeout(timeoutId)
       }
     }
 
@@ -85,9 +85,10 @@ export default function DistribuidoresPage() {
 
     return () => {
       mounted = false
-      clearTimeout(timeoutId)
+      abortController.abort()
+      if (timeoutId) clearTimeout(timeoutId)
     }
-  }, [retryCount, toast, distributors.length])
+  }, [retryCount, toast]) // ✅ Solo triggers, no distributors.length
 
   const handleRetry = () => {
     setRetryCount((prev) => prev + 1)

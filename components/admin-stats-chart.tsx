@@ -14,7 +14,6 @@ type TeamData = {
   name: string
   goles: number
   puntos: number
-  kilos: number
   color: string
 }
 
@@ -81,13 +80,11 @@ export function AdminStatsChart() {
       const chartData: TeamData[] = rankingResult.data.map((team, index) => {
         const puntos = team.total_points
         const goles = Math.floor(puntos / puntosParaGol)
-        const kilos = puntos / 10
 
         return {
           name: team.team_name,
           goles: goles,
           puntos: puntos,
-          kilos: Math.round(kilos * 10) / 10,
           color: colors[index % colors.length],
         }
       })
@@ -167,7 +164,6 @@ export function AdminStatsChart() {
                       <div className="font-semibold">{teamData.name}</div>
                       <div>🏆 {teamData.goles} goles</div>
                       <div>📊 {teamData.puntos} puntos</div>
-                      <div>⚖️ {teamData.kilos} kilos</div>
                     </div>,
                     "",
                   ]
@@ -186,7 +182,7 @@ export function AdminStatsChart() {
       </ResponsiveContainer>
 
       {/* Resumen de datos */}
-      <div className="mt-4 grid grid-cols-3 gap-4 text-center text-sm">
+      <div className="mt-6 grid grid-cols-6 gap-6 text-center text-sm">
         <div className="bg-yellow-50 p-2 rounded">
           <div className="font-semibold text-yellow-700">Total Goles</div>
           <div className="text-lg font-bold text-yellow-800">{data.reduce((sum, team) => sum + team.goles, 0)}</div>
@@ -195,12 +191,6 @@ export function AdminStatsChart() {
           <div className="font-semibold text-blue-700">Total Puntos</div>
           <div className="text-lg font-bold text-blue-800">
             {data.reduce((sum, team) => sum + team.puntos, 0).toLocaleString()}
-          </div>
-        </div>
-        <div className="bg-green-50 p-2 rounded">
-          <div className="font-semibold text-green-700">Total Kilos</div>
-          <div className="text-lg font-bold text-green-800">
-            {Math.round(data.reduce((sum, team) => sum + team.kilos, 0) * 10) / 10}
           </div>
         </div>
       </div>

@@ -32,8 +32,12 @@ export default function AdminDashboardPage() {
     totalDirectores: 0,
     totalTeams: 0,
     totalZones: 0,
-    totalProducts: 0,
+    totalClients: 0,
     totalSales: 0,
+    totalSalesPoints: 0,
+    totalFreeKicks: 0,
+    totalFreeKickPoints: 0,
+    totalClientPoints: 0,
   })
   const [zoneStats, setZoneStats] = useState<any[]>([])
   const [productStats, setProductStats] = useState<any[]>([])
@@ -44,6 +48,10 @@ export default function AdminDashboardPage() {
     zoneStats: false,
     productStats: false,
   })
+
+  const [isBasicStatsLoaded, setIsBasicStatsLoaded] = useState(false)
+  const [isZoneStatsLoaded, setIsZoneStatsLoaded] = useState(false)
+  const [isProductStatsLoaded, setIsProductStatsLoaded] = useState(false)
 
   // --- helper to fetch dynamic ranking from the API route ---
   async function fetchRanking(zoneId?: string) {
@@ -57,103 +65,154 @@ export default function AdminDashboardPage() {
   }
 
   // Función para obtener estadísticas básicas
-  const fetchBasicStats = useCallback(async () => {
-    try {
-      // Usar consultas más simples y secuenciales en lugar de paralelas
-      const [capitanes, directores, teams, zones, products, sales] = await Promise.all([
-        supabase.from("profiles").select("*", { count: "exact", head: true }).eq("role", "capitan"),
-        supabase.from("profiles").select("*", { count: "exact", head: true }).eq("role", "director_tecnico"),
-        supabase.from("teams").select("*", { count: "exact", head: true }),
-        supabase.from("zones").select("*", { count: "exact", head: true }),
-        supabase.from("products").select("*", { count: "exact", head: true }),
-        supabase.from("sales").select("*", { count: "exact", head: true }),
-      ])
+  const fetchBasicStats = useCallback(
+    async (signal?: AbortSignal) => {
+      if (isBasicStatsLoaded) return true
 
-      setStats({
-        totalCapitanes: capitanes.count || 0,
-        totalDirectores: directores.count || 0,
-        totalTeams: teams.count || 0,
-        totalZones: zones.count || 0,
-        totalProducts: products.count || 0,
-        totalSales: sales.count || 0,
-      })
+      try {
+        const [capitanes, directores, teams, zones, clients, sales, freeKicks] = await Promise.all([
+          supabase
+            .from("profiles")
+            .select("*", { count: "exact", head: true })
+            .eq("role", "capitan")
+            .abortSignal(signal),
+          supabase
+            .from("profiles")
+            .select("*", { count: "exact", head: true })
+            .eq("role", "director_tecnico")
+            .abortSignal(signal),
+          supabase.from("teams").select("*", { count: "exact", head: true }).abortSignal(signal),
+          supabase.from("zones").select("*", { count: "exact", head: true }).abortSignal(signal),
+          supabase.from("competitor_clients").select("points").abortSignal(signal),
+          supabase.from("sales").select("points").abortSignal(signal),
+          supabase.from("free_kick_goals").select("points").abortSignal(signal),
+        ])
 
-      setDataLoaded((prev) => ({ ...prev, basicStats: true }))
-      return true
-    } catch (error: any) {
-      console.error("Error al cargar estadísticas básicas:", error)
-      return false
-    }
-  }, [])
+        if (signal?.aborted) return false
+
+        const totalSalesPoints = sales.data?.reduce((sum, sale) => sum + (sale.points || 0), 0) || 0
+        const totalFreeKickPoints = freeKicks.data?.reduce((sum, fk) => sum + (fk.points || 0), 0) || 0
+        const totalClientPoints = clients.data?.reduce((sum, client) => sum + (client.points || 0), 0) || 0
+
+        setStats({
+          totalCapitanes: capitanes.count || 0,
+          totalDirectores: directores.count || 0,
+          totalTeams: teams.count || 0,
+          totalZones: zones.count || 0,
+          totalClients: clients.data?.length || 0,
+          totalSales: sales.data?.length || 0,
+          totalSalesPoints: totalSalesPoints,
+          totalFreeKicks: freeKicks.data?.length || 0,
+          totalFreeKickPoints: totalFreeKickPoints,
+          totalClientPoints: totalClientPoints,
+        })
+
+        setDataLoaded((prev) => ({ ...prev, basicStats: true }))
+        setIsBasicStatsLoaded(true)
+        return true
+      } catch (error: any) {
+        if (!signal?.aborted) {
+          console.error("Error al cargar estadísticas básicas:", error)
+        }
+        return false
+      }
+    },
+    [isBasicStatsLoaded],
+  )
 
   // Función separada para cargar estadísticas de zonas (simplificada)
-  const fetchZoneStats = useCallback(async () => {
-    try {
-      // Solo obtener conteo básico de zonas sin cálculos complejos
-      const { data: zones, error: zonesError } = await supabase.from("zones").select("id, name")
-      if (zonesError) throw zonesError
+  const fetchZoneStats = useCallback(
+    async (signal?: AbortSignal) => {
+      if (isZoneStatsLoaded) return true
 
-      // Crear estadísticas básicas sin llamar al ranking por zona
-      const basicZoneStats = zones.map((zone) => ({
-        id: zone.id,
-        name: zone.name,
-        teams: 0, // Simplificado
-        total_goals: 0, // Simplificado
-      }))
+      try {
+        const { data: zones, error: zonesError } = await supabase.from("zones").select("id, name").abortSignal(signal)
 
-      setZoneStats(basicZoneStats)
-      setDataLoaded((prev) => ({ ...prev, zoneStats: true }))
-      return true
-    } catch (error) {
-      console.error("Error al cargar estadísticas de zonas:", error)
-      return false
-    }
-  }, [])
+        if (zonesError) throw zonesError
+        if (signal?.aborted) return false
+
+        const basicZoneStats = zones.map((zone) => ({
+          id: zone.id,
+          name: zone.name,
+          teams: 0,
+          total_goals: 0,
+        }))
+
+        setZoneStats(basicZoneStats)
+        setDataLoaded((prev) => ({ ...prev, zoneStats: true }))
+        setIsZoneStatsLoaded(true)
+        return true
+      } catch (error) {
+        if (!signal?.aborted) {
+          console.error("Error al cargar estadísticas de zonas:", error)
+        }
+        return false
+      }
+    },
+    [isZoneStatsLoaded],
+  )
 
   // Función separada para cargar estadísticas de productos
-  const fetchProductStats = useCallback(async () => {
-    try {
-      // Consulta simplificada para productos
-      const { data, error } = await supabase.from("products").select("id, name")
+  const fetchProductStats = useCallback(
+    async (signal?: AbortSignal) => {
+      if (isProductStatsLoaded) return true
 
-      if (error) throw error
+      try {
+        const { data, error } = await supabase.from("products").select("id, name").abortSignal(signal)
 
-      // Para cada producto, obtener ventas en consultas separadas
-      const productStatsPromises = data.map(async (product) => {
-        const { data: salesData } = await supabase.from("sales").select("quantity, points").eq("product_id", product.id)
+        if (error) throw error
+        if (signal?.aborted) return false
 
-        const totalSales = salesData?.reduce((sum, sale) => sum + (sale.quantity || 0), 0) || 0
-        const totalPoints = salesData?.reduce((sum, sale) => sum + (sale.points || 0), 0) || 0
+        const productStatsPromises = data.map(async (product) => {
+          const { data: salesData } = await supabase
+            .from("sales")
+            .select("quantity, points")
+            .eq("product_id", product.id)
+            .abortSignal(signal)
 
-        return {
-          id: product.id,
-          name: product.name,
-          sales: totalSales,
-          totalPoints: totalPoints,
+          if (signal?.aborted) return null
+
+          const totalSales = salesData?.reduce((sum, sale) => sum + (sale.quantity || 0), 0) || 0
+          const totalPoints = salesData?.reduce((sum, sale) => sum + (sale.points || 0), 0) || 0
+
+          return {
+            id: product.id,
+            name: product.name,
+            sales: totalSales,
+            totalPoints: totalPoints,
+          }
+        })
+
+        const productStatsResults = await Promise.all(productStatsPromises)
+
+        if (signal?.aborted) return false
+
+        setProductStats(productStatsResults.filter(Boolean))
+        setDataLoaded((prev) => ({ ...prev, productStats: true }))
+        setIsProductStatsLoaded(true)
+        return true
+      } catch (error) {
+        if (!signal?.aborted) {
+          console.error("Error al cargar estadísticas de productos:", error)
         }
-      })
-
-      const productStatsResults = await Promise.all(productStatsPromises)
-      setProductStats(productStatsResults)
-      setDataLoaded((prev) => ({ ...prev, productStats: true }))
-      return true
-    } catch (error) {
-      console.error("Error al cargar estadísticas de productos:", error)
-      return false
-    }
-  }, [])
+        return false
+      }
+    },
+    [isProductStatsLoaded],
+  )
 
   // Cargar datos de forma secuencial y con manejo de errores
   useEffect(() => {
     let isMounted = true
     let timeoutId: NodeJS.Timeout | null = null
+    const abortController = new AbortController()
 
     const loadData = async () => {
       if (!isMounted) return
 
-      // 🚀 CACHE SIMPLE: Si ya tenemos datos básicos y no es un retry forzado, no recargar
-      if (dataLoaded.basicStats && stats.totalTeams > 0 && retryCount === 0) {
-        console.log("📦 Usando datos en cache - no recargando")
+      // 🚀 CACHE DEFINITIVO: Estados separados
+      if (isBasicStatsLoaded && retryCount === 0) {
+        console.log("📦 Estadísticas básicas ya cargadas - usando cache")
         setLoading(false)
         return
       }
@@ -161,31 +220,32 @@ export default function AdminDashboardPage() {
       setLoading(true)
       setError(null)
 
-      // Timeout más corto
+      // Timeout que se limpia correctamente
       timeoutId = setTimeout(() => {
-        if (isMounted && loading) {
+        if (isMounted) {
+          console.log("Dashboard: Timeout reached, aborting")
+          abortController.abort()
           setLoading(false)
-          if (!dataLoaded.basicStats) {
+          if (!isBasicStatsLoaded) {
             setError("Timeout - intenta nuevamente")
           }
         }
-      }, 10000) // Reducir a 10 segundos
+      }, 8000)
 
-      // Cargar solo estadísticas básicas primero
-      const basicStatsSuccess = await fetchBasicStats()
+      // Cargar estadísticas básicas primero
+      const basicStatsSuccess = await fetchBasicStats(abortController.signal)
 
-      if (basicStatsSuccess && isMounted) {
+      if (basicStatsSuccess && isMounted && !abortController.signal.aborted) {
         // Cargar el resto con delay para no sobrecargar
         setTimeout(() => {
-          if (isMounted) {
-            Promise.allSettled([fetchZoneStats(), fetchProductStats()])
+          if (isMounted && !abortController.signal.aborted) {
+            Promise.allSettled([fetchZoneStats(abortController.signal), fetchProductStats(abortController.signal)])
           }
         }, 100)
       }
 
-      if (isMounted) {
+      if (isMounted && !abortController.signal.aborted) {
         setLoading(false)
-        if (timeoutId) clearTimeout(timeoutId)
       }
     }
 
@@ -193,6 +253,7 @@ export default function AdminDashboardPage() {
 
     return () => {
       isMounted = false
+      abortController.abort()
       if (timeoutId) clearTimeout(timeoutId)
     }
   }, [retryCount])
@@ -244,7 +305,7 @@ export default function AdminDashboardPage() {
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Equipos</CardTitle>
@@ -278,16 +339,19 @@ export default function AdminDashboardPage() {
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Productos</CardTitle>
-            <Package className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium">Clientes Registrados</CardTitle>
+            <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             {loading && !dataLoaded.basicStats ? (
               <Skeleton className="h-8 w-20" />
             ) : (
-              <div className="text-2xl font-bold">{stats.totalProducts}</div>
+              <div className="text-2xl font-bold">{stats.totalClients}</div>
             )}
-            <p className="text-xs text-muted-foreground">Productos registrados</p>
+            <div className="space-y-1">
+              <p className="text-xs text-muted-foreground">Clientes de la competencia</p>
+              <p className="text-xs text-purple-600 font-medium">{stats.totalClientPoints} puntos totales</p>
+            </div>
           </CardContent>
         </Card>
         <Card>
@@ -303,12 +367,27 @@ export default function AdminDashboardPage() {
             )}
             <div className="space-y-1">
               <p className="text-xs text-muted-foreground">Ventas registradas</p>
-              {!loading && dataLoaded.productStats && (
-                <p className="text-xs text-green-600 font-medium">
-                  {Math.round((productStats.reduce((sum, product) => sum + product.totalPoints, 0) / 10) * 10) / 10}{" "}
-                  kilos totales
-                </p>
-              )}
+              <p className="text-xs text-green-600 font-medium">{stats.totalSalesPoints} puntos totales</p>
+              <p className="text-xs text-green-600 font-medium">
+                {Math.round((stats.totalSalesPoints / 10) * 10) / 10} kilos totales
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Tiros Libres</CardTitle>
+            <Package className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            {loading && !dataLoaded.basicStats ? (
+              <Skeleton className="h-8 w-20" />
+            ) : (
+              <div className="text-2xl font-bold">{stats.totalFreeKicks}</div>
+            )}
+            <div className="space-y-1">
+              <p className="text-xs text-muted-foreground">Tiros libres registrados</p>
+              <p className="text-xs text-blue-600 font-medium">{stats.totalFreeKickPoints} puntos totales</p>
             </div>
           </CardContent>
         </Card>
@@ -353,7 +432,7 @@ export default function AdminDashboardPage() {
             <p className="text-muted-foreground">
               Las estadísticas detalladas por zona están disponibles en el ranking completo.
             </p>
-            <Button asChild variant="outline" className="mt-4">
+            <Button asChild variant="outline" className="mt-4 bg-transparent">
               <Link href="/admin/ranking">Ver ranking por zonas</Link>
             </Button>
           </div>
@@ -408,7 +487,7 @@ export default function AdminDashboardPage() {
                     Gestionar Productos
                   </Link>
                 </Button>
-                <Button variant="outline" size="sm" className="gap-2">
+                <Button variant="outline" size="sm" className="gap-2 bg-transparent">
                   <Download className="h-4 w-4" />
                   Exportar datos
                 </Button>

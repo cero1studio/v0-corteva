@@ -35,13 +35,14 @@ export default function ZonasPage() {
   const [searchTerm, setSearchTerm] = useState("")
   const { toast } = useToast()
   const [error, setError] = useState<string | null>(null)
+  const [isZonesLoaded, setIsZonesLoaded] = useState(false)
 
   useEffect(() => {
     const abortController = new AbortController()
 
     const fetchZonesWithCleanup = async () => {
-      // 🚀 CACHE SIMPLE: Si ya tenemos zonas cargadas, no recargar
-      if (zones.length > 0) {
+      // 🚀 CACHE DEFINITIVO: Usar estado separado, no zones.length
+      if (isZonesLoaded) {
         console.log("📦 Zonas ya cargadas - usando cache")
         setLoading(false)
         return
@@ -62,6 +63,7 @@ export default function ZonasPage() {
         if (result.error) throw result.error
         if (!abortController.signal.aborted) {
           setZones(result.data || [])
+          setIsZonesLoaded(true) // ✅ Marcar como cargado
         }
       } catch (error: any) {
         if (!abortController.signal.aborted) {
@@ -85,7 +87,7 @@ export default function ZonasPage() {
     return () => {
       abortController.abort()
     }
-  }, [toast, zones])
+  }, [toast])
 
   // Filtrar zonas basándose en el término de búsqueda
   const filteredZones = useMemo(() => {

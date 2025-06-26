@@ -45,8 +45,14 @@ export default function RankingPage() {
       }
 
       if (user_team_info) {
-        // Calcular goles reales basados en puntos totales
-        const realGoals = Math.floor(user_team_info.total_points / puntosParaGol)
+        // Calculate goals only from sales points, not total points
+        const { data: salesData } = await supabase
+          .from("sales")
+          .select("points")
+          .or(`representative_id.eq.${user.id},team_id.eq.${user_team_info.team_id}`)
+
+        const totalSalesPoints = salesData?.reduce((sum, sale) => sum + (sale.points || 0), 0) || 0
+        const realGoals = Math.floor(totalSalesPoints / puntosParaGol)
 
         // Actualizar el objeto userTeamInfo
         setUserTeamInfo({
@@ -76,8 +82,21 @@ export default function RankingPage() {
       const rankingWithPositions = ranking_data.map((user, index) => ({
         ...user,
         position: index + 1,
-        goals: Math.floor(user.total_points / puntosParaGol), // Calculate goals for ranking display
+        goals: Math.floor(user.total_points / puntosParaGol), // Keep total points for ranking, but goals should be sales-only
       }))
+
+      // Calculate sales-only goals for each user
+      for (let i = 0; i < rankingWithPositions.length; i++) {
+        const user = rankingWithPositions[i]
+        const { data: userSalesData } = await supabase
+          .from("sales")
+          .select("points")
+          .or(`representative_id.eq.${user.user_id},team_id.eq.${user.team_id}`)
+
+        const userSalesPoints = userSalesData?.reduce((sum, sale) => sum + (sale.points || 0), 0) || 0
+        rankingWithPositions[i].goals = Math.floor(userSalesPoints / puntosParaGol)
+      }
+
       setRanking(rankingWithPositions)
     }
     setLoading(false)
