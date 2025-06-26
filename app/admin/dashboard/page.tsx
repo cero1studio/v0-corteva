@@ -236,6 +236,10 @@ export default function AdminDashboardPage() {
       const basicStatsSuccess = await fetchBasicStats(abortController.signal)
 
       if (basicStatsSuccess && isMounted && !abortController.signal.aborted) {
+        // Clear timeout immediately when basic stats load successfully
+        if (timeoutId) clearTimeout(timeoutId)
+        setLoading(false)
+
         // Cargar el resto con delay para no sobrecargar
         setTimeout(() => {
           if (isMounted && !abortController.signal.aborted) {
@@ -246,6 +250,7 @@ export default function AdminDashboardPage() {
 
       if (isMounted && !abortController.signal.aborted) {
         setLoading(false)
+        if (timeoutId) clearTimeout(timeoutId)
       }
     }
 
