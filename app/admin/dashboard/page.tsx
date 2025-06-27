@@ -31,7 +31,12 @@ export default function AdminDashboardPage() {
   const router = useRouter()
   const diagnostics = useDiagnostics("AdminDashboard")
   const cache = usePersistentDashboardCache()
-  const retryCountRef = useRef(0)
+
+  // Use refs to avoid re-renders
+  const mountedRef = useRef(true)
+  const loadingRef = useRef(false)
+  const abortControllerRef = useRef<AbortController | null>(null)
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   const [loading, setLoading] = useState(true)
   const [stats, setStats] = useState({
@@ -50,340 +55,240 @@ export default function AdminDashboardPage() {
   const [productStats, setProductStats] = useState<any[]>([])
   const [error, setError] = useState<string | null>(null)
 
-  // Función para obtener estadísticas básicas
-  const fetchBasicStats = useCallback(
-    async (signal?: AbortSignal) => {
-      diagnostics.log("fetchBasicStats", "Starting", { hasCache: cache.hasStats() })
+  // Función para limpiar recursos
+  const cleanup = useCallback(() => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+      abortControllerRef.current = null
+    }
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current)
+      timeoutRef.current = null
+    }
+    loadingRef.current = false
+  }, [])
 
-      // Verificar cache persistente primero
-      if (cache.hasStats()) {
-        diagnostics.log("fetchBasicStats", "Using persistent cache")
-        const cachedStats = cache.getStats()
-        setStats(cachedStats)
-        return true
-      }
+  // Función para obtener estadísticas básicas con mejor manejo de errores
+  const fetchBasicStats = useCallback(async () => {
+    if (!mountedRef.current || loadingRef.current) return false
 
-      try {
-        const promise = Promise.all([
-          supabase
-            .from("profiles")
-            .select("*", { count: "exact", head: true })
-            .eq("role", "capitan")
-            .abortSignal(signal),
-          supabase
-            .from("profiles")
-            .select("*", { count: "exact", head: true })
-            .eq("role", "director_tecnico")
-            .abortSignal(signal),
-          supabase.from("teams").select("*", { count: "exact", head: true }).abortSignal(signal),
-          supabase.from("zones").select("*", { count: "exact", head: true }).abortSignal(signal),
-          supabase.from("competitor_clients").select("points").abortSignal(signal),
-          supabase.from("sales").select("points").abortSignal(signal),
-          supabase.from("free_kick_goals").select("points").abortSignal(signal),
-        ])
-
-        const [capitanes, directores, teams, zones, clients, sales, freeKicks] = await diagnostics.trackPromise(
-          "basicStats",
-          promise,
-        )
-
-        if (signal?.aborted) {
-          diagnostics.log("fetchBasicStats", "Aborted by signal")
-          return false
-        }
-
-        const totalSalesPoints = sales.data?.reduce((sum, sale) => sum + (sale.points || 0), 0) || 0
-        const totalFreeKickPoints = freeKicks.data?.reduce((sum, fk) => sum + (fk.points || 0), 0) || 0
-        const totalClientPoints = clients.data?.reduce((sum, client) => sum + (client.points || 0), 0) || 0
-
-        const newStats = {
-          totalCapitanes: capitanes.count || 0,
-          totalDirectores: directores.count || 0,
-          totalTeams: teams.count || 0,
-          totalZones: zones.count || 0,
-          totalClients: clients.data?.length || 0,
-          totalSales: sales.data?.length || 0,
-          totalSalesPoints: totalSalesPoints,
-          totalFreeKicks: freeKicks.data?.length || 0,
-          totalFreeKickPoints: totalFreeKickPoints,
-          totalClientPoints: totalClientPoints,
-        }
-
-        diagnostics.log("fetchBasicStats", "Success", newStats)
-
-        setStats(newStats)
-        cache.setStats(newStats) // Guardar en cache persistente
-        return true
-      } catch (error: any) {
-        if (!signal?.aborted) {
-          diagnostics.log("fetchBasicStats", "Error", { error: error.message })
-          console.error("Error al cargar estadísticas básicas:", error)
-        }
-        return false
-      }
-    },
-    [cache, diagnostics],
-  )
-
-  // Función separada para cargar estadísticas de zonas
-  const fetchZoneStats = useCallback(
-    async (signal?: AbortSignal) => {
-      diagnostics.log("fetchZoneStats", "Starting", { hasCache: cache.hasZoneStats() })
-
-      if (cache.hasZoneStats()) {
-        diagnostics.log("fetchZoneStats", "Using persistent cache")
-        const cachedZoneStats = cache.getZoneStats()
-        setZoneStats(cachedZoneStats)
-        return true
-      }
-
-      try {
-        const { data: zones, error: zonesError } = await supabase.from("zones").select("id, name").abortSignal(signal)
-
-        if (zonesError) throw zonesError
-        if (signal?.aborted) {
-          diagnostics.log("fetchZoneStats", "Aborted by signal")
-          return false
-        }
-
-        const basicZoneStats = zones.map((zone) => ({
-          id: zone.id,
-          name: zone.name,
-          teams: 0,
-          total_goals: 0,
-        }))
-
-        diagnostics.log("fetchZoneStats", "Success", { count: basicZoneStats.length })
-
-        setZoneStats(basicZoneStats)
-        cache.setZoneStats(basicZoneStats) // Guardar en cache persistente
-        return true
-      } catch (error: any) {
-        if (!signal?.aborted) {
-          diagnostics.log("fetchZoneStats", "Error", { error: error.message })
-          console.error("Error al cargar estadísticas de zonas:", error)
-        }
-        return false
-      }
-    },
-    [cache, diagnostics],
-  )
-
-  // Función separada para cargar estadísticas de productos
-  const fetchProductStats = useCallback(
-    async (signal?: AbortSignal) => {
-      diagnostics.log("fetchProductStats", "Starting", { hasCache: cache.hasProductStats() })
-
-      if (cache.hasProductStats()) {
-        diagnostics.log("fetchProductStats", "Using persistent cache")
-        const cachedProductStats = cache.getProductStats()
-        setProductStats(cachedProductStats)
-        return true
-      }
-
-      try {
-        const { data, error } = await supabase.from("products").select("id, name").abortSignal(signal)
-
-        if (error) throw error
-        if (signal?.aborted) {
-          diagnostics.log("fetchProductStats", "Aborted by signal")
-          return false
-        }
-
-        const productStatsPromises = data.map(async (product) => {
-          const { data: salesData } = await supabase
-            .from("sales")
-            .select("quantity, points")
-            .eq("product_id", product.id)
-            .abortSignal(signal)
-
-          if (signal?.aborted) return null
-
-          const totalSales = salesData?.reduce((sum, sale) => sum + (sale.quantity || 0), 0) || 0
-          const totalPoints = salesData?.reduce((sum, sale) => sum + (sale.points || 0), 0) || 0
-
-          return {
-            id: product.id,
-            name: product.name,
-            sales: totalSales,
-            totalPoints: totalPoints,
-          }
-        })
-
-        const productStatsResults = await Promise.all(productStatsPromises)
-
-        if (signal?.aborted) {
-          diagnostics.log("fetchProductStats", "Aborted by signal")
-          return false
-        }
-
-        const filteredResults = productStatsResults.filter(Boolean)
-        diagnostics.log("fetchProductStats", "Success", { count: filteredResults.length })
-
-        setProductStats(filteredResults)
-        cache.setProductStats(filteredResults) // Guardar en cache persistente
-        return true
-      } catch (error: any) {
-        if (!signal?.aborted) {
-          diagnostics.log("fetchProductStats", "Error", { error: error.message })
-          console.error("Error al cargar estadísticas de productos:", error)
-        }
-        return false
-      }
-    },
-    [cache, diagnostics],
-  )
-
-  // Efecto separado para inicializar desde cache
-  useEffect(() => {
-    diagnostics.log("INIT", "Checking persistent cache")
-
-    // Verificar cache persistente al montar
+    // Verificar cache persistente primero
     if (cache.hasStats()) {
       const cachedStats = cache.getStats()
-      diagnostics.log("INIT", "Found cached stats", cachedStats)
       setStats(cachedStats)
-      setLoading(false)
+      return true
     }
 
-    if (cache.hasZoneStats()) {
-      const cachedZoneStats = cache.getZoneStats()
-      diagnostics.log("INIT", "Found cached zone stats", { count: cachedZoneStats.length })
-      setZoneStats(cachedZoneStats)
+    loadingRef.current = true
+    abortControllerRef.current = new AbortController()
+    const signal = abortControllerRef.current.signal
+
+    try {
+      // Timeout más largo y manejo más robusto
+      timeoutRef.current = setTimeout(() => {
+        if (mountedRef.current) {
+          cleanup()
+          setError("Timeout - los datos tardan en cargar")
+          setLoading(false)
+        }
+      }, 15000) // Aumentado a 15 segundos
+
+      const [capitanes, directores, teams, zones, clients, sales, freeKicks] = await Promise.all([
+        supabase.from("profiles").select("*", { count: "exact", head: true }).eq("role", "capitan").abortSignal(signal),
+        supabase
+          .from("profiles")
+          .select("*", { count: "exact", head: true })
+          .eq("role", "director_tecnico")
+          .abortSignal(signal),
+        supabase.from("teams").select("*", { count: "exact", head: true }).abortSignal(signal),
+        supabase.from("zones").select("*", { count: "exact", head: true }).abortSignal(signal),
+        supabase.from("competitor_clients").select("points").abortSignal(signal),
+        supabase.from("sales").select("points").abortSignal(signal),
+        supabase.from("free_kick_goals").select("points").abortSignal(signal),
+      ])
+
+      if (signal.aborted || !mountedRef.current) return false
+
+      const totalSalesPoints = sales.data?.reduce((sum, sale) => sum + (sale.points || 0), 0) || 0
+      const totalFreeKickPoints = freeKicks.data?.reduce((sum, fk) => sum + (fk.points || 0), 0) || 0
+      const totalClientPoints = clients.data?.reduce((sum, client) => sum + (client.points || 0), 0) || 0
+
+      const newStats = {
+        totalCapitanes: capitanes.count || 0,
+        totalDirectores: directores.count || 0,
+        totalTeams: teams.count || 0,
+        totalZones: zones.count || 0,
+        totalClients: clients.data?.length || 0,
+        totalSales: sales.data?.length || 0,
+        totalSalesPoints: totalSalesPoints,
+        totalFreeKicks: freeKicks.data?.length || 0,
+        totalFreeKickPoints: totalFreeKickPoints,
+        totalClientPoints: totalClientPoints,
+      }
+
+      if (mountedRef.current) {
+        setStats(newStats)
+        cache.setStats(newStats)
+        setError(null)
+
+        if (timeoutRef.current) {
+          clearTimeout(timeoutRef.current)
+          timeoutRef.current = null
+        }
+      }
+
+      return true
+    } catch (error: any) {
+      if (!signal.aborted && mountedRef.current) {
+        console.error("Error al cargar estadísticas básicas:", error)
+        setError("Error al cargar datos")
+      }
+      return false
+    } finally {
+      loadingRef.current = false
+    }
+  }, [cache, cleanup])
+
+  // Función para cargar estadísticas de zonas
+  const fetchZoneStats = useCallback(async () => {
+    if (!mountedRef.current || cache.hasZoneStats()) {
+      if (cache.hasZoneStats()) {
+        setZoneStats(cache.getZoneStats())
+      }
+      return
     }
 
-    if (cache.hasProductStats()) {
-      const cachedProductStats = cache.getProductStats()
-      diagnostics.log("INIT", "Found cached product stats", { count: cachedProductStats.length })
-      setProductStats(cachedProductStats)
-    }
-  }, [cache, diagnostics])
+    try {
+      const { data: zones, error } = await supabase.from("zones").select("id, name")
 
-  // Efecto separado para cargar datos cuando no están en cache
+      if (error || !mountedRef.current) return
+
+      const basicZoneStats = zones.map((zone) => ({
+        id: zone.id,
+        name: zone.name,
+        teams: 0,
+        total_goals: 0,
+      }))
+
+      if (mountedRef.current) {
+        setZoneStats(basicZoneStats)
+        cache.setZoneStats(basicZoneStats)
+      }
+    } catch (error) {
+      console.error("Error al cargar estadísticas de zonas:", error)
+    }
+  }, [cache])
+
+  // Función para cargar estadísticas de productos
+  const fetchProductStats = useCallback(async () => {
+    if (!mountedRef.current || cache.hasProductStats()) {
+      if (cache.hasProductStats()) {
+        setProductStats(cache.getProductStats())
+      }
+      return
+    }
+
+    try {
+      const { data, error } = await supabase.from("products").select("id, name")
+
+      if (error || !mountedRef.current) return
+
+      const productStatsPromises = data.map(async (product) => {
+        const { data: salesData } = await supabase.from("sales").select("quantity, points").eq("product_id", product.id)
+
+        const totalSales = salesData?.reduce((sum, sale) => sum + (sale.quantity || 0), 0) || 0
+        const totalPoints = salesData?.reduce((sum, sale) => sum + (sale.points || 0), 0) || 0
+
+        return {
+          id: product.id,
+          name: product.name,
+          sales: totalSales,
+          totalPoints: totalPoints,
+        }
+      })
+
+      const productStatsResults = await Promise.all(productStatsPromises)
+
+      if (mountedRef.current) {
+        setProductStats(productStatsResults)
+        cache.setProductStats(productStatsResults)
+      }
+    } catch (error) {
+      console.error("Error al cargar estadísticas de productos:", error)
+    }
+  }, [cache])
+
+  // Efecto principal para cargar datos
   useEffect(() => {
-    let isMounted = true
-    let timeoutId: NodeJS.Timeout | null = null
-    const abortController = diagnostics.trackAbortController("mainLoad")
+    let mounted = true
+    mountedRef.current = true
 
     const loadData = async () => {
-      if (!isMounted) {
-        diagnostics.log("loadData", "Component unmounted, aborting")
-        return
-      }
+      if (!mounted) return
 
-      // Si ya tenemos datos en cache persistente, no cargar nada
+      // Inicializar desde cache si existe
       if (cache.hasStats()) {
-        diagnostics.log("loadData", "All data in persistent cache, skipping load")
+        setStats(cache.getStats())
         setLoading(false)
-
-        // Cargar datos secundarios si no están en cache
-        if (!cache.hasZoneStats() || !cache.hasProductStats()) {
-          setTimeout(() => {
-            if (isMounted && !abortController.signal.aborted) {
-              Promise.allSettled([
-                !cache.hasZoneStats() ? fetchZoneStats(abortController.signal) : Promise.resolve(),
-                !cache.hasProductStats() ? fetchProductStats(abortController.signal) : Promise.resolve(),
-              ])
-            }
-          }, 100)
-        }
-        return
+      }
+      if (cache.hasZoneStats()) {
+        setZoneStats(cache.getZoneStats())
+      }
+      if (cache.hasProductStats()) {
+        setProductStats(cache.getProductStats())
       }
 
-      setLoading(true)
-      setError(null)
-      diagnostics.log("loadData", "Setting loading=true, error=null")
-
-      // Timeout más corto
-      timeoutId = diagnostics.trackTimeout(
-        () => {
-          if (isMounted) {
-            diagnostics.log("loadData", "Timeout reached, aborting")
-            abortController.abort()
-            setLoading(false)
-            setError("Timeout - intenta nuevamente")
-            diagnostics.log("loadData", "Setting timeout error")
-          }
-        },
-        6000, // Reducido a 6 segundos
-        "mainTimeout",
-      )
-
-      // Cargar estadísticas básicas
-      const basicStatsSuccess = await fetchBasicStats(abortController.signal)
-
-      if (basicStatsSuccess && isMounted && !abortController.signal.aborted) {
-        if (timeoutId) {
-          diagnostics.clearTimeout(timeoutId)
-          timeoutId = null
+      // Si no hay datos en cache, cargar
+      if (!cache.hasStats()) {
+        setLoading(true)
+        const success = await fetchBasicStats()
+        if (mounted) {
+          setLoading(false)
         }
-        setLoading(false)
-        diagnostics.log("loadData", "Basic stats loaded, setting loading=false")
+      }
 
-        // Cargar el resto en background
+      // Cargar datos secundarios en background
+      if (mounted) {
         setTimeout(() => {
-          if (isMounted && !abortController.signal.aborted) {
-            diagnostics.log("loadData", "Loading secondary stats")
-            Promise.allSettled([fetchZoneStats(abortController.signal), fetchProductStats(abortController.signal)])
+          if (mounted) {
+            fetchZoneStats()
+            fetchProductStats()
           }
         }, 100)
       }
-
-      if (isMounted && !abortController.signal.aborted) {
-        setLoading(false)
-        if (timeoutId) {
-          diagnostics.clearTimeout(timeoutId)
-          timeoutId = null
-        }
-        diagnostics.log("loadData", "Load completed")
-      }
     }
 
-    // Solo cargar si no hay datos en cache
-    if (!cache.hasStats()) {
-      loadData()
-    }
+    loadData()
 
     return () => {
-      diagnostics.log("useEffect", "Cleanup starting")
-      isMounted = false
-
-      try {
-        abortController.abort()
-        if (timeoutId) {
-          diagnostics.clearTimeout(timeoutId)
-          timeoutId = null
-        }
-        diagnostics.log("useEffect", "Cleanup completed")
-      } catch (e) {
-        diagnostics.log("useEffect", "Cleanup error", e)
-      }
+      mounted = false
+      mountedRef.current = false
+      cleanup()
     }
   }, []) // Sin dependencias para evitar loops
 
-  const handleRetry = () => {
-    diagnostics.log("handleRetry", "Retry triggered - clearing cache")
-    cache.clearAll() // Limpiar cache persistente en retry
+  const handleRetry = useCallback(() => {
+    cleanup()
+    cache.clearAll()
     setError(null)
-    retryCountRef.current += 1
-
-    // Forzar recarga manualmente
-    const abortController = new AbortController()
     setLoading(true)
 
-    fetchBasicStats(abortController.signal).then((success) => {
-      if (success) {
-        setLoading(false)
-        // Cargar datos secundarios
-        Promise.allSettled([fetchZoneStats(abortController.signal), fetchProductStats(abortController.signal)])
-      } else {
-        setLoading(false)
-        setError("Error al cargar datos")
+    // Pequeño delay para evitar race conditions
+    setTimeout(async () => {
+      if (mountedRef.current) {
+        const success = await fetchBasicStats()
+        if (mountedRef.current) {
+          setLoading(false)
+          if (success) {
+            fetchZoneStats()
+            fetchProductStats()
+          }
+        }
       }
-    })
-  }
+    }, 100)
+  }, [cleanup, cache, fetchBasicStats, fetchZoneStats, fetchProductStats])
 
-  const handleDiagnostics = () => {
+  const handleDiagnostics = useCallback(() => {
     const report = diagnostics.generateReport()
     const leaks = diagnostics.detectLeaks()
     const cacheStats = cache.getCacheStats()
@@ -394,7 +299,7 @@ export default function AdminDashboardPage() {
     alert(
       `Diagnostics Report Generated - Check Console\n\nActive Promises: ${report.activePromises.length}\nActive Timeouts: ${report.activeTimeouts.length}\nCache Size: ${cacheStats.size}\nMemory Leaks: ${Object.values(leaks).some(Boolean)}`,
     )
-  }
+  }, [diagnostics, cache])
 
   if (error && !cache.hasStats()) {
     return (

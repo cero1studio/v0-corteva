@@ -1,27 +1,30 @@
 "use client"
 
-import { useState, useCallback, useEffect, useRef } from "react"
-import { supabase } from "@/lib/supabase/client"
-import { Button } from "@/components/ui/button"
+import { useState, useEffect, useRef, useCallback } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { useToast } from "@/components/ui/use-toast"
-import { PlusCircle, Edit, Trash2, Save, Users, AlertCircle, Search, Filter } from "lucide-react"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Skeleton } from "@/components/ui/skeleton"
 import { EmptyState } from "@/components/empty-state"
-import { getDistributorLogoUrl } from "@/lib/utils/image"
-import { useCachedList } from "@/lib/global-cache"
+import { useToast } from "@/hooks/use-toast"
+import { supabase } from "@/lib/supabase/client"
+import Link from "next/link"
+import { Building2, Search, Plus, Edit, Trash2, Users, Trophy, MapPin } from "lucide-react"
+
+interface Team {
+  id: string
+  name: string
+  zone_id: string
+  distributor_id: string
+  created_at: string
+  zones?: { name: string }
+  distributors?: { name: string; logo_url?: string }
+  _count?: { profiles: number }
+  total_points?: number
+}
 
 interface Zone {
   id: string
@@ -34,504 +37,311 @@ interface Distributor {
   logo_url?: string
 }
 
-interface Team {
-  id: string
-  name: string
-  distributor_id: string | null
-  distributor_name: string
-  distributor_logo?: string | null
-  zone_id: string | null
-  zone_name: string
-  created_at: string
-  distributors?: Distributor | null
-  zones?: Zone | null
+// Función helper para obtener URL del logo del distribuidor
+function getDistributorLogoUrl(distributor: { name?: string; logo_url?: string } = {}) {
+  const { name = "", logo_url } = distributor
+
+  if (logo_url) {
+    return `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/${logo_url}`
+  }
+
+  // Fallback basado en el nombre
+  const logoMap: Record<string, string> = {
+    agralba: "/logos/agralba.png",
+    coacosta: "/logos/coacosta.png",
+    cosechar: "/logos/cosechar.png",
+    hernandez: "/logos/hernandez.png",
+    insagrin: "/logos/insagrin.png",
+  }
+
+  const key = name.toLowerCase()
+  for (const [logoKey, logoPath] of Object.entries(logoMap)) {
+    if (key.includes(logoKey)) {
+      return logoPath
+    }
+  }
+
+  return "/placeholder.svg?height=32&width=32"
 }
 
-export default function EquiposPage() {
-  const [zones, setZones] = useState<Zone[]>([])
-  const [distributors, setDistributors] = useState<Distributor[]>([])
-  const [isDialogOpen, setIsDialogOpen] = useState(false)
-  const [newTeam, setNewTeam] = useState({
-    name: "",
-    zone_id: "",
-    distributor_id: "",
-  })
-  // Controla el estado de "añadiendo equipo" (loading)
-  const [isAddingTeam, setIsAddingTeam] = useState(false)
-  const [editingTeam, setEditingTeam] = useState<Team | null>(null)
-
-  // Estados para filtros
-  const [searchTerm, setSearchTerm] = useState("")
-  const [selectedZone, setSelectedZone] = useState<string>("all")
-
-  // Refs para evitar dependencias volátiles
+export default function TeamsAdminPage() {
+  const { toast } = useToast()
+  const mountedRef = useRef(true)
   const zonesLoadedRef = useRef(false)
   const distributorsLoadedRef = useRef(false)
 
-  const { toast } = useToast()
+  const [teams, setTeams] = useState<Team[]>([])
+  const [zones, setZones] = useState<Zone[]>([])
+  const [distributors, setDistributors] = useState<Distributor[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [searchTerm, setSearchTerm] = useState("")
+  const [selectedZone, setSelectedZone] = useState<string>("all")
 
+  // Función para cargar equipos
   const fetchTeams = useCallback(async () => {
-    const { data: teamsData, error } = await supabase
-      .from("teams")
-      .select(`
-      id, 
-      name, 
-      distributor_id, 
-      zone_id, 
-      created_at,
-      distributors!distributor_id (
-        id,
-        name,
-        logo_url
-      ),
-      zones!zone_id (
-        id,
-        name
-      )
-    `)
-      .order("name")
+    if (!mountedRef.current) return
 
-    if (error) throw error
+    try {
+      setLoading(true)
+      setError(null)
 
-    const formattedData = (teamsData || []).map((team) => ({
-      id: team.id,
-      name: team.name || "Sin nombre",
-      distributor_id: team.distributor_id,
-      distributor_name: team.distributors?.name || "Sin distribuidor",
-      distributor_logo: team.distributors?.logo_url || null,
-      zone_id: team.zone_id,
-      zone_name: team.zones?.name || "Sin zona",
-      created_at: team.created_at,
-    }))
+      const { data, error: teamsError } = await supabase
+        .from("teams")
+        .select(`
+          *,
+          zones(name),
+          distributors(name, logo_url),
+          profiles!team_id(id)
+        `)
+        .order("created_at", { ascending: false })
 
-    return formattedData
-  }, [])
+      if (teamsError) throw teamsError
 
-  const { data: teams, loading, error, refresh } = useCachedList("admin-teams", fetchTeams, [])
+      if (mountedRef.current) {
+        const teamsWithCounts =
+          data?.map((team) => ({
+            ...team,
+            _count: { profiles: team.profiles?.length || 0 },
+          })) || []
 
-  // Efecto separado para cargar zonas - solo una vez
-  useEffect(() => {
-    let isMounted = true
-    const abortController = new AbortController()
+        setTeams(teamsWithCounts)
+        console.log("📊 Estado actual:", {
+          totalTeams: teamsWithCounts.length,
+          filteredTeams: teamsWithCounts.length,
+          loading: false,
+          error: null,
+          searchTerm,
+          selectedZone,
+        })
+      }
+    } catch (error: any) {
+      if (mountedRef.current) {
+        console.error("Error al cargar equipos:", error)
+        setError("Error al cargar equipos")
+        toast({
+          title: "Error",
+          description: "No se pudieron cargar los equipos",
+          variant: "destructive",
+        })
+      }
+    } finally {
+      if (mountedRef.current) {
+        setLoading(false)
+      }
+    }
+  }, [toast, searchTerm, selectedZone])
 
-    const loadZones = async () => {
-      if (zonesLoadedRef.current) return
+  // Función para cargar zonas
+  const fetchZones = useCallback(async () => {
+    if (!mountedRef.current || zonesLoadedRef.current) return
 
-      try {
-        console.log("📍 Cargando zonas...")
-        const { data, error } = await supabase
-          .from("zones")
-          .select("id, name")
-          .order("name")
-          .abortSignal(abortController.signal)
+    try {
+      console.log("📍 Cargando zonas...")
+      const { data, error } = await supabase.from("zones").select("id, name").order("name")
 
-        if (error) throw error
-        if (!isMounted || abortController.signal.aborted) return
+      if (error) throw error
 
+      if (mountedRef.current) {
         setZones(data || [])
         zonesLoadedRef.current = true
         console.log("✅ Zonas cargadas:", data?.length || 0)
-      } catch (error) {
-        if (!isMounted || abortController.signal.aborted) return
-
-        console.error("Error al cargar zonas:", error)
-        toast({
-          title: "Error",
-          description: "No se pudieron cargar las zonas",
-          variant: "destructive",
-        })
       }
+    } catch (error) {
+      console.error("Error al cargar zonas:", error)
     }
+  }, [])
 
-    loadZones()
+  // Función para cargar distribuidores
+  const fetchDistributors = useCallback(async () => {
+    if (!mountedRef.current || distributorsLoadedRef.current) return
 
-    return () => {
-      isMounted = false
-      abortController.abort()
-    }
-  }, [toast])
+    try {
+      console.log("🏢 Cargando distribuidores...")
+      const { data, error } = await supabase.from("distributors").select("id, name, logo_url").order("name")
 
-  // Efecto separado para cargar distribuidores - solo una vez
-  useEffect(() => {
-    let isMounted = true
-    const abortController = new AbortController()
+      if (error) throw error
 
-    const loadDistributors = async () => {
-      if (distributorsLoadedRef.current) return
-
-      try {
-        console.log("🏢 Cargando distribuidores...")
-        const { data, error } = await supabase
-          .from("distributors")
-          .select("id, name, logo_url")
-          .order("name")
-          .abortSignal(abortController.signal)
-
-        if (error) throw error
-        if (!isMounted || abortController.signal.aborted) return
-
+      if (mountedRef.current) {
         setDistributors(data || [])
         distributorsLoadedRef.current = true
         console.log("✅ Distribuidores cargados:", data?.length || 0)
-      } catch (error) {
-        if (!isMounted || abortController.signal.aborted) return
-
-        console.error("Error al cargar distribuidores:", error)
-        toast({
-          title: "Error",
-          description: "No se pudieron cargar los distribuidores",
-          variant: "destructive",
-        })
       }
+    } catch (error) {
+      console.error("Error al cargar distribuidores:", error)
     }
+  }, [])
 
-    loadDistributors()
+  // Efecto para cargar equipos
+  useEffect(() => {
+    fetchTeams()
+  }, [fetchTeams])
 
+  // Efecto separado para cargar zonas
+  useEffect(() => {
+    if (!zonesLoadedRef.current) {
+      fetchZones()
+    }
+  }, [fetchZones])
+
+  // Efecto separado para cargar distribuidores
+  useEffect(() => {
+    if (!distributorsLoadedRef.current) {
+      fetchDistributors()
+    }
+  }, [fetchDistributors])
+
+  // Cleanup al desmontar
+  useEffect(() => {
     return () => {
-      isMounted = false
-      abortController.abort()
+      mountedRef.current = false
     }
-  }, [toast])
+  }, [])
 
-  async function handleAddTeam() {
-    if (!newTeam.name.trim() || !newTeam.zone_id || !newTeam.distributor_id) {
-      toast({
-        title: "Error",
-        description: "El nombre, la zona y el distribuidor son obligatorios",
-        variant: "destructive",
-      })
-      return
-    }
-
-    setIsAddingTeam(true)
-    try {
-      const { data, error } = await supabase
-        .from("teams")
-        .insert({
-          name: newTeam.name.trim(),
-          zone_id: newTeam.zone_id,
-          distributor_id: newTeam.distributor_id,
-        })
-        .select()
-
-      if (error) throw error
-
-      // Recargar la lista completa
-      refresh()
-      setNewTeam({ name: "", zone_id: "", distributor_id: "" })
-
-      toast({
-        title: "Equipo añadido",
-        description: "El equipo ha sido añadido exitosamente",
-      })
-    } catch (error) {
-      console.error("Error al añadir equipo:", error)
-      toast({
-        title: "Error",
-        description: "No se pudo añadir el equipo",
-        variant: "destructive",
-      })
-    } finally {
-      setIsAddingTeam(false)
-      setIsDialogOpen(false)
-    }
-  }
-
-  async function handleUpdateTeam() {
-    if (!editingTeam || !editingTeam.name.trim()) {
-      toast({
-        title: "Error",
-        description: "El nombre es obligatorio",
-        variant: "destructive",
-      })
+  // Función para eliminar equipo
+  const handleDelete = async (teamId: string, teamName: string) => {
+    if (!confirm(`¿Estás seguro de que quieres eliminar el equipo "${teamName}"?`)) {
       return
     }
 
     try {
-      const { error } = await supabase
-        .from("teams")
-        .update({
-          name: editingTeam.name.trim(),
-          zone_id: editingTeam.zone_id || null,
-          distributor_id: editingTeam.distributor_id || null,
-        })
-        .eq("id", editingTeam.id)
+      const { error } = await supabase.from("teams").delete().eq("id", teamId)
 
       if (error) throw error
 
-      refresh()
-
-      toast({
-        title: "Equipo actualizado",
-        description: "El equipo ha sido actualizado exitosamente",
-      })
-    } catch (error) {
-      console.error("Error al actualizar equipo:", error)
-      toast({
-        title: "Error",
-        description: "No se pudo actualizar el equipo",
-        variant: "destructive",
-      })
-    } finally {
-      setEditingTeam(null)
-    }
-  }
-
-  async function handleDeleteTeam(id: string) {
-    if (!confirm("¿Estás seguro de que deseas eliminar este equipo? Esta acción no se puede deshacer.")) {
-      return
-    }
-
-    try {
-      const { error } = await supabase.from("teams").delete().eq("id", id)
-
-      if (error) throw error
-
-      refresh()
-
+      setTeams(teams.filter((team) => team.id !== teamId))
       toast({
         title: "Equipo eliminado",
-        description: "El equipo ha sido eliminado exitosamente",
+        description: `El equipo "${teamName}" ha sido eliminado correctamente.`,
       })
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error al eliminar equipo:", error)
       toast({
         title: "Error",
-        description: "No se pudo eliminar el equipo. Asegúrate de que no tenga usuarios asociados.",
+        description: "No se pudo eliminar el equipo",
         variant: "destructive",
       })
     }
   }
 
   // Filtrar equipos
-  const filteredTeams = (teams || []).filter((team) => {
+  const filteredTeams = teams.filter((team) => {
     const matchesSearch =
-      !searchTerm ||
       team.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      team.distributor_name.toLowerCase().includes(searchTerm.toLowerCase())
+      team.zones?.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      team.distributors?.name.toLowerCase().includes(searchTerm.toLowerCase())
+
     const matchesZone = selectedZone === "all" || team.zone_id === selectedZone
 
     return matchesSearch && matchesZone
   })
 
-  console.log("📊 Estado actual:", {
-    totalTeams: teams?.length,
-    filteredTeams: filteredTeams.length,
-    loading,
-    error,
-    searchTerm,
-    selectedZone,
-  })
+  if (error) {
+    return (
+      <EmptyState
+        icon={Building2}
+        title="Error al cargar equipos"
+        description={error}
+        actionLabel="Reintentar"
+        onClick={fetchTeams}
+        className="flex-1 py-20"
+        iconClassName="bg-red-50"
+      />
+    )
+  }
 
   return (
-    <div className="space-y-6">
+    <div className="flex-1 space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-3xl font-bold tracking-tight">Gestión de Equipos</h2>
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-          <DialogTrigger asChild>
-            <Button>
-              <PlusCircle className="mr-2 h-4 w-4" />
-              Nuevo Equipo
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="sm:max-w-[500px]">
-            <DialogHeader>
-              <DialogTitle>Añadir Nuevo Equipo</DialogTitle>
-              <DialogDescription>Ingresa los datos del nuevo equipo</DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4 py-4">
-              <div className="space-y-2">
-                <Label htmlFor="teamName">Nombre del equipo</Label>
-                <Input
-                  id="teamName"
-                  value={newTeam.name}
-                  onChange={(e) => setNewTeam({ ...newTeam, name: e.target.value })}
-                  placeholder="Ej: Equipo Campeón"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="zone">Zona</Label>
-                <Select value={newTeam.zone_id} onValueChange={(value) => setNewTeam({ ...newTeam, zone_id: value })}>
-                  <SelectTrigger id="zone">
-                    <SelectValue placeholder="Selecciona una zona" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {zones.map((zone) => (
-                      <SelectItem key={zone.id} value={zone.id}>
-                        {zone.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="distributor">Distribuidor</Label>
-                <Select
-                  value={newTeam.distributor_id}
-                  onValueChange={(value) => setNewTeam({ ...newTeam, distributor_id: value })}
-                >
-                  <SelectTrigger id="distributor">
-                    <SelectValue placeholder="Selecciona un distribuidor" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {distributors.map((distributor) => (
-                      <SelectItem key={distributor.id} value={distributor.id}>
-                        {distributor.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <DialogFooter>
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setIsDialogOpen(false)
-                  setNewTeam({ name: "", zone_id: "", distributor_id: "" })
-                }}
-              >
-                Cancelar
-              </Button>
-              <Button onClick={handleAddTeam} disabled={isAddingTeam}>
-                {isAddingTeam ? (
-                  <>
-                    <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent"></div>
-                    Añadiendo...
-                  </>
-                ) : (
-                  <>
-                    <Save className="mr-2 h-4 w-4" />
-                    Guardar
-                  </>
-                )}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+        <div>
+          <h2 className="text-3xl font-bold tracking-tight">Gestión de Equipos</h2>
+          <p className="text-muted-foreground">Administra los equipos del concurso Super Ganadería</p>
+        </div>
+        <Button asChild>
+          <Link href="/admin/equipos/nuevo">
+            <Plus className="mr-2 h-4 w-4" />
+            Nuevo Equipo
+          </Link>
+        </Button>
       </div>
 
-      {/* Filtros */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Filter className="h-5 w-5" />
-            Filtros
-          </CardTitle>
+          <CardTitle>Filtros</CardTitle>
+          <CardDescription>Busca y filtra equipos por diferentes criterios</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <Label htmlFor="search">Buscar</Label>
+          <div className="flex flex-col sm:flex-row gap-4">
+            <div className="flex-1">
               <div className="relative">
-                <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
                 <Input
-                  id="search"
-                  placeholder="Buscar por nombre o distribuidor..."
+                  placeholder="Buscar por nombre, zona o distribuidor..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10"
+                  className="pl-8"
                 />
               </div>
             </div>
-            <div>
-              <Label htmlFor="zone">Zona</Label>
-              <Select value={selectedZone} onValueChange={setSelectedZone}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Todas las zonas" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todas las zonas</SelectItem>
-                  {zones.map((zone) => (
-                    <SelectItem key={zone.id} value={zone.id}>
-                      {zone.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex items-end">
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setSearchTerm("")
-                  setSelectedZone("all")
-                }}
-                className="w-full"
-              >
-                Limpiar Filtros
-              </Button>
-            </div>
+            <Select value={selectedZone} onValueChange={setSelectedZone}>
+              <SelectTrigger className="w-full sm:w-[200px]">
+                <SelectValue placeholder="Filtrar por zona" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todas las zonas</SelectItem>
+                {zones.map((zone) => (
+                  <SelectItem key={zone.id} value={zone.id}>
+                    {zone.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle>Equipos</CardTitle>
-          <CardDescription>
-            {filteredTeams.length} equipo{filteredTeams.length !== 1 ? "s" : ""} encontrado
-            {filteredTeams.length !== 1 ? "s" : ""}
-          </CardDescription>
+          <CardTitle>Equipos ({filteredTeams.length})</CardTitle>
+          <CardDescription>Lista de todos los equipos registrados</CardDescription>
         </CardHeader>
         <CardContent>
           {loading ? (
-            <div className="flex justify-center py-8">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-corteva-600"></div>
-            </div>
-          ) : error ? (
-            <div className="py-8">
-              <EmptyState
-                icon={AlertCircle}
-                title="Error al cargar equipos"
-                description={error?.message}
-                action={
-                  <Button onClick={refresh} variant="default">
-                    Reintentar
-                  </Button>
-                }
-              />
-            </div>
-          ) : filteredTeams.length === 0 && teams?.length > 0 ? (
-            <div className="py-8">
-              <EmptyState
-                icon={Users}
-                title="No se encontraron equipos"
-                description="No se encontraron equipos con los filtros aplicados"
-                action={
-                  <Button
-                    onClick={() => {
-                      setSearchTerm("")
-                      setSelectedZone("all")
-                    }}
-                  >
-                    Limpiar Filtros
-                  </Button>
-                }
-              />
+            <div className="space-y-4">
+              {[...Array(5)].map((_, i) => (
+                <div key={i} className="flex items-center space-x-4">
+                  <Skeleton className="h-12 w-12 rounded-full" />
+                  <div className="space-y-2">
+                    <Skeleton className="h-4 w-[200px]" />
+                    <Skeleton className="h-4 w-[150px]" />
+                  </div>
+                </div>
+              ))}
             </div>
           ) : filteredTeams.length === 0 ? (
-            <div className="py-8">
-              <EmptyState
-                icon={Users}
-                title="No hay equipos registrados"
-                description="Crea un nuevo equipo para comenzar la competición"
-                action={
-                  <Button onClick={() => setIsDialogOpen(true)}>
-                    <PlusCircle className="mr-2 h-4 w-4" />
-                    Nuevo Equipo
-                  </Button>
-                }
-              />
-            </div>
+            <EmptyState
+              icon={Building2}
+              title="No hay equipos"
+              description={
+                searchTerm || selectedZone !== "all"
+                  ? "No se encontraron equipos con los filtros aplicados"
+                  : "Aún no hay equipos registrados"
+              }
+              actionLabel="Crear Equipo"
+              actionHref="/admin/equipos/nuevo"
+              className="py-10"
+              iconClassName="bg-blue-50"
+            />
           ) : (
-            <div className="overflow-x-auto">
+            <div className="rounded-md border">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Nombre</TableHead>
+                    <TableHead>Equipo</TableHead>
                     <TableHead>Zona</TableHead>
                     <TableHead>Distribuidor</TableHead>
+                    <TableHead>Miembros</TableHead>
+                    <TableHead>Puntos</TableHead>
                     <TableHead className="text-right">Acciones</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -539,118 +349,70 @@ export default function EquiposPage() {
                   {filteredTeams.map((team) => (
                     <TableRow key={team.id}>
                       <TableCell>
-                        {editingTeam?.id === team.id ? (
-                          <Input
-                            value={editingTeam.name}
-                            onChange={(e) => setEditingTeam({ ...editingTeam, name: e.target.value })}
-                          />
-                        ) : (
-                          <div className="font-medium">{team.name}</div>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {editingTeam?.id === team.id ? (
-                          <Select
-                            value={editingTeam.zone_id || ""}
-                            onValueChange={(value) => setEditingTeam({ ...editingTeam, zone_id: value || null })}
-                          >
-                            <SelectTrigger>
-                              <SelectValue placeholder="Selecciona una zona" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="null">Sin zona</SelectItem>
-                              {zones.map((zone) => (
-                                <SelectItem key={zone.id} value={zone.id}>
-                                  {zone.name}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        ) : (
-                          <div className="text-sm">{team.zone_name}</div>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {editingTeam?.id === team.id ? (
-                          <Select
-                            value={editingTeam.distributor_id || ""}
-                            onValueChange={(value) => setEditingTeam({ ...editingTeam, distributor_id: value || null })}
-                          >
-                            <SelectTrigger>
-                              <SelectValue placeholder="Selecciona un distribuidor" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="null">Sin distribuidor</SelectItem>
-                              {distributors.map((distributor) => (
-                                <SelectItem key={distributor.id} value={distributor.id}>
-                                  {distributor.name}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        ) : (
-                          <div className="flex justify-start">
-                            {team.distributor_logo ? (
-                              <img
-                                src={
-                                  getDistributorLogoUrl({
-                                    name: team.distributor_name || "",
-                                    logo_url: team.distributor_logo,
-                                  }) || "/placeholder.svg"
-                                }
-                                alt={team.distributor_name}
-                                title={team.distributor_name}
-                                className="h-8 w-16 object-contain"
-                                onError={(e) => {
-                                  e.currentTarget.src = "/placeholder.svg?height=32&width=64&text=Logo"
-                                }}
-                              />
-                            ) : (
-                              <span className="text-sm text-muted-foreground">{team.distributor_name}</span>
-                            )}
+                        <div className="flex items-center space-x-3">
+                          <div className="flex-shrink-0">
+                            <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center">
+                              <Building2 className="h-5 w-5 text-blue-600" />
+                            </div>
                           </div>
-                        )}
+                          <div>
+                            <div className="font-medium">{team.name}</div>
+                            <div className="text-sm text-muted-foreground">
+                              Creado: {new Date(team.created_at).toLocaleDateString()}
+                            </div>
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="flex items-center gap-1">
+                          <MapPin className="h-3 w-3" />
+                          {team.zones?.name || "Sin zona"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center space-x-2">
+                          <img
+                            src={getDistributorLogoUrl({
+                              name: team.distributors?.name || "",
+                              logo_url: team.distributors?.logo_url,
+                            })}
+                            alt={team.distributors?.name || "Distribuidor"}
+                            className="h-6 w-6 rounded object-contain"
+                            onError={(e) => {
+                              e.currentTarget.src = "/placeholder.svg?height=24&width=24"
+                            }}
+                          />
+                          <span className="text-sm">{team.distributors?.name || "Sin distribuidor"}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="secondary" className="flex items-center gap-1">
+                          <Users className="h-3 w-3" />
+                          {team._count?.profiles || 0}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="flex items-center gap-1">
+                          <Trophy className="h-3 w-3" />
+                          {team.total_points || 0}
+                        </Badge>
                       </TableCell>
                       <TableCell className="text-right">
-                        {editingTeam?.id === team.id ? (
-                          <div className="flex justify-end gap-2">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={handleUpdateTeam}
-                              className="text-green-500 hover:text-green-700"
-                            >
-                              <Save className="h-4 w-4" />
-                              <span className="sr-only">Guardar</span>
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => {
-                                setEditingTeam(null)
-                              }}
-                              className="text-gray-500 hover:text-gray-700"
-                            >
-                              Cancelar
-                            </Button>
-                          </div>
-                        ) : (
-                          <div className="flex justify-end gap-2">
-                            <Button variant="ghost" size="icon" onClick={() => setEditingTeam(team)}>
+                        <div className="flex items-center justify-end space-x-2">
+                          <Button asChild variant="outline" size="sm">
+                            <Link href={`/admin/equipos/editar/${team.id}`}>
                               <Edit className="h-4 w-4" />
-                              <span className="sr-only">Editar</span>
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => handleDeleteTeam(team.id)}
-                              className="text-red-500 hover:text-red-700"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                              <span className="sr-only">Eliminar</span>
-                            </Button>
-                          </div>
-                        )}
+                            </Link>
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleDelete(team.id, team.name)}
+                            className="text-red-600 hover:text-red-700"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
