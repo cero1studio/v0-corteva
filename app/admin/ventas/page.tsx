@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -27,6 +27,7 @@ import { getAllProducts } from "@/app/actions/products"
 import { getAllUsers } from "@/app/actions/users"
 import { getAllDistributors } from "@/app/actions/distributors"
 import * as XLSX from "xlsx" // Importar la librería XLSX
+import { useCachedList } from "@/lib/global-cache"
 
 interface Sale {
   id: string
@@ -91,13 +92,13 @@ interface Distributor {
 }
 
 export default function AdminVentasPage() {
-  const [sales, setSales] = useState<Sale[]>([])
+  // const [sales, setSales] = useState<Sale[]>([])
   const [zones, setZones] = useState<Zone[]>([])
   const [teams, setTeams] = useState<Team[]>([])
   const [products, setProducts] = useState<Product[]>([])
   const [users, setUsers] = useState<User[]>([])
   const [distributors, setDistributors] = useState<Distributor[]>([])
-  const [loading, setLoading] = useState(true)
+  // const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedZone, setSelectedZone] = useState<string>("all")
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
@@ -137,6 +138,17 @@ export default function AdminVentasPage() {
     }
   }, [formData.product_id, formData.quantity, products])
 
+  const fetchSales = useCallback(async () => {
+    const result = await getAllSales()
+    if (result.success) {
+      return result.data || []
+    } else {
+      throw new Error(result.error || "Error al cargar ventas")
+    }
+  }, [])
+
+  const { data: sales, loading, error, refresh } = useCachedList("admin-sales", fetchSales, [])
+
   useEffect(() => {
     let mounted = true
 
@@ -144,10 +156,18 @@ export default function AdminVentasPage() {
       if (!mounted) return
 
       try {
-        setLoading(true)
+        // setLoading(true)
 
-        const [salesResult, zonesData, teamsResult, productsResult, usersResult, distributorsData] = await Promise.all([
-          getAllSales(),
+        // const [salesResult, zonesData, teamsResult, productsResult, usersResult, distributorsData] = await Promise.all([
+        //   getAllSales(),
+        //   getAllZones(),
+        //   getAllTeams(),
+        //   getAllProducts(),
+        //   getAllUsers(),
+        //   getAllDistributors(),
+        // ])
+
+        const [zonesData, teamsResult, productsResult, usersResult, distributorsData] = await Promise.all([
           getAllZones(),
           getAllTeams(),
           getAllProducts(),
@@ -157,18 +177,18 @@ export default function AdminVentasPage() {
 
         if (!mounted) return
 
-        if (salesResult.success) {
-          setSales(salesResult.data || [])
-        } else {
-          console.error("Error loading sales:", salesResult.error)
-          if (mounted) {
-            toast({
-              title: "Error",
-              description: "Error al cargar las ventas",
-              variant: "destructive",
-            })
-          }
-        }
+        // if (salesResult.success) {
+        //   setSales(salesResult.data || [])
+        // } else {
+        //   console.error("Error loading sales:", salesResult.error)
+        //   if (mounted) {
+        //     toast({
+        //       title: "Error",
+        //       description: "Error al cargar las ventas",
+        //       variant: "destructive",
+        //     })
+        //   }
+        // }
 
         if (mounted) {
           if (zonesData && Array.isArray(zonesData)) {
@@ -212,7 +232,7 @@ export default function AdminVentasPage() {
         }
       } finally {
         if (mounted) {
-          setLoading(false)
+          // setLoading(false)
           if (timeoutId) {
             clearTimeout(timeoutId) // Cancelar el timeout cuando termine la carga
           }
@@ -223,7 +243,7 @@ export default function AdminVentasPage() {
     // Timeout de seguridad
     timeoutId = setTimeout(() => {
       if (mounted) {
-        setLoading(false)
+        // setLoading(false)
         toast({
           title: "Timeout",
           description: "La carga está tomando más tiempo del esperado",
@@ -244,10 +264,18 @@ export default function AdminVentasPage() {
 
   const loadData = async () => {
     try {
-      setLoading(true)
+      // setLoading(true)
 
-      const [salesResult, zonesData, teamsResult, productsResult, usersResult, distributorsData] = await Promise.all([
-        getAllSales(),
+      // const [salesResult, zonesData, teamsResult, productsResult, usersResult, distributorsData] = await Promise.all([
+      //   getAllSales(),
+      //   getAllZones(),
+      //   getAllTeams(),
+      //   getAllProducts(),
+      //   getAllUsers(),
+      //   getAllDistributors(),
+      // ])
+
+      const [zonesData, teamsResult, productsResult, usersResult, distributorsData] = await Promise.all([
         getAllZones(),
         getAllTeams(),
         getAllProducts(),
@@ -255,16 +283,16 @@ export default function AdminVentasPage() {
         getAllDistributors(),
       ])
 
-      if (salesResult.success) {
-        setSales(salesResult.data || [])
-      } else {
-        console.error("Error loading sales:", salesResult.error)
-        toast({
-          title: "Error",
-          description: "Error al cargar las ventas",
-          variant: "destructive",
-        })
-      }
+      // if (salesResult.success) {
+      //   setSales(salesResult.data || [])
+      // } else {
+      //   console.error("Error loading sales:", salesResult.error)
+      //   toast({
+      //     title: "Error",
+      //     description: "Error al cargar las ventas",
+      //     variant: "destructive",
+      //   })
+      // }
 
       if (zonesData && Array.isArray(zonesData)) {
         setZones(zonesData)
@@ -303,14 +331,14 @@ export default function AdminVentasPage() {
         variant: "destructive",
       })
     } finally {
-      setLoading(false)
+      // setLoading(false)
       if (timeoutId) {
         clearTimeout(timeoutId) // Cancelar el timeout al final del finally en loadData también
       }
     }
   }
 
-  const filteredSales = sales.filter((sale) => {
+  const filteredSales = (sales || []).filter((sale) => {
     const productName = sale.products?.name || ""
     const teamName = sale.team?.name || ""
     const zoneName = sale.zone?.name || ""
@@ -463,7 +491,8 @@ export default function AdminVentasPage() {
         setIsCreateDialogOpen(false)
         setFormData({ product_id: "", quantity: "", points: "", representative_id: "" })
         setSelectedProductPoints(0)
-        loadData()
+        // loadData()
+        refresh()
       } else {
         toast({
           title: "Error",
@@ -515,7 +544,8 @@ export default function AdminVentasPage() {
         })
         setIsEditDialogOpen(false)
         setEditingSale(null)
-        loadData()
+        // loadData()
+        refresh()
       } else {
         toast({
           title: "Error",
@@ -546,7 +576,8 @@ export default function AdminVentasPage() {
         })
         // Pequeño delay para asegurar sincronización
         setTimeout(() => {
-          loadData()
+          // loadData()
+          refresh()
         }, 100)
       } else {
         toast({

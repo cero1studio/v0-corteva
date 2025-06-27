@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useCallback } from "react"
 import { supabase } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/dialog"
 import { EmptyState } from "@/components/empty-state"
 import { getDistributorLogoUrl } from "@/lib/utils/image"
+import { useCachedList } from "@/lib/global-cache"
 
 interface Zone {
   id: string
@@ -47,10 +48,8 @@ interface Team {
 }
 
 export default function EquiposPage() {
-  const [teams, setTeams] = useState<Team[]>([])
   const [zones, setZones] = useState<Zone[]>([])
   const [distributors, setDistributors] = useState<Distributor[]>([])
-  const [loading, setLoading] = useState(true)
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [newTeam, setNewTeam] = useState({
     name: "",
@@ -60,12 +59,6 @@ export default function EquiposPage() {
   // Controla el estado de “añadiendo equipo” (loading)
   const [isAddingTeam, setIsAddingTeam] = useState(false)
   const [editingTeam, setEditingTeam] = useState<Team | null>(null)
-  const [error, setError] = useState<string | null>(null)
-
-  // Estados para cache
-  const [isTeamsLoaded, setIsTeamsLoaded] = useState(false)
-  const [isZonesLoaded, setIsZonesLoaded] = useState(false)
-  const [isDistributorsLoaded, setIsDistributorsLoaded] = useState(false)
 
   // Estados para filtros
   const [searchTerm, setSearchTerm] = useState("")
@@ -73,45 +66,46 @@ export default function EquiposPage() {
 
   const { toast } = useToast()
 
-  useEffect(() => {
-    let isMounted = true
-    const abortController = new AbortController()
+  const fetchTeams = useCallback(async () => {
+    const { data: teamsData, error } = await supabase
+      .from("teams")
+      .select(`
+      id, 
+      name, 
+      distributor_id, 
+      zone_id, 
+      created_at,
+      distributors!distributor_id (
+        id,
+        name,
+        logo_url
+      ),
+      zones!zone_id (
+        id,
+        name
+      )
+    `)
+      .order("name")
 
-    const loadData = async () => {
-      if (!isMounted) return
+    if (error) throw error
 
-      // ✅ Cache definitivo con estados separados
-      if (isTeamsLoaded) {
-        console.log("📦 Todos los datos ya cargados - usando cache")
-        setLoading(false)
-        return
-      }
+    const formattedData = (teamsData || []).map((team) => ({
+      id: team.id,
+      name: team.name || "Sin nombre",
+      distributor_id: team.distributor_id,
+      distributor_name: team.distributors?.name || "Sin distribuidor",
+      distributor_logo: team.distributors?.logo_url || null,
+      zone_id: team.zone_id,
+      zone_name: team.zones?.name || "Sin zona",
+      created_at: team.created_at,
+    }))
 
-      try {
-        // Cargar datos en paralelo con abort signal
-        const promises = []
+    return formattedData
+  }, [])
 
-        if (!isTeamsLoaded) {
-          promises.push(fetchTeams(abortController.signal))
-        }
-
-        await Promise.allSettled(promises)
-      } catch (error) {
-        console.error("Error en carga paralela:", error)
-      }
-    }
-
-    loadData()
-
-    return () => {
-      isMounted = false
-      abortController.abort()
-    }
-  }, []) // ✅ Sin dependencias problemáticas
+  const { data: teams, loading, error, refresh } = useCachedList("admin-teams", fetchTeams, [])
 
   async function fetchZones(signal?: AbortSignal) {
-    if (isZonesLoaded) return
-
     try {
       console.log("📍 Cargando zonas...")
       const { data, error } = await supabase.from("zones").select("id, name").order("name").abortSignal(signal)
@@ -119,7 +113,6 @@ export default function EquiposPage() {
       if (error) throw error
       if (!signal?.aborted) {
         setZones(data || [])
-        setIsZonesLoaded(true)
         console.log("✅ Zonas cargadas:", data?.length || 0)
       }
     } catch (error) {
@@ -135,8 +128,6 @@ export default function EquiposPage() {
   }
 
   async function fetchDistributors(signal?: AbortSignal) {
-    if (isDistributorsLoaded) return
-
     try {
       console.log("🏢 Cargando distribuidores...")
       const { data, error } = await supabase
@@ -148,7 +139,6 @@ export default function EquiposPage() {
       if (error) throw error
       if (!signal?.aborted) {
         setDistributors(data || [])
-        setIsDistributorsLoaded(true)
         console.log("✅ Distribuidores cargados:", data?.length || 0)
       }
     } catch (error) {
@@ -159,79 +149,6 @@ export default function EquiposPage() {
           description: "No se pudieron cargar los distribuidores",
           variant: "destructive",
         })
-      }
-    }
-  }
-
-  async function fetchTeams(signal?: AbortSignal) {
-    if (isTeamsLoaded) return
-
-    setLoading(true)
-    setError(null)
-    try {
-      const { data: teamsData, error } = await supabase
-        .from("teams")
-        .select(`
-    id, 
-    name, 
-    distributor_id, 
-    zone_id, 
-    created_at,
-    distributors!distributor_id (
-      id,
-      name,
-      logo_url
-    ),
-    zones!zone_id (
-      id,
-      name
-    )
-  `)
-        .order("name")
-        .abortSignal(signal)
-
-      if (error) throw error
-      if (signal?.aborted) return
-
-      // Resto de la lógica existente...
-      // const distributorIds = [...new Set(teamsData?.map((t) => t.distributor_id).filter(Boolean))]
-      // const zoneIds = [...new Set(teamsData?.map((t) => t.zone_id).filter(Boolean))]
-
-      // const [distributorsData, zonesData] = await Promise.all([
-      //   distributorIds.length > 0
-      //     ? supabase.from("distributors").select("id, name, logo_url").in("id", distributorIds).abortSignal(signal)
-      //     : Promise.resolve({ data: [] }),
-      //   zoneIds.length > 0
-      //     ? supabase.from("zones").select("id, name").in("id", zoneIds).abortSignal(signal)
-      //     : Promise.resolve({ data: [] }),
-      // ])
-
-      if (signal?.aborted) return
-
-      // const distributorMap = new Map((distributorsData.data || []).map((d) => [d.id, d]))
-      // const zoneMap = new Map((zonesData.data || []).map((z) => [z.id, z]))
-
-      const formattedData = (teamsData || []).map((team) => ({
-        id: team.id,
-        name: team.name || "Sin nombre",
-        distributor_id: team.distributor_id,
-        distributor_name: team.distributors?.name || "Sin distribuidor",
-        distributor_logo: team.distributors?.logo_url || null,
-        zone_id: team.zone_id,
-        zone_name: team.zones?.name || "Sin zona",
-        created_at: team.created_at,
-      }))
-
-      setTeams(formattedData)
-      setIsTeamsLoaded(true)
-    } catch (error: any) {
-      if (!signal?.aborted) {
-        console.error("❌ Error al cargar equipos:", error)
-        setError(error.message || "Error al cargar equipos")
-      }
-    } finally {
-      if (!signal?.aborted) {
-        setLoading(false)
       }
     }
   }
@@ -260,7 +177,7 @@ export default function EquiposPage() {
       if (error) throw error
 
       // Recargar la lista completa
-      await fetchTeams()
+      refresh()
       setNewTeam({ name: "", zone_id: "", distributor_id: "" })
 
       toast({
@@ -311,18 +228,7 @@ export default function EquiposPage() {
       const distributorName = distributor?.name || "Sin distribuidor"
       const distributorLogo = distributor?.logo_url || null
 
-      setTeams(
-        teams.map((team) =>
-          team.id === editingTeam.id
-            ? {
-                ...editingTeam,
-                zone_name: zoneName,
-                distributor_name: distributorName,
-                distributor_logo: distributorLogo,
-              }
-            : team,
-        ),
-      )
+      refresh()
 
       toast({
         title: "Equipo actualizado",
@@ -350,7 +256,7 @@ export default function EquiposPage() {
 
       if (error) throw error
 
-      setTeams(teams.filter((team) => team.id !== id))
+      refresh()
 
       toast({
         title: "Equipo eliminado",
@@ -367,7 +273,7 @@ export default function EquiposPage() {
   }
 
   // Filtrar equipos
-  const filteredTeams = teams.filter((team) => {
+  const filteredTeams = (teams || []).filter((team) => {
     const matchesSearch =
       !searchTerm ||
       team.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -378,7 +284,7 @@ export default function EquiposPage() {
   })
 
   console.log("📊 Estado actual:", {
-    totalTeams: teams.length,
+    totalTeams: teams?.length,
     filteredTeams: filteredTeams.length,
     loading,
     error,
@@ -547,15 +453,15 @@ export default function EquiposPage() {
               <EmptyState
                 icon={AlertCircle}
                 title="Error al cargar equipos"
-                description={error}
+                description={error?.message}
                 action={
-                  <Button onClick={fetchTeams} variant="default">
+                  <Button onClick={refresh} variant="default">
                     Reintentar
                   </Button>
                 }
               />
             </div>
-          ) : filteredTeams.length === 0 && teams.length > 0 ? (
+          ) : filteredTeams.length === 0 && teams?.length > 0 ? (
             <div className="py-8">
               <EmptyState
                 icon={Users}

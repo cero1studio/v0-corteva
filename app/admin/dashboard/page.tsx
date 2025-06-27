@@ -176,8 +176,7 @@ export default function AdminDashboardPage() {
       }
 
       try {
-        const promise = supabase.from("zones").select("id, name").abortSignal(signal)
-        const { data: zones, error: zonesError } = await diagnostics.trackPromise("zoneStats", promise)
+        const { data: zones, error: zonesError } = await supabase.from("zones").select("id, name").abortSignal(signal)
 
         if (zonesError) throw zonesError
         if (signal?.aborted) {
@@ -221,8 +220,7 @@ export default function AdminDashboardPage() {
       }
 
       try {
-        const promise = supabase.from("products").select("id, name").abortSignal(signal)
-        const { data, error } = await diagnostics.trackPromise("productsList", promise)
+        const { data, error } = await supabase.from("products").select("id, name").abortSignal(signal)
 
         if (error) throw error
         if (signal?.aborted) {
@@ -231,13 +229,11 @@ export default function AdminDashboardPage() {
         }
 
         const productStatsPromises = data.map(async (product) => {
-          const salesPromise = supabase
+          const { data: salesData } = await supabase
             .from("sales")
             .select("quantity, points")
             .eq("product_id", product.id)
             .abortSignal(signal)
-
-          const { data: salesData } = await diagnostics.trackPromise(`productSales-${product.id}`, salesPromise)
 
           if (signal?.aborted) return null
 

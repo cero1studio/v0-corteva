@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { getUsers, deleteUser, getZones } from "@/app/actions/users"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -24,10 +24,9 @@ import { Badge } from "@/components/ui/badge"
 import { EmptyState } from "@/components/empty-state"
 import { getDistributorLogoUrl } from "@/lib/utils/image"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { useCachedList } from "@/lib/global-cache"
 
 export default function UsuariosPage() {
-  const [users, setUsers] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
   const [userToDelete, setUserToDelete] = useState<string | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
   const { toast } = useToast()
@@ -35,40 +34,22 @@ export default function UsuariosPage() {
   const [selectedZone, setSelectedZone] = useState<string>("all")
   const [searchTerm, setSearchTerm] = useState("")
 
-  useEffect(() => {
-    fetchUsers()
-    fetchZones()
+  const fetchUsers = useCallback(async () => {
+    const result = await getUsers(selectedZone)
+    if (result.error) throw new Error(result.error)
+    return result.data || []
   }, [selectedZone])
 
-  async function fetchUsers() {
-    try {
-      setLoading(true)
-      const result = await getUsers(selectedZone)
+  const {
+    data: users,
+    loading,
+    error,
+    refresh,
+  } = useCachedList(`admin-users-${selectedZone}`, fetchUsers, [selectedZone])
 
-      console.log("Resultado de getUsers:", result)
-
-      if (result.error) {
-        toast({
-          title: "Error",
-          description: result.error,
-          variant: "destructive",
-        })
-        setUsers([])
-      } else {
-        setUsers(result.data || [])
-      }
-    } catch (error) {
-      console.error("Error al obtener usuarios:", error)
-      toast({
-        title: "Error",
-        description: "No se pudieron cargar los usuarios",
-        variant: "destructive",
-      })
-      setUsers([])
-    } finally {
-      setLoading(false)
-    }
-  }
+  useEffect(() => {
+    fetchZones()
+  }, [])
 
   async function fetchZones() {
     try {
@@ -99,7 +80,7 @@ export default function UsuariosPage() {
           title: "Usuario eliminado",
           description: "El usuario ha sido eliminado exitosamente",
         })
-        fetchUsers()
+        refresh()
       }
     } catch (error) {
       console.error("Error al eliminar usuario:", error)
@@ -166,7 +147,7 @@ export default function UsuariosPage() {
   }
 
   // Filtrar usuarios
-  const filteredUsers = users.filter((user) => {
+  const filteredUsers = (users || []).filter((user) => {
     const matchesSearch =
       user.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       user.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -308,7 +289,7 @@ export default function UsuariosPage() {
                               <img
                                 src={
                                   getDistributorLogoUrl({
-                                    name: user.distributor_name,
+                                    name: user.distributor_name ?? "",
                                     logo_url: user.distributor_logo,
                                   }) || "/placeholder.svg"
                                 }
@@ -339,7 +320,7 @@ export default function UsuariosPage() {
                           <Button
                             variant="outline"
                             size="icon"
-                            className="text-red-500"
+                            className="text-red-500 bg-transparent"
                             onClick={() => setUserToDelete(user.id)}
                           >
                             <Trash2 className="h-4 w-4" />

@@ -25,6 +25,7 @@ import { getAllTeams } from "@/app/actions/teams"
 import { getAllUsers } from "@/app/actions/users"
 import * as XLSX from "xlsx"
 import Link from "next/link" // Import Link
+import { useCachedList } from "@/lib/global-cache"
 
 interface CompetitorClient {
   id: string
@@ -76,11 +77,11 @@ interface User {
 }
 
 export default function AdminClientesPage() {
-  const [clients, setClients] = useState<CompetitorClient[]>([])
+  // const [clients, setClients] = useState<CompetitorClient[]>([])
   const [zones, setZones] = useState<Zone[]>([])
   const [teams, setTeams] = useState<Team[]>([])
   const [captains, setCaptains] = useState<User[]>([])
-  const [loading, setLoading] = useState(true)
+  // const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedZone, setSelectedZone] = useState<string>("all")
   const [selectedTeam, setSelectedTeam] = useState<string>("all")
@@ -100,88 +101,99 @@ export default function AdminClientesPage() {
   }, [])
 
   // Optimized load data function
-  const loadData = useCallback(
-    async (signal?: AbortSignal) => {
-      try {
-        setLoading(true)
+  // const loadData = useCallback(
+  //   async (signal?: AbortSignal) => {
+  //     try {
+  //       setLoading(true)
 
-        // Cancel previous request
-        if (abortControllerRef.current) {
-          abortControllerRef.current.abort()
-        }
+  //       // Cancel previous request
+  //       if (abortControllerRef.current) {
+  //         abortControllerRef.current.abort()
+  //       }
 
-        // Create new abort controller
-        const controller = new AbortController()
-        abortControllerRef.current = controller
-        const currentSignal = signal || controller.signal
+  //       // Create new abort controller
+  //       const controller = new AbortController()
+  //       abortControllerRef.current = controller
+  //       const currentSignal = signal || controller.signal
 
-        // Load data in batches to improve performance
-        const [clientsResult, zonesData] = await Promise.all([getAllCompetitorClients(), getAllZones()])
+  //       // Load data in batches to improve performance
+  //       const [clientsResult, zonesData] = await Promise.all([getAllCompetitorClients(), getAllZones()])
 
-        // Check if request was cancelled
-        if (currentSignal.aborted) return
+  //       // Check if request was cancelled
+  //       if (currentSignal.aborted) return
 
-        if (clientsResult.success) {
-          setClients(clientsResult.data || [])
-        } else {
-          console.error("Error loading clients:", clientsResult.error)
-          toast({
-            title: "Error",
-            description: "Error al cargar los clientes",
-            variant: "destructive",
-          })
-        }
+  //       if (clientsResult.success) {
+  //         setClients(clientsResult.data || [])
+  //       } else {
+  //         console.error("Error loading clients:", clientsResult.error)
+  //         toast({
+  //           title: "Error",
+  //           description: "Error al cargar los clientes",
+  //           variant: "destructive",
+  //         })
+  //       }
 
-        if (zonesData && Array.isArray(zonesData)) {
-          setZones(zonesData)
-        } else {
-          setZones([])
-        }
+  //       if (zonesData && Array.isArray(zonesData)) {
+  //         setZones(zonesData)
+  //       } else {
+  //         setZones([])
+  //       }
 
-        // Load teams and users only if needed
-        const [teamsResult, usersResult] = await Promise.all([getAllTeams(), getAllUsers()])
+  //       // Load teams and users only if needed
+  //       const [teamsResult, usersResult] = await Promise.all([getAllTeams(), getAllUsers()])
 
-        // Check if request was cancelled again
-        if (currentSignal.aborted) return
+  //       // Check if request was cancelled again
+  //       if (currentSignal.aborted) return
 
-        if (teamsResult.success) {
-          setTeams(teamsResult.data || [])
-        } else {
-          setTeams([])
-        }
+  //       if (teamsResult.success) {
+  //         setTeams(teamsResult.data || [])
+  //       } else {
+  //         setTeams([])
+  //       }
 
-        if (usersResult.data) {
-          setCaptains(usersResult.data.filter((user) => user.role === "capitan") || [])
-        } else {
-          setCaptains([])
-        }
-      } catch (error: any) {
-        // Don't show error if request was cancelled
-        if (error.name === "AbortError") return
+  //       if (usersResult.data) {
+  //         setCaptains(usersResult.data.filter((user) => user.role === "capitan") || [])
+  //       } else {
+  //         setCaptains([])
+  //       }
+  //     } catch (error: any) {
+  //       // Don't show error if request was cancelled
+  //       if (error.name === "AbortError") return
 
-        console.error("Error loading data:", error)
-        toast({
-          title: "Error",
-          description: "Error al cargar los datos",
-          variant: "destructive",
-        })
-      } finally {
-        setLoading(false)
-      }
-    },
-    [
-      setClients,
-      setZones,
-      setTeams,
-      setCaptains,
-      setLoading,
-      toast,
-      getAllCompetitorClients,
-      getAllZones,
-      getAllTeams,
-      getAllUsers,
-    ],
-  )
+  //       console.error("Error loading data:", error)
+  //       toast({
+  //         title: "Error",
+  //         description: "Error al cargar los datos",
+  //         variant: "destructive",
+  //       })
+  //     } finally {
+  //       setLoading(false)
+  //     }
+  //   },
+  //   [
+  //     setClients,
+  //     setZones,
+  //     setTeams,
+  //     setCaptains,
+  //     setLoading,
+  //     toast,
+  //     getAllCompetitorClients,
+  //     getAllZones,
+  //     getAllTeams,
+  //     getAllUsers,
+  //   ],
+  // )
+
+  const fetchClients = useCallback(async () => {
+    const result = await getAllCompetitorClients()
+    if (result.success) {
+      return result.data || []
+    } else {
+      throw new Error(result.error || "Error al cargar clientes")
+    }
+  }, [])
+
+  const { data: clients, loading, error, refresh } = useCachedList("admin-clients", fetchClients, [])
 
   // --- column definition must live inside the component so it can access state ---
   const columns: ColumnDef<CompetitorClient>[] = useMemo(() => {
@@ -193,9 +205,10 @@ export default function AdminClientesPage() {
         if (result.success) {
           toast({ title: "Éxito", description: "Cliente eliminado correctamente" })
           // remove from local table
-          setClients((prev) => prev.filter((c) => c.id !== clientId))
+          // setClients((prev) => prev.filter((c) => c.id !== clientId))
           // tiny delay -> guarantee DB finished & ISR revalidated
-          setTimeout(() => loadData(), 100)
+          // setTimeout(() => loadData(), 100)
+          refresh()
         } else {
           toast({
             title: "Error",
@@ -288,7 +301,7 @@ export default function AdminClientesPage() {
         },
       },
     ] as ColumnDef<CompetitorClient>[]
-  }, [setClients, loadData, toast])
+  }, [refresh, toast])
 
   // Debounced search
   const debouncedSearch = useCallback((term: string) => {
@@ -312,7 +325,7 @@ export default function AdminClientesPage() {
 
   // Memoized filtered clients for better performance
   const filteredClients = useMemo(() => {
-    return clients.filter((client) => {
+    return clients?.filter((client) => {
       const ganaderoName = client.ganadero_name || ""
       const clientName = client.client_name || ""
       const competitorName = client.competitor_name || ""
@@ -360,14 +373,51 @@ export default function AdminClientesPage() {
   }, [teams, selectedZone])
 
   // Effect with cleanup
-  useEffect(() => {
-    const controller = new AbortController()
-    loadData(controller.signal)
+  // useEffect(() => {
+  //   const controller = new AbortController()
+  //   loadData(controller.signal)
 
-    return () => {
-      cleanup()
+  //   return () => {
+  //     cleanup()
+  //   }
+  // }, [loadData, cleanup])
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        await Promise.all([getAllZones(), getAllTeams(), getAllUsers()]).then(
+          ([zonesData, teamsResult, usersResult]) => {
+            if (zonesData && Array.isArray(zonesData)) {
+              setZones(zonesData)
+            } else {
+              setZones([])
+            }
+
+            if (teamsResult.success) {
+              setTeams(teamsResult.data || [])
+            } else {
+              setTeams([])
+            }
+
+            if (usersResult.data) {
+              setCaptains(usersResult.data.filter((user) => user.role === "capitan") || [])
+            } else {
+              setCaptains([])
+            }
+          },
+        )
+      } catch (error) {
+        console.error("Error loading data:", error)
+        toast({
+          title: "Error",
+          description: "Error al cargar los datos",
+          variant: "destructive",
+        })
+      }
     }
-  }, [loadData, cleanup])
+
+    fetchData()
+  }, [])
 
   // Cleanup on unmount
   useEffect(() => {
@@ -376,7 +426,7 @@ export default function AdminClientesPage() {
 
   const downloadExcel = useCallback(() => {
     try {
-      if (filteredClients.length === 0) {
+      if (!filteredClients || filteredClients.length === 0) {
         toast({
           title: "Error",
           description: "No hay datos para exportar",
@@ -480,7 +530,7 @@ export default function AdminClientesPage() {
   }, [filteredClients, toast])
 
   const table = useReactTable({
-    data: filteredClients,
+    data: filteredClients || [],
     columns,
     getCoreRowModel: getCoreRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
@@ -506,7 +556,7 @@ export default function AdminClientesPage() {
           <p className="text-muted-foreground">Administra todos los clientes captados de la competencia</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={downloadExcel} disabled={filteredClients.length === 0}>
+          <Button variant="outline" onClick={downloadExcel} disabled={!filteredClients || filteredClients.length === 0}>
             <Download className="mr-2 h-4 w-4" />
             Descargar Excel
           </Button>
@@ -596,12 +646,12 @@ export default function AdminClientesPage() {
         <CardHeader>
           <CardTitle>Clientes Registrados</CardTitle>
           <CardDescription>
-            {filteredClients.length} cliente{filteredClients.length !== 1 ? "s" : ""} encontrado
-            {filteredClients.length !== 1 ? "s" : ""}
+            {filteredClients?.length} cliente{filteredClients?.length !== 1 ? "s" : ""} encontrado
+            {filteredClients?.length !== 1 ? "s" : ""}
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {filteredClients.length === 0 ? (
+          {!filteredClients || filteredClients.length === 0 ? (
             <div className="text-center py-12">
               <Users className="mx-auto h-12 w-12 text-muted-foreground" />
               <h3 className="mt-4 text-lg font-semibold">No hay clientes</h3>

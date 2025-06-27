@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useCallback } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -14,6 +14,7 @@ import { getAllZones } from "@/app/actions/zones"
 import { AdminRankingChart } from "@/components/admin-ranking-chart"
 import { AdminZonesChart } from "@/components/admin-zones-chart"
 import * as XLSX from "xlsx"
+import { useCachedList } from "@/lib/global-cache"
 
 interface Team {
   id: string
@@ -32,44 +33,24 @@ interface Zone {
 }
 
 export default function RankingAdminPage() {
-  const [teams, setTeams] = useState<Team[]>([])
-  const [zones, setZones] = useState<Zone[]>([])
   const [selectedZone, setSelectedZone] = useState<string>("all")
-  const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    loadData()
+  const fetchRankingData = useCallback(async () => {
+    const [teamsResult, zonesData] = await Promise.all([getTeamRankingByZone(), getAllZones()])
+
+    if (!teamsResult.success) {
+      throw new Error("Error al cargar el ranking")
+    }
+
+    return {
+      teams: teamsResult.data || [],
+      zones: zonesData && Array.isArray(zonesData) ? zonesData : [],
+    }
   }, [])
 
-  const loadData = async () => {
-    try {
-      setLoading(true)
-      const [teamsResult, zonesData] = await Promise.all([getTeamRankingByZone(), getAllZones()])
-
-      if (teamsResult.success) {
-        setTeams(teamsResult.data || [])
-      } else {
-        toast({
-          title: "Error",
-          description: "Error al cargar el ranking",
-          variant: "destructive",
-        })
-      }
-
-      if (zonesData && Array.isArray(zonesData)) {
-        setZones(zonesData)
-      }
-    } catch (error) {
-      console.error("Error loading data:", error)
-      toast({
-        title: "Error",
-        description: "Error al cargar los datos",
-        variant: "destructive",
-      })
-    } finally {
-      setLoading(false)
-    }
-  }
+  const { data, loading, error } = useCachedList("admin-ranking", fetchRankingData, [])
+  const teams = data?.teams || []
+  const zones = data?.zones || []
 
   const filteredTeams = teams.filter((team) => {
     if (selectedZone === "all") return true

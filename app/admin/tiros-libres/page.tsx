@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -17,6 +17,7 @@ import {
   getZones,
   getTeamsByZone,
 } from "@/app/actions/free-kick-goals"
+import { useCachedList } from "@/lib/global-cache"
 
 interface Zone {
   id: string
@@ -29,32 +30,21 @@ interface Team {
 }
 
 export default function TirosLibresPage() {
-  const [zones, setZones] = useState<Zone[]>([])
   const [teams, setTeams] = useState<Team[]>([])
   const [selectedZone, setSelectedZone] = useState<string>("")
   const [selectedTeam, setSelectedTeam] = useState<string>("")
-  const [freeKickGoals, setFreeKickGoals] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [deleting, setDeleting] = useState<string | null>(null)
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
 
-  // Cargar zonas al montar el componente
-  useEffect(() => {
-    async function loadData() {
-      try {
-        const [zonesData, goalsData] = await Promise.all([getZones(), getFreeKickGoals()])
-        setZones(zonesData)
-        setFreeKickGoals(goalsData)
-      } catch (error) {
-        console.error("Error loading data:", error)
-        setMessage({ type: "error", text: "Error al cargar los datos" })
-      } finally {
-        setLoading(false)
-      }
-    }
-    loadData()
+  const fetchData = useCallback(async () => {
+    const [zonesData, goalsData] = await Promise.all([getZones(), getFreeKickGoals()])
+    return { zones: zonesData, goals: goalsData }
   }, [])
+
+  const { data, loading, error, refresh } = useCachedList("admin-free-kicks", fetchData, [])
+  const zones = data?.zones || []
+  const freeKickGoals = data?.goals || []
 
   // Cargar equipos cuando se selecciona una zona
   useEffect(() => {
@@ -86,8 +76,7 @@ export default function TirosLibresPage() {
       if (result.success) {
         setMessage({ type: "success", text: "Tiro libre adjudicado exitosamente" })
         // Recargar los datos
-        const goalsData = await getFreeKickGoals()
-        setFreeKickGoals(goalsData)
+        await refresh()
         // Reset form
         setSelectedZone("")
         setSelectedTeam("")
@@ -115,8 +104,7 @@ export default function TirosLibresPage() {
         setMessage({ type: "success", text: "Tiro libre eliminado exitosamente" })
         // Pequeño delay para asegurar sincronización
         setTimeout(async () => {
-          const goalsData = await getFreeKickGoals()
-          setFreeKickGoals(goalsData)
+          await refresh()
         }, 100)
       } else {
         setMessage({ type: "error", text: result.error || "Error al eliminar tiro libre" })

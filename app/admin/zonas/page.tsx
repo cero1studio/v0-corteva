@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
+import { useState, useMemo, useCallback } from "react"
 import { supabase } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -18,6 +18,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
+import { useCachedList } from "@/lib/global-cache"
 
 interface Zone {
   id: string
@@ -26,68 +27,27 @@ interface Zone {
 }
 
 export default function ZonasPage() {
-  const [zones, setZones] = useState<Zone[]>([])
-  const [loading, setLoading] = useState(true)
   const [newZoneName, setNewZoneName] = useState("")
   const [isAddingZone, setIsAddingZone] = useState(false)
   const [editingZone, setEditingZone] = useState<Zone | null>(null)
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")
   const { toast } = useToast()
-  const [error, setError] = useState<string | null>(null)
   const [isZonesLoaded, setIsZonesLoaded] = useState(false)
 
-  useEffect(() => {
-    const abortController = new AbortController()
+  const fetchZones = useCallback(async () => {
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error("Timeout: La consulta tardó demasiado")), 5000),
+    )
 
-    const fetchZonesWithCleanup = async () => {
-      // 🚀 CACHE DEFINITIVO: Usar estado separado, no zones.length
-      if (isZonesLoaded) {
-        console.log("📦 Zonas ya cargadas - usando cache")
-        setLoading(false)
-        return
-      }
+    const fetchPromise = supabase.from("zones").select("*").order("name")
+    const result = (await Promise.race([fetchPromise, timeoutPromise])) as any
 
-      setLoading(true)
-      setError(null)
+    if (result.error) throw result.error
+    return result.data || []
+  }, [])
 
-      try {
-        const timeoutPromise = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error("Timeout: La consulta tardó demasiado")), 5000),
-        )
-
-        const fetchPromise = supabase.from("zones").select("*").order("name").abortSignal(abortController.signal)
-
-        const result = (await Promise.race([fetchPromise, timeoutPromise])) as any
-
-        if (result.error) throw result.error
-        if (!abortController.signal.aborted) {
-          setZones(result.data || [])
-          setIsZonesLoaded(true) // ✅ Marcar como cargado
-        }
-      } catch (error: any) {
-        if (!abortController.signal.aborted) {
-          console.error("Error al cargar zonas:", error)
-          setError(error.message || "Error al cargar zonas")
-          toast({
-            title: "Error",
-            description: "No se pudieron cargar las zonas. " + error.message,
-            variant: "destructive",
-          })
-        }
-      } finally {
-        if (!abortController.signal.aborted) {
-          setLoading(false)
-        }
-      }
-    }
-
-    fetchZonesWithCleanup()
-
-    return () => {
-      abortController.abort()
-    }
-  }, [toast])
+  const { data: zones, loading, error, refresh } = useCachedList("admin-zones", fetchZones, [])
 
   // Filtrar zonas basándose en el término de búsqueda
   const filteredZones = useMemo(() => {
@@ -129,7 +89,7 @@ export default function ZonasPage() {
 
       if (result.error) throw result.error
 
-      setZones((prev) => [...prev, result.data[0]])
+      refresh()
       setNewZoneName("")
       toast({
         title: "Zona añadida",
@@ -163,7 +123,7 @@ export default function ZonasPage() {
 
       if (error) throw error
 
-      setZones(zones.map((zone) => (zone.id === editingZone.id ? editingZone : zone)))
+      refresh()
 
       toast({
         title: "Zona actualizada",
@@ -200,7 +160,7 @@ export default function ZonasPage() {
         return
       }
 
-      setZones(zones.filter((zone) => zone.id !== id))
+      refresh()
 
       toast({
         title: "Zona eliminada",

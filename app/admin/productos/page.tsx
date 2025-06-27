@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useCallback } from "react"
 import { Download, MoreHorizontal, Plus, Search, Package, AlertCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -13,6 +13,7 @@ import { useToast } from "@/hooks/use-toast"
 import { useRouter } from "next/navigation"
 import { getProducts, deleteProduct, toggleProductStatus } from "@/app/actions/products"
 import Image from "next/image"
+import { useCachedList } from "@/lib/global-cache"
 
 // Definir la interfaz para los productos
 interface Product {
@@ -26,36 +27,27 @@ interface Product {
 
 export default function ProductosPage() {
   const [searchTerm, setSearchTerm] = useState("")
-  const [products, setProducts] = useState<Product[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const { toast } = useToast()
   const router = useRouter()
 
-  useEffect(() => {
-    async function loadProducts() {
-      setIsLoading(true)
-      setError(null)
-      try {
-        const result = await getProducts()
-        if (result.success && Array.isArray(result.data)) {
-          setProducts(result.data)
-        } else {
-          console.error("Error al cargar productos:", result.error || "Formato de datos inesperado")
-          setError("Error al cargar productos. Por favor, intenta de nuevo.")
-          setProducts([])
-        }
-      } catch (err) {
-        console.error("Error al cargar productos:", err)
-        setError("Error al cargar productos. Por favor, intenta de nuevo.")
-        setProducts([])
-      } finally {
-        setIsLoading(false)
-      }
+  const fetchProducts = useCallback(async () => {
+    const result = await getProducts()
+    if (result.success && Array.isArray(result.data)) {
+      return result.data
+    } else {
+      throw new Error(result.error || "Error al cargar productos")
     }
-
-    loadProducts()
   }, [])
+
+  const { data: products, loading, error: cacheError, refresh } = useCachedList("admin-products", fetchProducts, [])
+
+  useEffect(() => {
+    if (cacheError) {
+      setError("Error al cargar productos. Por favor, intenta de nuevo.")
+    }
+  }, [cacheError])
 
   // Asegurarse de que products es un array antes de usar filter
   const filteredProducts = Array.isArray(products)
@@ -72,7 +64,7 @@ export default function ProductosPage() {
             description: "El producto ha sido eliminado exitosamente",
           })
           // Actualizar la lista de productos
-          setProducts(products.filter((p) => p.id !== productId))
+          refresh()
         } else {
           toast({
             title: "Error",
@@ -100,7 +92,7 @@ export default function ProductosPage() {
           description: `El producto ha sido ${!currentStatus ? "activado" : "desactivado"} exitosamente`,
         })
         // Actualizar la lista de productos
-        setProducts(products.map((p) => (p.id === productId ? { ...p, active: !currentStatus } : p)))
+        refresh()
       } else {
         toast({
           title: "Error",
@@ -135,7 +127,7 @@ export default function ProductosPage() {
     )
   }
 
-  if (isLoading) {
+  if (loading) {
     return (
       <div className="flex flex-col gap-6 p-6">
         <div className="flex flex-col gap-2">
@@ -149,7 +141,7 @@ export default function ProductosPage() {
     )
   }
 
-  if (products.length === 0) {
+  if (!products || products.length === 0) {
     return (
       <div className="flex flex-col gap-6 p-6">
         <div className="flex flex-col gap-2">
@@ -207,7 +199,7 @@ export default function ProductosPage() {
             />
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" className="h-8 gap-1">
+            <Button variant="outline" size="sm" className="h-8 gap-1 bg-transparent">
               <Download className="h-3.5 w-3.5" />
               <span className="hidden sm:inline-block">Exportar</span>
             </Button>

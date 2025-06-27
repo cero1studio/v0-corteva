@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
@@ -11,6 +11,7 @@ import { PlusCircle, Edit, Trash2, Building, RefreshCw } from "lucide-react"
 import { EmptyState } from "@/components/empty-state"
 import Link from "next/link"
 import { getDistributorLogoUrl } from "@/lib/utils/image"
+import { useCachedList } from "@/lib/global-cache"
 
 interface Distributor {
   id: string
@@ -21,74 +22,82 @@ interface Distributor {
 
 export default function DistribuidoresPage() {
   const router = useRouter()
-  const [distributors, setDistributors] = useState<Distributor[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  // const [distributors, setDistributors] = useState<Distributor[]>([])
+  // const [loading, setLoading] = useState(true)
+  // const [error, setError] = useState<string | null>(null)
   const [retryCount, setRetryCount] = useState(0)
   const { toast } = useToast()
-  const [isDistributorsLoaded, setIsDistributorsLoaded] = useState(false)
+  // const [isDistributorsLoaded, setIsDistributorsLoaded] = useState(false)
 
-  useEffect(() => {
-    let mounted = true
-    let timeoutId: NodeJS.Timeout
-    const abortController = new AbortController()
+  // useEffect(() => {
+  //   let mounted = true
+  //   let timeoutId: NodeJS.Timeout
+  //   const abortController = new AbortController()
 
-    const loadDistributors = async () => {
-      // 🚀 CACHE DEFINITIVO: Usar estado separado
-      if (isDistributorsLoaded && retryCount === 0) {
-        console.log("📦 Distribuidores ya cargados - usando cache")
-        setLoading(false)
-        return
-      }
+  //   const loadDistributors = async () => {
+  //     // 🚀 CACHE DEFINITIVO: Usar estado separado
+  //     if (isDistributorsLoaded && retryCount === 0) {
+  //       console.log("📦 Distribuidores ya cargados - usando cache")
+  //       setLoading(false)
+  //       return
+  //     }
 
-      setLoading(true)
-      setError(null)
+  //     setLoading(true)
+  //     setError(null)
 
-      // Timeout de seguridad que se limpia correctamente
-      timeoutId = setTimeout(() => {
-        if (mounted) {
-          console.log("DISTRIBUIDORES: Timeout reached, aborting query")
-          abortController.abort()
-          setLoading(false)
-          setError("Timeout - intenta nuevamente")
-        }
-      }, 8000)
+  //     // Timeout de seguridad que se limpia correctamente
+  //     timeoutId = setTimeout(() => {
+  //       if (mounted) {
+  //         console.log("DISTRIBUIDORES: Timeout reached, aborting query")
+  //         abortController.abort()
+  //         setLoading(false)
+  //         setError("Timeout - intenta nuevamente")
+  //       }
+  //     }, 8000)
 
-      try {
-        const result = await supabase.from("distributors").select("*").order("name").abortSignal(abortController.signal)
+  //     try {
+  //       const result = await supabase.from("distributors").select("*").order("name").abortSignal(abortController.signal)
 
-        if (result.error) throw result.error
+  //       if (result.error) throw result.error
 
-        if (mounted && !abortController.signal.aborted) {
-          setDistributors(result.data || [])
-          setIsDistributorsLoaded(true) // ✅ Marcar como cargado
-        }
-      } catch (error: any) {
-        if (mounted && !abortController.signal.aborted) {
-          console.error("Error al cargar distribuidores:", error)
-          setError(error.message || "Error al cargar distribuidores")
-          toast({
-            title: "Error",
-            description: "No se pudieron cargar los distribuidores. " + error.message,
-            variant: "destructive",
-          })
-        }
-      } finally {
-        if (mounted && !abortController.signal.aborted) {
-          setLoading(false)
-        }
-        if (timeoutId) clearTimeout(timeoutId)
-      }
-    }
+  //       if (mounted && !abortController.signal.aborted) {
+  //         setDistributors(result.data || [])
+  //         setIsDistributorsLoaded(true) // ✅ Marcar como cargado
+  //       }
+  //     } catch (error: any) {
+  //       if (mounted && !abortController.signal.aborted) {
+  //         console.error("Error al cargar distribuidores:", error)
+  //         setError(error.message || "Error al cargar distribuidores")
+  //         toast({
+  //           title: "Error",
+  //           description: "No se pudieron cargar los distribuidores. " + error.message,
+  //           variant: "destructive",
+  //         })
+  //       }
+  //     } finally {
+  //       if (mounted && !abortController.signal.aborted) {
+  //         setLoading(false)
+  //       }
+  //       if (timeoutId) clearTimeout(timeoutId)
+  //     }
+  //   }
 
-    loadDistributors()
+  //   loadDistributors()
 
-    return () => {
-      mounted = false
-      abortController.abort()
-      if (timeoutId) clearTimeout(timeoutId)
-    }
-  }, [retryCount, toast]) // ✅ Solo triggers, no distributors.length
+  //   return () => {
+  //     mounted = false
+  //     abortController.abort()
+  //     if (timeoutId) clearTimeout(timeoutId)
+  //   }
+  // }, [retryCount, toast]) // ✅ Solo triggers, no distributors.length
+
+  const fetchDistributors = useCallback(async () => {
+    const result = await supabase.from("distributors").select("*").order("name")
+    if (result.error) throw result.error
+    return result.data || []
+  }, [])
+
+  const { data: distributors, loading, error, refresh } = useCachedList("admin-distributors", fetchDistributors, [])
 
   const handleRetry = () => {
     setRetryCount((prev) => prev + 1)
@@ -119,7 +128,8 @@ export default function DistribuidoresPage() {
         return
       }
 
-      setDistributors((prev) => prev.filter((distributor) => distributor.id !== id))
+      // setDistributors((prev) => prev.filter((distributor) => distributor.id !== id))
+      refresh()
 
       toast({
         title: "Distribuidor eliminado",
