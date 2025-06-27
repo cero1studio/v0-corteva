@@ -19,13 +19,19 @@ import {
   AlertCircle,
   ShoppingBag,
   RefreshCw,
+  Bug,
 } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
 import { EmptyState } from "@/components/empty-state"
 import { useRouter } from "next/navigation"
+import { useDiagnostics } from "@/lib/diagnostics"
+import { usePersistentDashboardCache } from "@/lib/dashboard-cache"
 
 export default function AdminDashboardPage() {
   const router = useRouter()
+  const diagnostics = useDiagnostics("AdminDashboard")
+  const cache = usePersistentDashboardCache()
+
   const [loading, setLoading] = useState(true)
   const [stats, setStats] = useState({
     totalCapitanes: 0,
@@ -43,34 +49,60 @@ export default function AdminDashboardPage() {
   const [productStats, setProductStats] = useState<any[]>([])
   const [error, setError] = useState<string | null>(null)
   const [retryCount, setRetryCount] = useState(0)
-  const [dataLoaded, setDataLoaded] = useState({
-    basicStats: false,
-    zoneStats: false,
-    productStats: false,
-  })
 
-  const [isBasicStatsLoaded, setIsBasicStatsLoaded] = useState(false)
-  const [isZoneStatsLoaded, setIsZoneStatsLoaded] = useState(false)
-  const [isProductStatsLoaded, setIsProductStatsLoaded] = useState(false)
+  // Inicializar desde cache persistente
+  useEffect(() => {
+    diagnostics.log("INIT", "Checking persistent cache")
 
-  // --- helper to fetch dynamic ranking from the API route ---
-  async function fetchRanking(zoneId?: string) {
-    const url = zoneId ? `/api/ranking-list?zoneId=${zoneId}` : "/api/ranking-list"
-    const res = await fetch(url)
-    if (!res.ok) throw new Error(`HTTP ${res.status}`)
-    const json = await res.json()
-    // the route returns { success, data }
-    if (!json.success) throw new Error("Ranking API error")
-    return json.data as any[]
-  }
+    // Verificar cache persistente al montar
+    if (cache.hasStats()) {
+      const cachedStats = cache.getStats()
+      diagnostics.log("INIT", "Found cached stats", cachedStats)
+      setStats(cachedStats)
+      setLoading(false)
+    }
+
+    if (cache.hasZoneStats()) {
+      const cachedZoneStats = cache.getZoneStats()
+      diagnostics.log("INIT", "Found cached zone stats", { count: cachedZoneStats.length })
+      setZoneStats(cachedZoneStats)
+    }
+
+    if (cache.hasProductStats()) {
+      const cachedProductStats = cache.getProductStats()
+      diagnostics.log("INIT", "Found cached product stats", { count: cachedProductStats.length })
+      setProductStats(cachedProductStats)
+    }
+  }, [])
+
+  // Trackear estados en diagnostics
+  useEffect(() => {
+    diagnostics.trackState({
+      loading,
+      error,
+      retryCount,
+      hasStatsCache: cache.hasStats(),
+      hasZoneCache: cache.hasZoneStats(),
+      hasProductCache: cache.hasProductStats(),
+      statsCount: Object.keys(stats).length,
+    })
+  }, [loading, error, retryCount, stats])
 
   // Función para obtener estadísticas básicas
   const fetchBasicStats = useCallback(
     async (signal?: AbortSignal) => {
-      if (isBasicStatsLoaded) return true
+      diagnostics.log("fetchBasicStats", "Starting", { hasCache: cache.hasStats() })
+
+      // Verificar cache persistente primero
+      if (cache.hasStats()) {
+        diagnostics.log("fetchBasicStats", "Using persistent cache")
+        const cachedStats = cache.getStats()
+        setStats(cachedStats)
+        return true
+      }
 
       try {
-        const [capitanes, directores, teams, zones, clients, sales, freeKicks] = await Promise.all([
+        const promise = Promise.all([
           supabase
             .from("profiles")
             .select("*", { count: "exact", head: true })
@@ -88,13 +120,21 @@ export default function AdminDashboardPage() {
           supabase.from("free_kick_goals").select("points").abortSignal(signal),
         ])
 
-        if (signal?.aborted) return false
+        const [capitanes, directores, teams, zones, clients, sales, freeKicks] = await diagnostics.trackPromise(
+          "basicStats",
+          promise,
+        )
+
+        if (signal?.aborted) {
+          diagnostics.log("fetchBasicStats", "Aborted by signal")
+          return false
+        }
 
         const totalSalesPoints = sales.data?.reduce((sum, sale) => sum + (sale.points || 0), 0) || 0
         const totalFreeKickPoints = freeKicks.data?.reduce((sum, fk) => sum + (fk.points || 0), 0) || 0
         const totalClientPoints = clients.data?.reduce((sum, client) => sum + (client.points || 0), 0) || 0
 
-        setStats({
+        const newStats = {
           totalCapitanes: capitanes.count || 0,
           totalDirectores: directores.count || 0,
           totalTeams: teams.count || 0,
@@ -105,31 +145,45 @@ export default function AdminDashboardPage() {
           totalFreeKicks: freeKicks.data?.length || 0,
           totalFreeKickPoints: totalFreeKickPoints,
           totalClientPoints: totalClientPoints,
-        })
+        }
 
-        setDataLoaded((prev) => ({ ...prev, basicStats: true }))
-        setIsBasicStatsLoaded(true)
+        diagnostics.log("fetchBasicStats", "Success", newStats)
+
+        setStats(newStats)
+        cache.setStats(newStats) // Guardar en cache persistente
         return true
       } catch (error: any) {
         if (!signal?.aborted) {
+          diagnostics.log("fetchBasicStats", "Error", { error: error.message })
           console.error("Error al cargar estadísticas básicas:", error)
         }
         return false
       }
     },
-    [isBasicStatsLoaded],
+    [cache, diagnostics],
   )
 
-  // Función separada para cargar estadísticas de zonas (simplificada)
+  // Función separada para cargar estadísticas de zonas
   const fetchZoneStats = useCallback(
     async (signal?: AbortSignal) => {
-      if (isZoneStatsLoaded) return true
+      diagnostics.log("fetchZoneStats", "Starting", { hasCache: cache.hasZoneStats() })
+
+      if (cache.hasZoneStats()) {
+        diagnostics.log("fetchZoneStats", "Using persistent cache")
+        const cachedZoneStats = cache.getZoneStats()
+        setZoneStats(cachedZoneStats)
+        return true
+      }
 
       try {
-        const { data: zones, error: zonesError } = await supabase.from("zones").select("id, name").abortSignal(signal)
+        const promise = supabase.from("zones").select("id, name").abortSignal(signal)
+        const { data: zones, error: zonesError } = await diagnostics.trackPromise("zoneStats", promise)
 
         if (zonesError) throw zonesError
-        if (signal?.aborted) return false
+        if (signal?.aborted) {
+          diagnostics.log("fetchZoneStats", "Aborted by signal")
+          return false
+        }
 
         const basicZoneStats = zones.map((zone) => ({
           id: zone.id,
@@ -138,37 +192,52 @@ export default function AdminDashboardPage() {
           total_goals: 0,
         }))
 
+        diagnostics.log("fetchZoneStats", "Success", { count: basicZoneStats.length })
+
         setZoneStats(basicZoneStats)
-        setDataLoaded((prev) => ({ ...prev, zoneStats: true }))
-        setIsZoneStatsLoaded(true)
+        cache.setZoneStats(basicZoneStats) // Guardar en cache persistente
         return true
-      } catch (error) {
+      } catch (error: any) {
         if (!signal?.aborted) {
+          diagnostics.log("fetchZoneStats", "Error", { error: error.message })
           console.error("Error al cargar estadísticas de zonas:", error)
         }
         return false
       }
     },
-    [isZoneStatsLoaded],
+    [cache, diagnostics],
   )
 
   // Función separada para cargar estadísticas de productos
   const fetchProductStats = useCallback(
     async (signal?: AbortSignal) => {
-      if (isProductStatsLoaded) return true
+      diagnostics.log("fetchProductStats", "Starting", { hasCache: cache.hasProductStats() })
+
+      if (cache.hasProductStats()) {
+        diagnostics.log("fetchProductStats", "Using persistent cache")
+        const cachedProductStats = cache.getProductStats()
+        setProductStats(cachedProductStats)
+        return true
+      }
 
       try {
-        const { data, error } = await supabase.from("products").select("id, name").abortSignal(signal)
+        const promise = supabase.from("products").select("id, name").abortSignal(signal)
+        const { data, error } = await diagnostics.trackPromise("productsList", promise)
 
         if (error) throw error
-        if (signal?.aborted) return false
+        if (signal?.aborted) {
+          diagnostics.log("fetchProductStats", "Aborted by signal")
+          return false
+        }
 
         const productStatsPromises = data.map(async (product) => {
-          const { data: salesData } = await supabase
+          const salesPromise = supabase
             .from("sales")
             .select("quantity, points")
             .eq("product_id", product.id)
             .abortSignal(signal)
+
+          const { data: salesData } = await diagnostics.trackPromise(`productSales-${product.id}`, salesPromise)
 
           if (signal?.aborted) return null
 
@@ -185,64 +254,100 @@ export default function AdminDashboardPage() {
 
         const productStatsResults = await Promise.all(productStatsPromises)
 
-        if (signal?.aborted) return false
+        if (signal?.aborted) {
+          diagnostics.log("fetchProductStats", "Aborted by signal")
+          return false
+        }
 
-        setProductStats(productStatsResults.filter(Boolean))
-        setDataLoaded((prev) => ({ ...prev, productStats: true }))
-        setIsProductStatsLoaded(true)
+        const filteredResults = productStatsResults.filter(Boolean)
+        diagnostics.log("fetchProductStats", "Success", { count: filteredResults.length })
+
+        setProductStats(filteredResults)
+        cache.setProductStats(filteredResults) // Guardar en cache persistente
         return true
-      } catch (error) {
+      } catch (error: any) {
         if (!signal?.aborted) {
+          diagnostics.log("fetchProductStats", "Error", { error: error.message })
           console.error("Error al cargar estadísticas de productos:", error)
         }
         return false
       }
     },
-    [isProductStatsLoaded],
+    [cache, diagnostics],
   )
 
-  // Cargar datos de forma secuencial y con manejo de errores
+  // Cargar datos solo si no están en cache
   useEffect(() => {
     let isMounted = true
     let timeoutId: NodeJS.Timeout | null = null
-    const abortController = new AbortController()
+    const abortController = diagnostics.trackAbortController("mainLoad")
+
+    diagnostics.log("useEffect", "Starting", {
+      retryCount,
+      hasStatsCache: cache.hasStats(),
+      hasZoneCache: cache.hasZoneStats(),
+      hasProductCache: cache.hasProductStats(),
+    })
 
     const loadData = async () => {
-      if (!isMounted) return
+      if (!isMounted) {
+        diagnostics.log("loadData", "Component unmounted, aborting")
+        return
+      }
 
-      // 🚀 CACHE DEFINITIVO: Estados separados
-      if (isBasicStatsLoaded && retryCount === 0) {
-        console.log("📦 Estadísticas básicas ya cargadas - usando cache")
+      // Si ya tenemos datos en cache persistente, no cargar nada
+      if (cache.hasStats()) {
+        diagnostics.log("loadData", "All data in persistent cache, skipping load")
         setLoading(false)
+
+        // Cargar datos secundarios si no están en cache
+        if (!cache.hasZoneStats() || !cache.hasProductStats()) {
+          setTimeout(() => {
+            if (isMounted && !abortController.signal.aborted) {
+              Promise.allSettled([
+                !cache.hasZoneStats() ? fetchZoneStats(abortController.signal) : Promise.resolve(),
+                !cache.hasProductStats() ? fetchProductStats(abortController.signal) : Promise.resolve(),
+              ])
+            }
+          }, 100)
+        }
         return
       }
 
       setLoading(true)
       setError(null)
+      diagnostics.log("loadData", "Setting loading=true, error=null")
 
-      // Timeout que se limpia correctamente
-      timeoutId = setTimeout(() => {
-        if (isMounted) {
-          console.log("Dashboard: Timeout reached, aborting")
-          abortController.abort()
-          setLoading(false)
-          if (!isBasicStatsLoaded) {
+      // Timeout más corto
+      timeoutId = diagnostics.trackTimeout(
+        () => {
+          if (isMounted) {
+            diagnostics.log("loadData", "Timeout reached, aborting")
+            abortController.abort()
+            setLoading(false)
             setError("Timeout - intenta nuevamente")
+            diagnostics.log("loadData", "Setting timeout error")
           }
-        }
-      }, 8000)
+        },
+        6000, // Reducido a 6 segundos
+        "mainTimeout",
+      )
 
-      // Cargar estadísticas básicas primero
+      // Cargar estadísticas básicas
       const basicStatsSuccess = await fetchBasicStats(abortController.signal)
 
       if (basicStatsSuccess && isMounted && !abortController.signal.aborted) {
-        // Clear timeout immediately when basic stats load successfully
-        if (timeoutId) clearTimeout(timeoutId)
+        if (timeoutId) {
+          diagnostics.clearTimeout(timeoutId)
+          timeoutId = null
+        }
         setLoading(false)
+        diagnostics.log("loadData", "Basic stats loaded, setting loading=false")
 
-        // Cargar el resto con delay para no sobrecargar
+        // Cargar el resto en background
         setTimeout(() => {
           if (isMounted && !abortController.signal.aborted) {
+            diagnostics.log("loadData", "Loading secondary stats")
             Promise.allSettled([fetchZoneStats(abortController.signal), fetchProductStats(abortController.signal)])
           }
         }, 100)
@@ -250,25 +355,54 @@ export default function AdminDashboardPage() {
 
       if (isMounted && !abortController.signal.aborted) {
         setLoading(false)
-        if (timeoutId) clearTimeout(timeoutId)
+        if (timeoutId) {
+          diagnostics.clearTimeout(timeoutId)
+          timeoutId = null
+        }
+        diagnostics.log("loadData", "Load completed")
       }
     }
 
     loadData()
 
     return () => {
+      diagnostics.log("useEffect", "Cleanup starting")
       isMounted = false
-      abortController.abort()
-      if (timeoutId) clearTimeout(timeoutId)
+
+      try {
+        abortController.abort()
+        if (timeoutId) {
+          diagnostics.clearTimeout(timeoutId)
+          timeoutId = null
+        }
+        diagnostics.log("useEffect", "Cleanup completed")
+      } catch (e) {
+        diagnostics.log("useEffect", "Cleanup error", e)
+      }
     }
-  }, [retryCount])
+  }, [retryCount, fetchBasicStats, fetchZoneStats, fetchProductStats, cache, diagnostics])
 
   const handleRetry = () => {
+    diagnostics.log("handleRetry", "Retry triggered - clearing cache")
+    cache.clearAll() // Limpiar cache persistente en retry
     setError(null)
     setRetryCount((prev) => prev + 1)
   }
 
-  if (error && !dataLoaded.basicStats) {
+  const handleDiagnostics = () => {
+    const report = diagnostics.generateReport()
+    const leaks = diagnostics.detectLeaks()
+    const cacheStats = cache.getCacheStats()
+
+    console.log("📊 CACHE STATS:", cacheStats)
+    console.table(report.recentLogs)
+
+    alert(
+      `Diagnostics Report Generated - Check Console\n\nActive Promises: ${report.activePromises.length}\nActive Timeouts: ${report.activeTimeouts.length}\nCache Size: ${cacheStats.size}\nMemory Leaks: ${Object.values(leaks).some(Boolean)}`,
+    )
+  }
+
+  if (error && !cache.hasStats()) {
     return (
       <EmptyState
         icon={AlertCircle}
@@ -292,6 +426,9 @@ export default function AdminDashboardPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <Button onClick={handleDiagnostics} variant="outline" size="icon" title="Ver diagnósticos">
+            <Bug className="h-4 w-4" />
+          </Button>
           <Button onClick={handleRetry} variant="outline" size="icon" title="Actualizar datos">
             <RefreshCw className="h-4 w-4" />
           </Button>
@@ -317,7 +454,7 @@ export default function AdminDashboardPage() {
             <Building2 className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            {loading && !dataLoaded.basicStats ? (
+            {loading && !cache.hasStats() ? (
               <Skeleton className="h-8 w-20" />
             ) : (
               <div className="text-2xl font-bold">{stats.totalTeams}</div>
@@ -331,7 +468,7 @@ export default function AdminDashboardPage() {
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            {loading && !dataLoaded.basicStats ? (
+            {loading && !cache.hasStats() ? (
               <Skeleton className="h-8 w-20" />
             ) : (
               <div className="text-2xl font-bold">{stats.totalCapitanes + stats.totalDirectores}</div>
@@ -348,7 +485,7 @@ export default function AdminDashboardPage() {
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            {loading && !dataLoaded.basicStats ? (
+            {loading && !cache.hasStats() ? (
               <Skeleton className="h-8 w-20" />
             ) : (
               <div className="text-2xl font-bold">{stats.totalClients}</div>
@@ -365,7 +502,7 @@ export default function AdminDashboardPage() {
             <Trophy className="h-4 w-4 text-yellow-500" />
           </CardHeader>
           <CardContent>
-            {loading && !dataLoaded.basicStats ? (
+            {loading && !cache.hasStats() ? (
               <Skeleton className="h-8 w-20" />
             ) : (
               <div className="text-2xl font-bold">{stats.totalSales}</div>
@@ -385,7 +522,7 @@ export default function AdminDashboardPage() {
             <Package className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            {loading && !dataLoaded.basicStats ? (
+            {loading && !cache.hasStats() ? (
               <Skeleton className="h-8 w-20" />
             ) : (
               <div className="text-2xl font-bold">{stats.totalFreeKicks}</div>
@@ -432,7 +569,6 @@ export default function AdminDashboardPage() {
             </CardContent>
           </Card>
 
-          {/* Simplificar las cards de zonas */}
           <div className="text-center py-8">
             <p className="text-muted-foreground">
               Las estadísticas detalladas por zona están disponibles en el ranking completo.
@@ -449,7 +585,7 @@ export default function AdminDashboardPage() {
               <CardDescription>Distribución de ventas por producto</CardDescription>
             </CardHeader>
             <CardContent>
-              {loading && !dataLoaded.productStats ? (
+              {loading && !cache.hasProductStats() ? (
                 <>
                   <Skeleton className="h-12 w-full mb-4" />
                   <Skeleton className="h-12 w-full mb-4" />

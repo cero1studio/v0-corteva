@@ -286,8 +286,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = async () => {
     try {
-      console.log("AUTH: Starting sign out process...")
-      setIsLoading(true)
+      console.log("AUTH: Starting FORCED sign out process...")
+
+      // 🚨 FORZAR LIMPIEZA INMEDIATA - NUEVO
+      if (typeof window !== "undefined") {
+        // Detener TODOS los timeouts activos
+        const highestTimeoutId = setTimeout(() => {}, 0)
+        for (let i = 0; i < highestTimeoutId; i++) {
+          clearTimeout(i)
+        }
+
+        // Limpiar INMEDIATAMENTE antes de cualquier proceso async
+        localStorage.clear()
+        sessionStorage.clear()
+      }
+
+      // NO setear loading aquí - puede interferir
+      // setIsLoading(true) // <-- REMOVER ESTA LÍNEA
       setError(null)
 
       // Primero cerrar sesión en Supabase y esperar
@@ -327,11 +342,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Esperar un momento para asegurar que todo se limpie
       await new Promise((resolve) => setTimeout(resolve, 100))
 
-      setIsLoading(false)
+      // Al final, DESPUÉS de todo:
+      setIsLoading(false) // <-- MOVER AQUÍ
 
-      // Ahora sí redirigir a login
-      console.log("AUTH: Redirecting to login after successful sign out")
-      router.push("/login")
+      // Forzar recarga completa de la página
+      if (typeof window !== "undefined") {
+        window.location.href = "/login"
+        return // No usar router.push
+      }
     } catch (err: any) {
       console.error("AUTH: Error during sign out:", err)
       setIsLoading(false)
