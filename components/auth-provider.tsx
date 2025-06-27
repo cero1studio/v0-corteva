@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { createContext, useContext, useEffect, useState, useCallback } from "react"
+import { createContext, useContext, useEffect, useState, useCallback, useRef } from "react"
 import { supabase } from "@/lib/supabase/client"
 import { useRouter, usePathname } from "next/navigation"
 import type { Session, User } from "@supabase/supabase-js"
@@ -38,6 +38,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true)
   const [isInitialized, setIsInitialized] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  const [isPageVisible, setIsPageVisible] = useState(true)
+  const heartbeatRef = useRef<NodeJS.Timeout | null>(null)
+  const recoveryTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+
   const router = useRouter()
   const pathname = usePathname()
 
@@ -266,6 +271,99 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => subscription.unsubscribe()
   }, [fetchUserProfile, handleRedirection, pathname, router])
 
+  // Page Visibility API para manejar tabs inactivas
+  useEffect(() => {
+    const handleVisibilityChange = async () => {
+      const isVisible = !document.hidden
+      setIsPageVisible(isVisible)
+
+      if (isVisible && session) {
+        console.log("AUTH: Tab became visible, checking session...")
+
+        // Limpiar timeout de recovery anterior
+        if (recoveryTimeoutRef.current) {
+          clearTimeout(recoveryTimeoutRef.current)
+          recoveryTimeoutRef.current = null
+        }
+
+        // Intentar recuperar sesión después de un breve delay
+        recoveryTimeoutRef.current = setTimeout(async () => {
+          try {
+            const {
+              data: { session: currentSession },
+              error,
+            } = await supabase.auth.getSession()
+
+            if (error || !currentSession) {
+              console.log("AUTH: Session lost during inactivity, attempting recovery...")
+
+              // Intentar usar cache forzado
+              const { session: cachedSession, user: cachedUser } = getCachedSessionForced()
+              const cachedProfile = getCachedProfileForced()
+
+              if (cachedSession && cachedUser && cachedProfile) {
+                console.log("AUTH: Recovered from cache")
+                setSession(cachedSession)
+                setUser(cachedUser)
+                setProfile(cachedProfile)
+              } else {
+                console.log("AUTH: No cache available, redirecting to login")
+                await signOut()
+              }
+            } else {
+              console.log("AUTH: Session still valid after inactivity")
+              refreshCacheTimestamp()
+            }
+          } catch (err) {
+            console.error("AUTH: Error during session recovery:", err)
+          }
+        }, 1000)
+
+        startHeartbeat()
+      } else if (!isVisible) {
+        console.log("AUTH: Tab became hidden")
+        stopHeartbeat()
+      }
+    }
+
+    document.addEventListener("visibilitychange", handleVisibilityChange)
+
+    // Iniciar heartbeat si ya hay sesión
+    const startHeartbeat = () => {
+      if (heartbeatRef.current) clearInterval(heartbeatRef.current)
+
+      heartbeatRef.current = setInterval(async () => {
+        if (session && isPageVisible) {
+          try {
+            await supabase.auth.getSession()
+            refreshCacheTimestamp()
+          } catch (error) {
+            console.warn("Heartbeat failed:", error)
+          }
+        }
+      }, 30000) // 30 segundos
+    }
+
+    const stopHeartbeat = () => {
+      if (heartbeatRef.current) {
+        clearInterval(heartbeatRef.current)
+        heartbeatRef.current = null
+      }
+    }
+
+    if (session && isPageVisible) {
+      startHeartbeat()
+    }
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange)
+      stopHeartbeat()
+      if (recoveryTimeoutRef.current) {
+        clearTimeout(recoveryTimeoutRef.current)
+      }
+    }
+  }, [session, isPageVisible])
+
   const signIn = async (email: string, password: string) => {
     try {
       setIsLoading(true)
@@ -315,6 +413,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       // Después de cerrar sesión exitosamente, limpiar todo
       clearAllCache()
+      stopHeartbeat()
+      if (recoveryTimeoutRef.current) {
+        clearTimeout(recoveryTimeoutRef.current)
+        recoveryTimeoutRef.current = null
+      }
       setSession(null)
       setUser(null)
       setProfile(null)
@@ -374,6 +477,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     setIsLoading(false)
   }, [user, fetchUserProfile])
+
+  const startHeartbeat = () => {
+    if (heartbeatRef.current) clearInterval(heartbeatRef.current)
+
+    heartbeatRef.current = setInterval(async () => {
+      if (session && isPageVisible) {
+        try {
+          await supabase.auth.getSession()
+          refreshCacheTimestamp()
+        } catch (error) {
+          console.warn("Heartbeat failed:", error)
+        }
+      }
+    }, 30000) // 30 segundos
+  }
+
+  const stopHeartbeat = () => {
+    if (heartbeatRef.current) {
+      clearInterval(heartbeatRef.current)
+      heartbeatRef.current = null
+    }
+  }
 
   return (
     <AuthContext.Provider
