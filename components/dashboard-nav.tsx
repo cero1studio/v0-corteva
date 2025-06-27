@@ -42,15 +42,28 @@ export function DashboardNav({ role, onMobileMenuClose }: NavProps) {
       .substring(0, 2)
   }
 
-  // Función para cerrar sesión mejorada
+  // Función para cerrar sesión independiente
   const handleSignOut = async () => {
     try {
-      console.log("Dashboard: Iniciando cierre de sesión...")
-      await signOut()
+      console.log("Dashboard: Iniciando logout independiente...")
+      // Usar el endpoint independiente con timeout
+      const timeoutId = setTimeout(() => {
+        window.location.href = "/login"
+      }, 2000) // 2 segundos máximo
+
+      // Intentar usar el endpoint
+      fetch("/api/auth/logout", { method: "POST" })
+        .then(() => {
+          clearTimeout(timeoutId)
+          window.location.href = "/login"
+        })
+        .catch(() => {
+          clearTimeout(timeoutId)
+          window.location.href = "/login"
+        })
     } catch (error) {
-      console.error("Dashboard: Error al cerrar sesión:", error)
-      // En caso de error, forzar redirección
-      router.push("/login")
+      console.error("Dashboard: Error en logout, forzando redirect:", error)
+      window.location.href = "/login"
     }
   }
 

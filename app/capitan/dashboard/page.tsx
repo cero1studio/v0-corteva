@@ -17,6 +17,7 @@ import { Progress } from "@/components/ui/progress"
 import { getImageUrl } from "@/lib/utils/image"
 import { getTeamRankingByZone } from "@/app/actions/ranking"
 import { AuthGuard } from "@/components/auth-guard"
+import { chartsCache } from "@/lib/charts-cache"
 
 // Constante para la conversión de puntos a goles
 const PUNTOS_POR_GOL = 100
@@ -252,20 +253,24 @@ function CapitanDashboardContent() {
       const puntosParaGol = puntosConfig?.value ? Number(puntosConfig.value) : PUNTOS_POR_GOL
       setPuntosParaGol(puntosParaGol)
 
-      // Obtener ventas del equipo (por miembros + ventas directas)
+      // Obtener ventas del equipo (por miembros + ventas directas) - CON CACHE
       const [salesByMembersResult, salesByTeamResult] = await Promise.all([
         memberIds.length > 0
-          ? supabase
-              .from("sales")
-              .select(`*, products(id, name, image_url)`)
-              .in("representative_id", memberIds)
-              .order("created_at", { ascending: false })
+          ? chartsCache.wrapChartQuery(`sales_members_${teamId}`, () =>
+              supabase
+                .from("sales")
+                .select(`*, products(id, name, image_url)`)
+                .in("representative_id", memberIds)
+                .order("created_at", { ascending: false }),
+            )
           : Promise.resolve({ data: [], error: null }),
-        supabase
-          .from("sales")
-          .select(`*, products(id, name, image_url)`)
-          .eq("team_id", teamId)
-          .order("created_at", { ascending: false }),
+        chartsCache.wrapChartQuery(`sales_team_${teamId}`, () =>
+          supabase
+            .from("sales")
+            .select(`*, products(id, name, image_url)`)
+            .eq("team_id", teamId)
+            .order("created_at", { ascending: false }),
+        ),
       ])
 
       const salesByMembers = salesByMembersResult.data || []
@@ -322,15 +327,17 @@ function CapitanDashboardContent() {
       const allFreeKicks = freeKicks || []
       console.log("CAPITAN DASHBOARD: Free kicks:", allFreeKicks.length)
 
-      // Obtener ranking de la zona
-      const rankingResult = await getTeamRankingByZone(teamData?.zone_id || userData?.zone_id)
-      const zoneRanking = rankingResult.success ? rankingResult.data || [] : []
+      // Obtener ranking de la zona - CON CACHE
+      const rankingResult = await chartsCache.wrapRankingQuery(
+        () => getTeamRankingByZone(teamData?.zone_id || userData?.zone_id),
+        teamData?.zone_id || userData?.zone_id,
+      )
 
       // Actualizar estados
       setSalesData(allSales)
       setClientsData(allClients)
       setFreeKickData(allFreeKicks)
-      setZoneRanking(zoneRanking)
+      setZoneRanking(rankingResult.success ? rankingResult.data || [] : [])
 
       // Calcular posición en el ranking
       const position = zoneRanking.findIndex((t: any) => t.team_id === teamId) + 1

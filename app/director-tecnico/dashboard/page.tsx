@@ -15,6 +15,7 @@ import { useRouter } from "next/navigation"
 import { getImageUrl } from "@/lib/utils/image"
 import { AuthGuard } from "@/components/auth-guard"
 import { Badge } from "@/components/ui/badge"
+import { chartsCache } from "@/lib/charts-cache"
 
 // Constante para la conversión de puntos a goles
 const PUNTOS_POR_GOL = 100
@@ -217,70 +218,78 @@ function DirectorTecnicoDashboardContent() {
       const memberIds = allMembers?.map((m) => m.id) || []
       console.log("Director Técnico - Miembros encontrados:", allMembers?.length || 0)
 
-      // 3. Cargar datos en paralelo
+      // 3. Cargar datos en paralelo - CON CACHE
       const [salesResult, clientsResult, freeKicksResult] = await Promise.allSettled([
-        // Ventas: buscar por representative_id (miembros) Y por team_id (equipos)
-        Promise.all([
-          memberIds.length > 0
-            ? supabase
-                .from("sales")
-                .select(`
-                  id, points, quantity, created_at, product_id, representative_id, team_id,
-                  products(name, image_url),
-                  profiles(full_name, team_id)
-                `)
-                .in("representative_id", memberIds)
-            : Promise.resolve({ data: [], error: null }),
+        // Ventas: buscar por representative_id (miembros) Y por team_id (equipos) - CON CACHE
+        chartsCache.wrapChartQuery(`zone_sales_${zoneId}`, () =>
+          Promise.all([
+            memberIds.length > 0
+              ? supabase
+                  .from("sales")
+                  .select(`
+                    id, points, quantity, created_at, product_id, representative_id, team_id,
+                    products(name, image_url),
+                    profiles(full_name, team_id)
+                  `)
+                  .in("representative_id", memberIds)
+              : Promise.resolve({ data: [], error: null }),
+            supabase
+              .from("sales")
+              .select(`
+                id, points, quantity, created_at, product_id, representative_id, team_id,
+                products(name, image_url),
+                profiles(full_name, team_id)
+              `)
+              .in("team_id", teamIds),
+          ]).then(([salesByRep, salesByTeam]) => {
+            const allSales = [...(salesByRep.data || []), ...(salesByTeam.data || [])]
+            // Eliminar duplicados por ID
+            const uniqueSales = allSales.filter(
+              (sale, index, self) => index === self.findIndex((s) => s.id === sale.id),
+            )
+            return { data: uniqueSales, error: null }
+          }),
+        ),
+
+        // Clientes: buscar por representative_id (miembros) Y por team_id (equipos) - CON CACHE
+        chartsCache.wrapChartQuery(`zone_clients_${zoneId}`, () =>
+          Promise.all([
+            memberIds.length > 0
+              ? supabase
+                  .from("competitor_clients")
+                  .select(`
+                    id, ganadero_name, client_name, created_at, representative_id, team_id,
+                    profiles(full_name, team_id)
+                  `)
+                  .in("representative_id", memberIds)
+              : Promise.resolve({ data: [], error: null }),
+            supabase
+              .from("competitor_clients")
+              .select(`
+                id, ganadero_name, client_name, created_at, representative_id, team_id,
+                profiles(full_name, team_id)
+              `)
+              .in("team_id", teamIds),
+          ]).then(([clientsByRep, clientsByTeam]) => {
+            const allClients = [...(clientsByRep.data || []), ...(clientsByTeam.data || [])]
+            // Eliminar duplicados por ID
+            const uniqueClients = allClients.filter(
+              (client, index, self) => index === self.findIndex((c) => c.id === client.id),
+            )
+            return { data: uniqueClients, error: null }
+          }),
+        ),
+
+        // Tiros libres: buscar por team_id - CON CACHE
+        chartsCache.wrapChartQuery(`zone_freekicks_${zoneId}`, () =>
           supabase
-            .from("sales")
+            .from("free_kick_goals")
             .select(`
-              id, points, quantity, created_at, product_id, representative_id, team_id,
-              products(name, image_url),
-              profiles(full_name, team_id)
+              id, points, reason, created_at, team_id,
+              teams(name)
             `)
             .in("team_id", teamIds),
-        ]).then(([salesByRep, salesByTeam]) => {
-          const allSales = [...(salesByRep.data || []), ...(salesByTeam.data || [])]
-          // Eliminar duplicados por ID
-          const uniqueSales = allSales.filter((sale, index, self) => index === self.findIndex((s) => s.id === sale.id))
-          return { data: uniqueSales, error: null }
-        }),
-
-        // Clientes: buscar por representative_id (miembros) Y por team_id (equipos)
-        Promise.all([
-          memberIds.length > 0
-            ? supabase
-                .from("competitor_clients")
-                .select(`
-                  id, ganadero_name, client_name, created_at, representative_id, team_id,
-                  profiles(full_name, team_id)
-                `)
-                .in("representative_id", memberIds)
-            : Promise.resolve({ data: [], error: null }),
-          supabase
-            .from("competitor_clients")
-            .select(`
-              id, ganadero_name, client_name, created_at, representative_id, team_id,
-              profiles(full_name, team_id)
-            `)
-            .in("team_id", teamIds),
-        ]).then(([clientsByRep, clientsByTeam]) => {
-          const allClients = [...(clientsByRep.data || []), ...(clientsByTeam.data || [])]
-          // Eliminar duplicados por ID
-          const uniqueClients = allClients.filter(
-            (client, index, self) => index === self.findIndex((c) => c.id === client.id),
-          )
-          return { data: uniqueClients, error: null }
-        }),
-
-        // Tiros libres: buscar por team_id
-        supabase
-          .from("free_kick_goals")
-          .select(`
-            id, points, reason, created_at, team_id,
-            teams(name)
-          `)
-          .in("team_id", teamIds),
+        ),
       ])
 
       // Procesar resultados
@@ -308,7 +317,7 @@ function DirectorTecnicoDashboardContent() {
         const clientsPoints = teamClients.length * 200 // 200 puntos por cliente
 
         // Tiros libres del equipo
-        const teamFreeKicks = freeKicksData.filter((fk) => fk.team_id === team.id)
+        const teamFreeKicks = freeKickData.filter((fk) => fk.team_id === team.id)
         const freeKickPoints = teamFreeKicks.reduce((sum, fk) => sum + (fk.points || 0), 0)
 
         // Total

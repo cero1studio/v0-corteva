@@ -26,6 +26,7 @@ import { EmptyState } from "@/components/empty-state"
 import { useRouter } from "next/navigation"
 import { useDiagnostics } from "@/lib/diagnostics"
 import { usePersistentDashboardCache } from "@/lib/dashboard-cache"
+import { chartsCache } from "@/lib/charts-cache"
 
 export default function AdminDashboardPage() {
   const router = useRouter()
@@ -94,17 +95,33 @@ export default function AdminDashboardPage() {
       }, 15000) // Aumentado a 15 segundos
 
       const [capitanes, directores, teams, zones, clients, sales, freeKicks] = await Promise.all([
-        supabase.from("profiles").select("*", { count: "exact", head: true }).eq("role", "capitan").abortSignal(signal),
-        supabase
-          .from("profiles")
-          .select("*", { count: "exact", head: true })
-          .eq("role", "director_tecnico")
-          .abortSignal(signal),
-        supabase.from("teams").select("*", { count: "exact", head: true }).abortSignal(signal),
-        supabase.from("zones").select("*", { count: "exact", head: true }).abortSignal(signal),
-        supabase.from("competitor_clients").select("points").abortSignal(signal),
-        supabase.from("sales").select("points").abortSignal(signal),
-        supabase.from("free_kick_goals").select("points").abortSignal(signal),
+        chartsCache.wrapChartQuery("admin_capitanes", () =>
+          supabase
+            .from("profiles")
+            .select("*", { count: "exact", head: true })
+            .eq("role", "capitan")
+            .abortSignal(signal),
+        ),
+        chartsCache.wrapChartQuery("admin_directores", () =>
+          supabase
+            .from("profiles")
+            .select("*", { count: "exact", head: true })
+            .eq("role", "director_tecnico")
+            .abortSignal(signal),
+        ),
+        chartsCache.wrapChartQuery("admin_teams", () =>
+          supabase.from("teams").select("*", { count: "exact", head: true }).abortSignal(signal),
+        ),
+        chartsCache.wrapChartQuery("admin_zones", () =>
+          supabase.from("zones").select("*", { count: "exact", head: true }).abortSignal(signal),
+        ),
+        chartsCache.wrapChartQuery("admin_clients", () =>
+          supabase.from("competitor_clients").select("points").abortSignal(signal),
+        ),
+        chartsCache.wrapChartQuery("admin_sales", () => supabase.from("sales").select("points").abortSignal(signal)),
+        chartsCache.wrapChartQuery("admin_freekicks", () =>
+          supabase.from("free_kick_goals").select("points").abortSignal(signal),
+        ),
       ])
 
       if (signal.aborted || !mountedRef.current) return false
