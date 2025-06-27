@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useCallback } from "react"
+import { useEffect, useState, useCallback, useRef } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
@@ -31,6 +31,7 @@ export default function AdminDashboardPage() {
   const router = useRouter()
   const diagnostics = useDiagnostics("AdminDashboard")
   const cache = usePersistentDashboardCache()
+  const retryCountRef = useRef(0)
 
   const [loading, setLoading] = useState(true)
   const [stats, setStats] = useState({
@@ -48,45 +49,6 @@ export default function AdminDashboardPage() {
   const [zoneStats, setZoneStats] = useState<any[]>([])
   const [productStats, setProductStats] = useState<any[]>([])
   const [error, setError] = useState<string | null>(null)
-  const [retryCount, setRetryCount] = useState(0)
-
-  // Inicializar desde cache persistente
-  useEffect(() => {
-    diagnostics.log("INIT", "Checking persistent cache")
-
-    // Verificar cache persistente al montar
-    if (cache.hasStats()) {
-      const cachedStats = cache.getStats()
-      diagnostics.log("INIT", "Found cached stats", cachedStats)
-      setStats(cachedStats)
-      setLoading(false)
-    }
-
-    if (cache.hasZoneStats()) {
-      const cachedZoneStats = cache.getZoneStats()
-      diagnostics.log("INIT", "Found cached zone stats", { count: cachedZoneStats.length })
-      setZoneStats(cachedZoneStats)
-    }
-
-    if (cache.hasProductStats()) {
-      const cachedProductStats = cache.getProductStats()
-      diagnostics.log("INIT", "Found cached product stats", { count: cachedProductStats.length })
-      setProductStats(cachedProductStats)
-    }
-  }, [])
-
-  // Trackear estados en diagnostics
-  useEffect(() => {
-    diagnostics.trackState({
-      loading,
-      error,
-      retryCount,
-      hasStatsCache: cache.hasStats(),
-      hasZoneCache: cache.hasZoneStats(),
-      hasProductCache: cache.hasProductStats(),
-      statsCount: Object.keys(stats).length,
-    })
-  }, [loading, error, retryCount, stats])
 
   // Función para obtener estadísticas básicas
   const fetchBasicStats = useCallback(
@@ -272,18 +234,36 @@ export default function AdminDashboardPage() {
     [cache, diagnostics],
   )
 
-  // Cargar datos solo si no están en cache
+  // Efecto separado para inicializar desde cache
+  useEffect(() => {
+    diagnostics.log("INIT", "Checking persistent cache")
+
+    // Verificar cache persistente al montar
+    if (cache.hasStats()) {
+      const cachedStats = cache.getStats()
+      diagnostics.log("INIT", "Found cached stats", cachedStats)
+      setStats(cachedStats)
+      setLoading(false)
+    }
+
+    if (cache.hasZoneStats()) {
+      const cachedZoneStats = cache.getZoneStats()
+      diagnostics.log("INIT", "Found cached zone stats", { count: cachedZoneStats.length })
+      setZoneStats(cachedZoneStats)
+    }
+
+    if (cache.hasProductStats()) {
+      const cachedProductStats = cache.getProductStats()
+      diagnostics.log("INIT", "Found cached product stats", { count: cachedProductStats.length })
+      setProductStats(cachedProductStats)
+    }
+  }, [cache, diagnostics])
+
+  // Efecto separado para cargar datos cuando no están en cache
   useEffect(() => {
     let isMounted = true
     let timeoutId: NodeJS.Timeout | null = null
     const abortController = diagnostics.trackAbortController("mainLoad")
-
-    diagnostics.log("useEffect", "Starting", {
-      retryCount,
-      hasStatsCache: cache.hasStats(),
-      hasZoneCache: cache.hasZoneStats(),
-      hasProductCache: cache.hasProductStats(),
-    })
 
     const loadData = async () => {
       if (!isMounted) {
@@ -359,7 +339,10 @@ export default function AdminDashboardPage() {
       }
     }
 
-    loadData()
+    // Solo cargar si no hay datos en cache
+    if (!cache.hasStats()) {
+      loadData()
+    }
 
     return () => {
       diagnostics.log("useEffect", "Cleanup starting")
@@ -376,13 +359,28 @@ export default function AdminDashboardPage() {
         diagnostics.log("useEffect", "Cleanup error", e)
       }
     }
-  }, [retryCount, fetchBasicStats, fetchZoneStats, fetchProductStats, cache, diagnostics])
+  }, []) // Sin dependencias para evitar loops
 
   const handleRetry = () => {
     diagnostics.log("handleRetry", "Retry triggered - clearing cache")
     cache.clearAll() // Limpiar cache persistente en retry
     setError(null)
-    setRetryCount((prev) => prev + 1)
+    retryCountRef.current += 1
+
+    // Forzar recarga manualmente
+    const abortController = new AbortController()
+    setLoading(true)
+
+    fetchBasicStats(abortController.signal).then((success) => {
+      if (success) {
+        setLoading(false)
+        // Cargar datos secundarios
+        Promise.allSettled([fetchZoneStats(abortController.signal), fetchProductStats(abortController.signal)])
+      } else {
+        setLoading(false)
+        setError("Error al cargar datos")
+      }
+    })
   }
 
   const handleDiagnostics = () => {

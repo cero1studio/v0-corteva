@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, useEffect, useRef } from "react"
 import { supabase } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -56,13 +56,17 @@ export default function EquiposPage() {
     zone_id: "",
     distributor_id: "",
   })
-  // Controla el estado de “añadiendo equipo” (loading)
+  // Controla el estado de "añadiendo equipo" (loading)
   const [isAddingTeam, setIsAddingTeam] = useState(false)
   const [editingTeam, setEditingTeam] = useState<Team | null>(null)
 
   // Estados para filtros
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedZone, setSelectedZone] = useState<string>("all")
+
+  // Refs para evitar dependencias volátiles
+  const zonesLoadedRef = useRef(false)
+  const distributorsLoadedRef = useRef(false)
 
   const { toast } = useToast()
 
@@ -105,18 +109,31 @@ export default function EquiposPage() {
 
   const { data: teams, loading, error, refresh } = useCachedList("admin-teams", fetchTeams, [])
 
-  async function fetchZones(signal?: AbortSignal) {
-    try {
-      console.log("📍 Cargando zonas...")
-      const { data, error } = await supabase.from("zones").select("id, name").order("name").abortSignal(signal)
+  // Efecto separado para cargar zonas - solo una vez
+  useEffect(() => {
+    let isMounted = true
+    const abortController = new AbortController()
 
-      if (error) throw error
-      if (!signal?.aborted) {
+    const loadZones = async () => {
+      if (zonesLoadedRef.current) return
+
+      try {
+        console.log("📍 Cargando zonas...")
+        const { data, error } = await supabase
+          .from("zones")
+          .select("id, name")
+          .order("name")
+          .abortSignal(abortController.signal)
+
+        if (error) throw error
+        if (!isMounted || abortController.signal.aborted) return
+
         setZones(data || [])
+        zonesLoadedRef.current = true
         console.log("✅ Zonas cargadas:", data?.length || 0)
-      }
-    } catch (error) {
-      if (!signal?.aborted) {
+      } catch (error) {
+        if (!isMounted || abortController.signal.aborted) return
+
         console.error("Error al cargar zonas:", error)
         toast({
           title: "Error",
@@ -125,24 +142,40 @@ export default function EquiposPage() {
         })
       }
     }
-  }
 
-  async function fetchDistributors(signal?: AbortSignal) {
-    try {
-      console.log("🏢 Cargando distribuidores...")
-      const { data, error } = await supabase
-        .from("distributors")
-        .select("id, name, logo_url")
-        .order("name")
-        .abortSignal(signal)
+    loadZones()
 
-      if (error) throw error
-      if (!signal?.aborted) {
+    return () => {
+      isMounted = false
+      abortController.abort()
+    }
+  }, [toast])
+
+  // Efecto separado para cargar distribuidores - solo una vez
+  useEffect(() => {
+    let isMounted = true
+    const abortController = new AbortController()
+
+    const loadDistributors = async () => {
+      if (distributorsLoadedRef.current) return
+
+      try {
+        console.log("🏢 Cargando distribuidores...")
+        const { data, error } = await supabase
+          .from("distributors")
+          .select("id, name, logo_url")
+          .order("name")
+          .abortSignal(abortController.signal)
+
+        if (error) throw error
+        if (!isMounted || abortController.signal.aborted) return
+
         setDistributors(data || [])
+        distributorsLoadedRef.current = true
         console.log("✅ Distribuidores cargados:", data?.length || 0)
-      }
-    } catch (error) {
-      if (!signal?.aborted) {
+      } catch (error) {
+        if (!isMounted || abortController.signal.aborted) return
+
         console.error("Error al cargar distribuidores:", error)
         toast({
           title: "Error",
@@ -151,7 +184,14 @@ export default function EquiposPage() {
         })
       }
     }
-  }
+
+    loadDistributors()
+
+    return () => {
+      isMounted = false
+      abortController.abort()
+    }
+  }, [toast])
 
   async function handleAddTeam() {
     if (!newTeam.name.trim() || !newTeam.zone_id || !newTeam.distributor_id) {
@@ -218,15 +258,6 @@ export default function EquiposPage() {
         .eq("id", editingTeam.id)
 
       if (error) throw error
-
-      const zoneName = editingTeam.zone_id
-        ? zones.find((z) => z.id === editingTeam.zone_id)?.name || "Sin zona"
-        : "Sin zona"
-      const distributor = editingTeam.distributor_id
-        ? distributors.find((d) => d.id === editingTeam.distributor_id)
-        : null
-      const distributorName = distributor?.name || "Sin distribuidor"
-      const distributorLogo = distributor?.logo_url || null
 
       refresh()
 
@@ -561,7 +592,12 @@ export default function EquiposPage() {
                           <div className="flex justify-start">
                             {team.distributor_logo ? (
                               <img
-                                src={getDistributorLogoUrl(team) || "/placeholder.svg"}
+                                src={
+                                  getDistributorLogoUrl({
+                                    name: team.distributor_name || "",
+                                    logo_url: team.distributor_logo,
+                                  }) || "/placeholder.svg"
+                                }
                                 alt={team.distributor_name}
                                 title={team.distributor_name}
                                 className="h-8 w-16 object-contain"
