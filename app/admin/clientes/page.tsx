@@ -100,90 +100,6 @@ export default function AdminClientesPage() {
     }
   }, [])
 
-  // Optimized load data function
-  // const loadData = useCallback(
-  //   async (signal?: AbortSignal) => {
-  //     try {
-  //       setLoading(true)
-
-  //       // Cancel previous request
-  //       if (abortControllerRef.current) {
-  //         abortControllerRef.current.abort()
-  //       }
-
-  //       // Create new abort controller
-  //       const controller = new AbortController()
-  //       abortControllerRef.current = controller
-  //       const currentSignal = signal || controller.signal
-
-  //       // Load data in batches to improve performance
-  //       const [clientsResult, zonesData] = await Promise.all([getAllCompetitorClients(), getAllZones()])
-
-  //       // Check if request was cancelled
-  //       if (currentSignal.aborted) return
-
-  //       if (clientsResult.success) {
-  //         setClients(clientsResult.data || [])
-  //       } else {
-  //         console.error("Error loading clients:", clientsResult.error)
-  //         toast({
-  //           title: "Error",
-  //           description: "Error al cargar los clientes",
-  //           variant: "destructive",
-  //         })
-  //       }
-
-  //       if (zonesData && Array.isArray(zonesData)) {
-  //         setZones(zonesData)
-  //       } else {
-  //         setZones([])
-  //       }
-
-  //       // Load teams and users only if needed
-  //       const [teamsResult, usersResult] = await Promise.all([getAllTeams(), getAllUsers()])
-
-  //       // Check if request was cancelled again
-  //       if (currentSignal.aborted) return
-
-  //       if (teamsResult.success) {
-  //         setTeams(teamsResult.data || [])
-  //       } else {
-  //         setTeams([])
-  //       }
-
-  //       if (usersResult.data) {
-  //         setCaptains(usersResult.data.filter((user) => user.role === "capitan") || [])
-  //       } else {
-  //         setCaptains([])
-  //       }
-  //     } catch (error: any) {
-  //       // Don't show error if request was cancelled
-  //       if (error.name === "AbortError") return
-
-  //       console.error("Error loading data:", error)
-  //       toast({
-  //         title: "Error",
-  //         description: "Error al cargar los datos",
-  //         variant: "destructive",
-  //       })
-  //     } finally {
-  //       setLoading(false)
-  //     }
-  //   },
-  //   [
-  //     setClients,
-  //     setZones,
-  //     setTeams,
-  //     setCaptains,
-  //     setLoading,
-  //     toast,
-  //     getAllCompetitorClients,
-  //     getAllZones,
-  //     getAllTeams,
-  //     getAllUsers,
-  //   ],
-  // )
-
   const fetchClients = useCallback(async () => {
     const result = await getAllCompetitorClients()
     if (result.success) {
@@ -372,16 +288,6 @@ export default function AdminClientesPage() {
     return selectedZone === "all" ? teams : teams.filter((team) => team.zone_id === selectedZone)
   }, [teams, selectedZone])
 
-  // Effect with cleanup
-  // useEffect(() => {
-  //   const controller = new AbortController()
-  //   loadData(controller.signal)
-
-  //   return () => {
-  //     cleanup()
-  //   }
-  // }, [loadData, cleanup])
-
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -438,6 +344,7 @@ export default function AdminClientesPage() {
       const wb = XLSX.utils.book_new()
       const ws = XLSX.utils.aoa_to_sheet([[]])
 
+      // CORREGIDO: Convertir todos los campos numéricos a tipo number
       const excelData = filteredClients.map((client) => ({
         ID: client.id,
         "Nombre del Cliente": client.client_name || "",
@@ -447,13 +354,15 @@ export default function AdminClientesPage() {
         "Tipo de Venta": client.tipo_venta || "",
         "Nombre del Almacén": client.nombre_almacen || "",
         "Ubicación de Finca": client.ubicacion_finca || "",
-        "Área Finca (Hectáreas)": client.area_finca_hectareas || "",
+        "Área Finca (Hectáreas)": client.area_finca_hectareas ? Number(client.area_finca_hectareas) : 0, // Convertir a number
         "Producto Anterior": client.producto_anterior || "",
         "Producto Súper Ganadería": client.producto_super_ganaderia || "",
-        "Volumen de Venta Real": client.volumen_venta_estimado || "",
+        "Volumen de Venta Real": client.volumen_venta_estimado
+          ? Number(Number.parseFloat(client.volumen_venta_estimado.replace(/[^\d.-]/g, "") || "0"))
+          : 0, // Convertir a number limpiando texto
         "Información de Contacto": client.contact_info || "",
         "Notas Adicionales": client.notes || "",
-        "Puntos Asignados": client.points,
+        "Puntos Asignados": Number(client.points), // Convertir a number
         "Capitán Responsable": client.representative_profile?.full_name || "",
         "ID del Capitán": client.representative_profile?.id || "",
         Equipo: client.team?.name || "",
