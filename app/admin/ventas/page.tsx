@@ -368,16 +368,16 @@ export default function AdminVentasPage() {
         return
       }
 
-      // Preparar datos para Excel
+      // Preparar datos para Excel - CORREGIDO: Convertir números explícitamente
       const excelData = filteredSales.map((sale) => ({
         Producto: sale.products?.name || "N/A",
         Capitán: sale.representative?.full_name || "N/A",
         Distribuidor: sale.distributor?.name || "N/A",
         Equipo: sale.team?.name || "N/A",
         Zona: sale.zone?.name || "N/A",
-        Cantidad: sale.quantity,
-        Puntos: sale.points,
-        Kilos: Number(calculateKilos(sale.points || 0).toFixed(1)), // Calcular kilos dinámicamente como número
+        Cantidad: Number(sale.quantity), // Convertir a number
+        Puntos: Number(sale.points || 0), // Convertir a number
+        Kilos: Number(calculateKilos(sale.points || 0).toFixed(1)), // Convertir a number
         "Fecha de Venta": sale.sale_date ? new Date(sale.sale_date).toLocaleDateString() : "N/A",
         "Fecha de Registro": new Date(sale.created_at).toLocaleDateString(),
       }))

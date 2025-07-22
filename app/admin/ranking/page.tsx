@@ -68,12 +68,13 @@ export default function RankingAdminPage() {
         return
       }
 
+      // CORREGIDO: Convertir números explícitamente a tipo number
       const excelData = filteredTeams.map((team, index) => ({
-        Posición: index + 1,
+        Posición: Number(index + 1), // Convertir a number
         Equipo: team.team_name,
         Capitán: team.captain_name,
         Zona: team.zone_name,
-        Goles: Math.floor(team.total_points / 100),
+        Goles: Number(Math.floor(team.total_points / 100)), // Convertir a number
       }))
 
       const wb = XLSX.utils.book_new()
