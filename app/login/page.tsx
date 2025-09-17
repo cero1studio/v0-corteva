@@ -50,15 +50,15 @@ export default function LoginPage() {
         } else {
           setLocalError(result.error)
         }
-        setIsSubmitting(false)
+        setIsSubmitting(false) // Always reset submitting state on error
       } else {
         console.log("LOGIN: Sign in successful, waiting for redirection...")
-        // No resetear isSubmitting aquí, dejar que AuthGuard maneje la redirección
+        setIsSubmitting(false)
       }
     } catch (error: any) {
       console.error("LOGIN: Error en inicio de sesión:", error)
       setLocalError("Error al iniciar sesión. Intenta nuevamente.")
-      setIsSubmitting(false)
+      setIsSubmitting(false) // Always reset submitting state on exception
     }
   }
 

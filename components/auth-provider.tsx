@@ -368,17 +368,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       setIsLoading(true)
       setError(null)
+
+      console.log("AUTH: Starting sign in process...")
+
       const { error: signInError } = await supabase.auth.signInWithPassword({ email, password })
+
       if (signInError) {
+        console.error("AUTH: Sign in error:", signInError)
         setError(signInError.message)
+        setIsLoading(false) // Reset loading state on error
         return { error: signInError.message }
       }
+
+      console.log("AUTH: Sign in successful")
       return { error: null }
     } catch (err: any) {
+      console.error("AUTH: Sign in exception:", err)
       setError(err.message)
+      setIsLoading(false) // Reset loading state on exception
       return { error: err.message }
-    } finally {
-      setIsLoading(false)
     }
   }
 
