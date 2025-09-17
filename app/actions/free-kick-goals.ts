@@ -213,13 +213,12 @@ export async function getTeamsByZone(zoneId: string) {
 
 export async function getCaptainsByZone(zoneId: string) {
   try {
-    console.log("[v0] Getting captains for zone:", zoneId)
-
-    const { data: captains, error: captainsError } = await adminSupabase
+    // Obtener capitanes que tienen equipos en la zona especificada
+    const { data: captains, error } = await adminSupabase
       .from("profiles")
       .select(`
-        id, 
-        full_name, 
+        id,
+        full_name,
         team_id,
         teams!inner (
           id,
@@ -231,25 +230,19 @@ export async function getCaptainsByZone(zoneId: string) {
       .eq("teams.zone_id", zoneId)
       .order("full_name", { ascending: true })
 
-    if (captainsError) {
-      console.error("Error fetching captains:", captainsError)
+    if (error) {
+      console.error("Error fetching captains by zone:", error)
       return []
     }
 
-    console.log("[v0] Found captains:", captains?.length || 0)
-
-    if (!captains || captains.length === 0) {
-      return []
-    }
-
-    return captains.map((captain) => ({
+    return (captains || []).map((captain) => ({
       id: captain.id,
       full_name: captain.full_name,
       team_id: captain.team_id,
       teams: captain.teams,
     }))
   } catch (error) {
-    console.error("Unexpected error fetching captains:", error)
+    console.error("Unexpected error fetching captains by zone:", error)
     return []
   }
 }
