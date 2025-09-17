@@ -18,9 +18,6 @@ export interface FreeKickGoal {
     zones: {
       name: string
     }
-    captain: {
-      full_name: string
-    }
   }
   profiles: {
     full_name: string
@@ -87,9 +84,6 @@ export async function getFreeKickGoals() {
           captain_id,
           zones (
             name
-          ),
-          captain:captain_id (
-            full_name
           )
         ),
         profiles (
@@ -102,10 +96,26 @@ export async function getFreeKickGoals() {
       return []
     }
 
-    const goalsWithCaptains = (goals || []).map((goal) => ({
-      ...goal,
-      captain_name: goal.teams?.captain?.full_name || "Sin capitán",
-    }))
+    const goalsWithCaptains = await Promise.all(
+      (goals || []).map(async (goal) => {
+        if (goal.teams?.captain_id) {
+          const { data: captain } = await adminSupabase
+            .from("profiles")
+            .select("full_name")
+            .eq("id", goal.teams.captain_id)
+            .single()
+
+          return {
+            ...goal,
+            captain_name: captain?.full_name || "Sin capitán",
+          }
+        }
+        return {
+          ...goal,
+          captain_name: "Sin capitán",
+        }
+      }),
+    )
 
     return goalsWithCaptains
   } catch (error) {
@@ -203,40 +213,55 @@ export async function getTeamsByZone(zoneId: string) {
 
 export async function getCaptainsByZone(zoneId: string) {
   try {
-    const { data: teams, error } = await adminSupabase
-      .from("teams")
-      .select(`
-        id,
-        name,
-        captain_id,
-        captain:captain_id (
-          id,
-          full_name
-        )
-      `)
+    // Primero obtener los capitanes de la zona
+    const { data: captains, error: captainsError } = await adminSupabase
+      .from("profiles")
+      .select("id, full_name, team_id")
+      .eq("role", "capitan")
       .eq("zone_id", zoneId)
-      .not("captain_id", "is", null)
-      .order("name", { ascending: true })
+      .order("full_name", { ascending: true })
 
-    if (error) {
-      console.error("Error fetching captains by zone:", error)
+    if (captainsError) {
+      console.error("Error fetching captains:", captainsError)
       return []
     }
 
-    return (teams || [])
-      .filter((team) => team.captain)
-      .map((team) => ({
-        id: team.captain.id,
-        full_name: team.captain.full_name,
-        team_id: team.id,
-        teams: {
-          id: team.id,
-          name: team.name,
-          zone_id: zoneId,
-        },
+    if (!captains || captains.length === 0) {
+      return []
+    }
+
+    // Obtener los equipos de estos capitanes
+    const teamIds = captains.map((captain) => captain.team_id).filter(Boolean)
+
+    if (teamIds.length === 0) {
+      // Si no hay equipos, devolver capitanes sin información de equipo
+      return captains.map((captain) => ({
+        id: captain.id,
+        full_name: captain.full_name,
+        team_id: captain.team_id,
+        teams: null,
       }))
+    }
+
+    const { data: teams, error: teamsError } = await adminSupabase.from("teams").select("id, name").in("id", teamIds)
+
+    if (teamsError) {
+      console.error("Error fetching teams:", teamsError)
+      // Continuar sin información de equipos
+    }
+
+    // Crear mapa de equipos
+    const teamMap = (teams || []).reduce((map, team) => ({ ...map, [team.id]: team }), {})
+
+    // Combinar capitanes con información de equipos
+    return captains.map((captain) => ({
+      id: captain.id,
+      full_name: captain.full_name,
+      team_id: captain.team_id,
+      teams: captain.team_id && teamMap[captain.team_id] ? teamMap[captain.team_id] : null,
+    }))
   } catch (error) {
-    console.error("Unexpected error fetching captains by zone:", error)
+    console.error("Unexpected error fetching captains:", error)
     return []
   }
 }

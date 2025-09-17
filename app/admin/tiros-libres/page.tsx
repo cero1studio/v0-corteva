@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Trash2, Zap, Trophy, CheckCircle, XCircle, Download } from "lucide-react"
+import { Trash2, Zap, Trophy, CheckCircle, XCircle, Download, Filter } from "lucide-react"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
   createFreeKickGoal,
@@ -39,8 +39,8 @@ interface Captain {
 
 export default function TirosLibresPage() {
   const [captains, setCaptains] = useState<Captain[]>([])
-  const [selectedZone, setSelectedZone] = useState<string>("")
-  const [selectedCaptain, setSelectedCaptain] = useState<string>("")
+  const [selectedZone, setSelectedZone] = useState<string>("defaultZone")
+  const [selectedCaptain, setSelectedCaptain] = useState<string>("defaultCaptain")
   const [submitting, setSubmitting] = useState(false)
   const [deleting, setDeleting] = useState<string | null>(null)
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
@@ -48,6 +48,9 @@ export default function TirosLibresPage() {
   const [challengeText, setChallengeText] = useState("")
   const [reasonText, setReasonText] = useState("")
   const [exporting, setExporting] = useState(false)
+
+  const [filterZone, setFilterZone] = useState<string>("")
+  const [filterKeyword, setFilterKeyword] = useState<string>("")
 
   const fetchData = useCallback(async () => {
     const [zonesData, goalsData] = await Promise.all([getZones(), getFreeKickGoals()])
@@ -57,6 +60,17 @@ export default function TirosLibresPage() {
   const { data, loading, error, refresh } = useCachedList("admin-free-kicks", fetchData, [])
   const zones = data?.zones || []
   const freeKickGoals = data?.goals || []
+
+  const filteredGoals = freeKickGoals.filter((goal) => {
+    const matchesZone = !filterZone || goal.teams.zones?.id === filterZone
+    const matchesKeyword =
+      !filterKeyword ||
+      goal.reason.toLowerCase().includes(filterKeyword.toLowerCase()) ||
+      goal.teams.name.toLowerCase().includes(filterKeyword.toLowerCase()) ||
+      (goal.captain_name && goal.captain_name.toLowerCase().includes(filterKeyword.toLowerCase()))
+
+    return matchesZone && matchesKeyword
+  })
 
   useEffect(() => {
     async function loadCaptains() {
@@ -103,8 +117,8 @@ export default function TirosLibresPage() {
       if (result.success) {
         setMessage({ type: "success", text: "Tiro libre adjudicado exitosamente" })
         await refresh()
-        setSelectedZone("")
-        setSelectedCaptain("")
+        setSelectedZone("defaultZone")
+        setSelectedCaptain("defaultCaptain")
         const form = document.querySelector("form") as HTMLFormElement
         form?.reset()
       } else {
@@ -164,7 +178,7 @@ export default function TirosLibresPage() {
     }
   }
 
-  const teamSummary = freeKickGoals.reduce(
+  const teamSummary = filteredGoals.reduce(
     (acc, goal) => {
       const teamKey = goal.team_id
       if (!acc[teamKey]) {
@@ -208,6 +222,64 @@ export default function TirosLibresPage() {
           <AlertDescription>{message.text}</AlertDescription>
         </Alert>
       )}
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Filter className="h-5 w-5" />
+            Filtros
+          </CardTitle>
+          <CardDescription>Filtra el resumen y historial de tiros libres</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="filter-zone">Filtrar por Zona</Label>
+              <Select value={filterZone} onValueChange={setFilterZone}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Todas las zonas" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="defaultZone">Todas las zonas</SelectItem>
+                  {zones.map((zone) => (
+                    <SelectItem key={zone.id} value={zone.id}>
+                      {zone.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="filter-keyword">Buscar por palabra clave</Label>
+              <Input
+                id="filter-keyword"
+                placeholder="Buscar en razón, equipo o capitán..."
+                value={filterKeyword}
+                onChange={(e) => setFilterKeyword(e.target.value)}
+              />
+            </div>
+          </div>
+
+          {(filterZone || filterKeyword) && (
+            <div className="mt-4 flex items-center gap-2">
+              <Badge variant="secondary">
+                Mostrando {filteredGoals.length} de {freeKickGoals.length} registros
+              </Badge>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setFilterZone("")
+                  setFilterKeyword("")
+                }}
+              >
+                Limpiar filtros
+              </Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <div className="grid gap-6 md:grid-cols-2">
         <Card>
@@ -305,7 +377,11 @@ export default function TirosLibresPage() {
           <CardContent>
             <div className="space-y-3">
               {Object.values(teamSummary).length === 0 ? (
-                <p className="text-muted-foreground text-center py-4">No hay tiros libres adjudicados</p>
+                <p className="text-muted-foreground text-center py-4">
+                  {filterZone || filterKeyword
+                    ? "No hay resultados con los filtros aplicados"
+                    : "No hay tiros libres adjudicados"}
+                </p>
               ) : (
                 Object.values(teamSummary).map((summary: any, index) => (
                   <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
@@ -333,10 +409,14 @@ export default function TirosLibresPage() {
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
-            {freeKickGoals.length === 0 ? (
-              <p className="text-muted-foreground text-center py-8">No hay tiros libres registrados</p>
+            {filteredGoals.length === 0 ? (
+              <p className="text-muted-foreground text-center py-8">
+                {filterZone || filterKeyword
+                  ? "No hay resultados con los filtros aplicados"
+                  : "No hay tiros libres registrados"}
+              </p>
             ) : (
-              freeKickGoals.map((goal) => (
+              filteredGoals.map((goal) => (
                 <div key={goal.id} className="flex items-center justify-between p-4 border rounded-lg">
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
