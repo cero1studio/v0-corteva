@@ -98,20 +98,21 @@ export async function getFreeKickGoals() {
       return []
     }
 
-    const teamIds = (goals || []).map((goal) => goal.teams?.captain_id).filter(Boolean)
+    const teamIds = (goals || []).map((goal) => goal.team_id).filter(Boolean)
 
     let captainNames = {}
     if (teamIds.length > 0) {
       const { data: captains, error: captainsError } = await adminSupabase
         .from("profiles")
-        .select("id, full_name")
-        .in("id", teamIds)
+        .select("team_id, full_name")
+        .eq("role", "capitan")
+        .in("team_id", teamIds)
 
       if (!captainsError && captains) {
         captainNames = captains.reduce(
           (acc, captain) => ({
             ...acc,
-            [captain.id]: captain.full_name,
+            [captain.team_id]: captain.full_name,
           }),
           {},
         )
@@ -120,7 +121,7 @@ export async function getFreeKickGoals() {
 
     const goalsWithCaptains = (goals || []).map((goal) => ({
       ...goal,
-      captain_name: goal.teams?.captain_id ? captainNames[goal.teams.captain_id] || "Sin capitán" : "Sin capitán",
+      captain_name: captainNames[goal.team_id] || "Sin capitán",
     }))
 
     return goalsWithCaptains
