@@ -2,6 +2,7 @@
 
 import { adminSupabase } from "@/lib/supabase/server"
 import { revalidatePath } from "next/cache"
+import { getSystemConfig } from "./system-config"
 
 export interface FreeKickGoal {
   id: string
@@ -13,6 +14,7 @@ export interface FreeKickGoal {
   teams: {
     name: string
     zone_id: string
+    captain_id: string
     zones: {
       name: string
     }
@@ -79,6 +81,7 @@ export async function getFreeKickGoals() {
         teams (
           name,
           zone_id,
+          captain_id,
           zones (
             name
           )
@@ -93,7 +96,28 @@ export async function getFreeKickGoals() {
       return []
     }
 
-    return goals || []
+    const goalsWithCaptains = await Promise.all(
+      (goals || []).map(async (goal) => {
+        if (goal.teams?.captain_id) {
+          const { data: captain } = await adminSupabase
+            .from("profiles")
+            .select("full_name")
+            .eq("id", goal.teams.captain_id)
+            .single()
+
+          return {
+            ...goal,
+            captain_name: captain?.full_name || "Sin capitán",
+          }
+        }
+        return {
+          ...goal,
+          captain_name: "Sin capitán",
+        }
+      }),
+    )
+
+    return goalsWithCaptains
   } catch (error) {
     console.error("Unexpected error fetching free kick goals:", error)
     return []
@@ -239,5 +263,37 @@ export async function getCaptainsByZone(zoneId: string) {
   } catch (error) {
     console.error("Unexpected error fetching captains:", error)
     return []
+  }
+}
+
+export async function getCurrentChallenge() {
+  try {
+    const result = await getSystemConfig("reto_actual")
+    return result.success ? result.data || "" : ""
+  } catch (error) {
+    console.error("Error fetching current challenge:", error)
+    return ""
+  }
+}
+
+export async function exportFreeKickGoalsToExcel() {
+  try {
+    const goals = await getFreeKickGoals()
+
+    const exportData = goals.map((goal) => ({
+      Equipo: goal.teams?.name || "Sin equipo",
+      Capitán: goal.captain_name || "Sin capitán",
+      Zona: goal.teams?.zones?.name || "Sin zona",
+      Goles: Math.floor(goal.points / 100),
+      Puntos: goal.points,
+      Razón: goal.reason,
+      Fecha: new Date(goal.created_at).toLocaleDateString("es-ES"),
+      "Creado por": goal.profiles?.full_name || "Admin",
+    }))
+
+    return { success: true, data: exportData }
+  } catch (error: any) {
+    console.error("Error exporting free kick goals:", error)
+    return { success: false, error: error.message }
   }
 }

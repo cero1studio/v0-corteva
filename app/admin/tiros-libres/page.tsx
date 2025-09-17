@@ -9,15 +9,19 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Trash2, Zap, Trophy, CheckCircle, XCircle } from "lucide-react"
+import { Trash2, Zap, Trophy, CheckCircle, XCircle, Download } from "lucide-react"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   createFreeKickGoal,
   getFreeKickGoals,
   deleteFreeKickGoal,
   getZones,
-  getCaptainsByZone, // importar getCaptainsByZone en lugar de getTeamsByZone
+  getCaptainsByZone,
+  getCurrentChallenge,
+  exportFreeKickGoalsToExcel,
 } from "@/app/actions/free-kick-goals"
 import { useCachedList } from "@/lib/global-cache"
+import * as XLSX from "xlsx"
 
 interface Zone {
   id: string
@@ -34,12 +38,16 @@ interface Captain {
 }
 
 export default function TirosLibresPage() {
-  const [captains, setCaptains] = useState<Captain[]>([]) // cambiar teams por captains
+  const [captains, setCaptains] = useState<Captain[]>([])
   const [selectedZone, setSelectedZone] = useState<string>("")
-  const [selectedCaptain, setSelectedCaptain] = useState<string>("") // cambiar selectedTeam por selectedCaptain
+  const [selectedCaptain, setSelectedCaptain] = useState<string>("")
   const [submitting, setSubmitting] = useState(false)
   const [deleting, setDeleting] = useState<string | null>(null)
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
+  const [useChallenge, setUseChallenge] = useState(false)
+  const [challengeText, setChallengeText] = useState("")
+  const [reasonText, setReasonText] = useState("")
+  const [exporting, setExporting] = useState(false)
 
   const fetchData = useCallback(async () => {
     const [zonesData, goalsData] = await Promise.all([getZones(), getFreeKickGoals()])
@@ -50,26 +58,40 @@ export default function TirosLibresPage() {
   const zones = data?.zones || []
   const freeKickGoals = data?.goals || []
 
-  // Cargar capitanes cuando se selecciona una zona
   useEffect(() => {
     async function loadCaptains() {
-      // cambiar loadTeams por loadCaptains
       if (selectedZone) {
         try {
-          const captainsData = await getCaptainsByZone(selectedZone) // usar getCaptainsByZone
-          setCaptains(captainsData) // usar setCaptains
-          setSelectedCaptain("") // Reset captain selection
+          const captainsData = await getCaptainsByZone(selectedZone)
+          setCaptains(captainsData)
+          setSelectedCaptain("")
         } catch (error) {
           console.error("Error loading captains:", error)
-          setMessage({ type: "error", text: "Error al cargar los capitanes" }) // mensaje de capitanes
+          setMessage({ type: "error", text: "Error al cargar los capitanes" })
         }
       } else {
-        setCaptains([]) // usar setCaptains
-        setSelectedCaptain("") // usar setSelectedCaptain
+        setCaptains([])
+        setSelectedCaptain("")
       }
     }
-    loadCaptains() // llamar loadCaptains
+    loadCaptains()
   }, [selectedZone])
+
+  useEffect(() => {
+    async function loadChallenge() {
+      const challenge = await getCurrentChallenge()
+      setChallengeText(challenge)
+    }
+    loadChallenge()
+  }, [])
+
+  useEffect(() => {
+    if (useChallenge && challengeText) {
+      setReasonText(challengeText)
+    } else if (!useChallenge) {
+      setReasonText("")
+    }
+  }, [useChallenge, challengeText])
 
   const handleSubmit = async (formData: FormData) => {
     setSubmitting(true)
@@ -80,11 +102,9 @@ export default function TirosLibresPage() {
 
       if (result.success) {
         setMessage({ type: "success", text: "Tiro libre adjudicado exitosamente" })
-        // Recargar los datos
         await refresh()
-        // Reset form
         setSelectedZone("")
-        setSelectedCaptain("") // usar setSelectedCaptain
+        setSelectedCaptain("")
         const form = document.querySelector("form") as HTMLFormElement
         form?.reset()
       } else {
@@ -107,7 +127,6 @@ export default function TirosLibresPage() {
 
       if (result.success) {
         setMessage({ type: "success", text: "Tiro libre eliminado exitosamente" })
-        // Pequeño delay para asegurar sincronización
         setTimeout(async () => {
           await refresh()
         }, 100)
@@ -122,7 +141,29 @@ export default function TirosLibresPage() {
     }
   }
 
-  // Agrupar por equipo para mostrar resumen
+  const handleExportExcel = async () => {
+    setExporting(true)
+    try {
+      const result = await exportFreeKickGoalsToExcel()
+
+      if (result.success && result.data) {
+        const ws = XLSX.utils.json_to_sheet(result.data)
+        const wb = XLSX.utils.book_new()
+        XLSX.utils.book_append_sheet(wb, ws, "Tiros Libres")
+        XLSX.writeFile(wb, `tiros-libres-${new Date().toISOString().split("T")[0]}.xlsx`)
+
+        setMessage({ type: "success", text: "Archivo Excel descargado exitosamente" })
+      } else {
+        setMessage({ type: "error", text: result.error || "Error al exportar datos" })
+      }
+    } catch (error) {
+      console.error("Error exporting Excel:", error)
+      setMessage({ type: "error", text: "Error al generar archivo Excel" })
+    } finally {
+      setExporting(false)
+    }
+  }
+
   const teamSummary = freeKickGoals.reduce(
     (acc, goal) => {
       const teamKey = goal.team_id
@@ -130,6 +171,7 @@ export default function TirosLibresPage() {
         acc[teamKey] = {
           teamName: goal.teams.name,
           zoneName: goal.teams.zones?.name || "Sin zona",
+          captainName: goal.captain_name || "Sin capitán",
           totalPoints: 0,
           totalGoals: 0,
           count: 0,
@@ -154,6 +196,10 @@ export default function TirosLibresPage() {
           <h1 className="text-3xl font-bold">Tiros Libres</h1>
           <p className="text-muted-foreground">Adjudica goles adicionales a los equipos por tiros libres</p>
         </div>
+        <Button onClick={handleExportExcel} disabled={exporting || freeKickGoals.length === 0} variant="outline">
+          <Download className="mr-2 h-4 w-4" />
+          {exporting ? "Exportando..." : "Descargar Excel"}
+        </Button>
       </div>
 
       {message && (
@@ -164,7 +210,6 @@ export default function TirosLibresPage() {
       )}
 
       <div className="grid gap-6 md:grid-cols-2">
-        {/* Formulario para adjudicar tiro libre */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -192,32 +237,22 @@ export default function TirosLibresPage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="team_id">Capitán</Label> {/* cambiar label de Equipo a Capitán */}
+                <Label htmlFor="team_id">Capitán</Label>
                 <Select
                   name="team_id"
                   value={selectedCaptain}
                   onValueChange={setSelectedCaptain}
                   disabled={!selectedZone}
                 >
-                  {" "}
-                  {/* usar selectedCaptain */}
                   <SelectTrigger>
-                    <SelectValue placeholder={selectedZone ? "Selecciona un capitán" : "Primero selecciona una zona"} />{" "}
-                    {/* cambiar placeholder */}
+                    <SelectValue placeholder={selectedZone ? "Selecciona un capitán" : "Primero selecciona una zona"} />
                   </SelectTrigger>
                   <SelectContent>
-                    {captains.map(
-                      (
-                        captain, // usar captains en lugar de teams
-                      ) => (
-                        <SelectItem key={captain.id} value={captain.teams?.id || captain.id}>
-                          {" "}
-                          {/* usar team_id del capitán */}
-                          {captain.full_name} {captain.teams?.name ? `(${captain.teams.name})` : ""}{" "}
-                          {/* mostrar nombre del capitán y equipo */}
-                        </SelectItem>
-                      ),
-                    )}
+                    {captains.map((captain) => (
+                      <SelectItem key={captain.id} value={captain.teams?.id || captain.id}>
+                        {captain.full_name} {captain.teams?.name ? `(${captain.teams.name})` : ""}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -230,12 +265,28 @@ export default function TirosLibresPage() {
 
               <div className="space-y-2">
                 <Label htmlFor="reason">Razón</Label>
-                <Textarea id="reason" name="reason" placeholder="Describe la razón del tiro libre..." required />
+                {challengeText && (
+                  <div className="flex items-center space-x-2 mb-2">
+                    <Checkbox id="use-challenge" checked={useChallenge} onCheckedChange={setUseChallenge} />
+                    <Label htmlFor="use-challenge" className="text-sm">
+                      Usar texto del reto actual
+                    </Label>
+                  </div>
+                )}
+                <Textarea
+                  id="reason"
+                  name="reason"
+                  placeholder="Describe la razón del tiro libre..."
+                  value={reasonText}
+                  onChange={(e) => {
+                    setReasonText(e.target.value)
+                    if (useChallenge) setUseChallenge(false)
+                  }}
+                  required
+                />
               </div>
 
               <Button type="submit" className="w-full" disabled={!selectedCaptain || submitting}>
-                {" "}
-                {/* usar selectedCaptain */}
                 <Zap className="mr-2 h-4 w-4" />
                 {submitting ? "Adjudicando..." : "Adjudicar Tiro Libre"}
               </Button>
@@ -243,7 +294,6 @@ export default function TirosLibresPage() {
           </CardContent>
         </Card>
 
-        {/* Resumen por equipo */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -261,6 +311,7 @@ export default function TirosLibresPage() {
                   <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
                     <div>
                       <p className="font-medium">{summary.teamName}</p>
+                      <p className="text-sm text-muted-foreground">Capitán: {summary.captainName}</p>
                       <p className="text-sm text-muted-foreground">{summary.zoneName}</p>
                     </div>
                     <div className="text-right">
@@ -275,7 +326,6 @@ export default function TirosLibresPage() {
         </Card>
       </div>
 
-      {/* Historial de tiros libres */}
       <Card>
         <CardHeader>
           <CardTitle>Historial de Tiros Libres</CardTitle>
@@ -291,6 +341,7 @@ export default function TirosLibresPage() {
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
                       <Badge variant="outline">{goal.teams.name}</Badge>
+                      <Badge variant="secondary">{goal.captain_name}</Badge>
                       <Badge variant="secondary">{Math.floor(goal.points / 100)} goles</Badge>
                       <Badge variant="outline">{goal.teams.zones?.name || "Sin zona"}</Badge>
                     </div>
