@@ -213,14 +213,14 @@ export async function getTeamsByZone(zoneId: string) {
 
 export async function getCaptainsByZone(zoneId: string) {
   try {
-    // Obtener capitanes que tienen equipos en la zona especificada
+    // Usar la relación específica profiles.team_id -> teams.id
     const { data: captains, error } = await adminSupabase
       .from("profiles")
       .select(`
         id,
         full_name,
         team_id,
-        teams!inner (
+        teams:team_id (
           id,
           name,
           zone_id
