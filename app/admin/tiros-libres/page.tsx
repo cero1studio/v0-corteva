@@ -62,6 +62,14 @@ export default function TirosLibresPage() {
   const freeKickGoals = data?.goals || []
 
   const filteredHistoryGoals = freeKickGoals.filter((goal) => {
+    console.log("[v0] Filtering goal:", {
+      teamName: goal.teams.name,
+      goalZoneId: goal.teams.zones?.id,
+      goalZoneName: goal.teams.zones?.name,
+      filterZone: historyFilterZone,
+      comparison: goal.teams.zones?.id === historyFilterZone,
+    })
+
     const matchesZone = historyFilterZone === "all" || !historyFilterZone || goal.teams.zones?.id === historyFilterZone
     const matchesKeyword =
       !historyFilterKeyword ||
@@ -69,6 +77,7 @@ export default function TirosLibresPage() {
       goal.teams.name.toLowerCase().includes(historyFilterKeyword.toLowerCase()) ||
       (goal.captain_name && goal.captain_name.toLowerCase().includes(historyFilterKeyword.toLowerCase()))
 
+    console.log("[v0] Filter results:", { matchesZone, matchesKeyword, finalResult: matchesZone && matchesKeyword })
     return matchesZone && matchesKeyword
   })
 
