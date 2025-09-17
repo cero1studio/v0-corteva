@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -26,6 +26,8 @@ import { getAllTeams } from "@/app/actions/teams"
 import { getAllProducts } from "@/app/actions/products"
 import { getAllUsers } from "@/app/actions/users"
 import { getAllDistributors } from "@/app/actions/distributors"
+import * as XLSX from "xlsx" // Importar la librería XLSX
+import { useCachedList } from "@/lib/global-cache"
 
 interface Sale {
   id: string
@@ -81,6 +83,7 @@ interface User {
   id: string
   full_name: string
   team_id: string
+  role?: string
 }
 
 interface Distributor {
@@ -89,20 +92,19 @@ interface Distributor {
 }
 
 export default function AdminVentasPage() {
-  const [sales, setSales] = useState<Sale[]>([])
+  // const [sales, setSales] = useState<Sale[]>([])
   const [zones, setZones] = useState<Zone[]>([])
   const [teams, setTeams] = useState<Team[]>([])
   const [products, setProducts] = useState<Product[]>([])
   const [users, setUsers] = useState<User[]>([])
   const [distributors, setDistributors] = useState<Distributor[]>([])
-  const [loading, setLoading] = useState(true)
+  // const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedZone, setSelectedZone] = useState<string>("all")
-  const [selectedTeam, setSelectedTeam] = useState<string>("all")
-  const [selectedDistributor, setSelectedDistributor] = useState<string>("all")
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [editingSale, setEditingSale] = useState<Sale | null>(null)
+  let timeoutId: NodeJS.Timeout | null = null // Declare timeoutId here
 
   // Form states
   const [formData, setFormData] = useState({
@@ -113,6 +115,13 @@ export default function AdminVentasPage() {
   })
 
   const [selectedProductPoints, setSelectedProductPoints] = useState<number>(0)
+
+  // Función para calcular kilos basándose en puntos
+  const calculateKilos = (points: number): number => {
+    // 1 gol = 100 puntos = 10 kilos
+    // Por lo tanto: kilos = puntos / 10
+    return points / 10
+  }
 
   useEffect(() => {
     if (formData.product_id && formData.quantity) {
@@ -129,16 +138,144 @@ export default function AdminVentasPage() {
     }
   }, [formData.product_id, formData.quantity, products])
 
+  const fetchSales = useCallback(async () => {
+    const result = await getAllSales()
+    if (result.success) {
+      return result.data || []
+    } else {
+      throw new Error(result.error || "Error al cargar ventas")
+    }
+  }, [])
+
+  const { data: sales, loading, error, refresh } = useCachedList("admin-sales", fetchSales, [])
+
   useEffect(() => {
-    loadData()
+    let mounted = true
+
+    const loadDataSafe = async () => {
+      if (!mounted) return
+
+      try {
+        // setLoading(true)
+
+        // const [salesResult, zonesData, teamsResult, productsResult, usersResult, distributorsData] = await Promise.all([
+        //   getAllSales(),
+        //   getAllZones(),
+        //   getAllTeams(),
+        //   getAllProducts(),
+        //   getAllUsers(),
+        //   getAllDistributors(),
+        // ])
+
+        const [zonesData, teamsResult, productsResult, usersResult, distributorsData] = await Promise.all([
+          getAllZones(),
+          getAllTeams(),
+          getAllProducts(),
+          getAllUsers(),
+          getAllDistributors(),
+        ])
+
+        if (!mounted) return
+
+        // if (salesResult.success) {
+        //   setSales(salesResult.data || [])
+        // } else {
+        //   console.error("Error loading sales:", salesResult.error)
+        //   if (mounted) {
+        //     toast({
+        //       title: "Error",
+        //       description: "Error al cargar las ventas",
+        //       variant: "destructive",
+        //     })
+        //   }
+        // }
+
+        if (mounted) {
+          if (zonesData && Array.isArray(zonesData)) {
+            setZones(zonesData)
+          } else {
+            setZones([])
+          }
+
+          if (teamsResult.success) {
+            setTeams(teamsResult.data || [])
+          } else {
+            setTeams([])
+          }
+
+          if (productsResult.success) {
+            setProducts(productsResult.data || [])
+          } else {
+            setProducts([])
+          }
+
+          if (usersResult.data) {
+            setUsers(usersResult.data || [])
+          } else {
+            setUsers([])
+          }
+
+          if (distributorsData && Array.isArray(distributorsData)) {
+            setDistributors(distributorsData)
+          } else {
+            setDistributors([])
+          }
+        }
+      } catch (error) {
+        console.error("Error loading data:", error)
+        if (mounted) {
+          toast({
+            title: "Error",
+            description: "Error al cargar los datos",
+            variant: "destructive",
+          })
+        }
+      } finally {
+        if (mounted) {
+          // setLoading(false)
+          if (timeoutId) {
+            clearTimeout(timeoutId) // Cancelar el timeout cuando termine la carga
+          }
+        }
+      }
+    }
+
+    // Timeout de seguridad
+    timeoutId = setTimeout(() => {
+      if (mounted) {
+        // setLoading(false)
+        toast({
+          title: "Timeout",
+          description: "La carga está tomando más tiempo del esperado",
+          variant: "destructive",
+        })
+      }
+    }, 30000)
+
+    loadDataSafe()
+
+    return () => {
+      mounted = false
+      if (timeoutId) {
+        clearTimeout(timeoutId)
+      }
+    }
   }, [])
 
   const loadData = async () => {
     try {
-      setLoading(true)
+      // setLoading(true)
 
-      const [salesResult, zonesData, teamsResult, productsResult, usersResult, distributorsData] = await Promise.all([
-        getAllSales(),
+      // const [salesResult, zonesData, teamsResult, productsResult, usersResult, distributorsData] = await Promise.all([
+      //   getAllSales(),
+      //   getAllZones(),
+      //   getAllTeams(),
+      //   getAllProducts(),
+      //   getAllUsers(),
+      //   getAllDistributors(),
+      // ])
+
+      const [zonesData, teamsResult, productsResult, usersResult, distributorsData] = await Promise.all([
         getAllZones(),
         getAllTeams(),
         getAllProducts(),
@@ -146,16 +283,16 @@ export default function AdminVentasPage() {
         getAllDistributors(),
       ])
 
-      if (salesResult.success) {
-        setSales(salesResult.data || [])
-      } else {
-        console.error("Error loading sales:", salesResult.error)
-        toast({
-          title: "Error",
-          description: "Error al cargar las ventas",
-          variant: "destructive",
-        })
-      }
+      // if (salesResult.success) {
+      //   setSales(salesResult.data || [])
+      // } else {
+      //   console.error("Error loading sales:", salesResult.error)
+      //   toast({
+      //     title: "Error",
+      //     description: "Error al cargar las ventas",
+      //     variant: "destructive",
+      //   })
+      // }
 
       if (zonesData && Array.isArray(zonesData)) {
         setZones(zonesData)
@@ -194,62 +331,104 @@ export default function AdminVentasPage() {
         variant: "destructive",
       })
     } finally {
-      setLoading(false)
+      // setLoading(false)
+      if (timeoutId) {
+        clearTimeout(timeoutId) // Cancelar el timeout al final del finally en loadData también
+      }
     }
   }
 
-  const filteredSales = sales.filter((sale) => {
+  const filteredSales = (sales || []).filter((sale) => {
     const productName = sale.products?.name || ""
     const teamName = sale.team?.name || ""
     const zoneName = sale.zone?.name || ""
     const distributorName = sale.distributor?.name || ""
+    const captainName = sale.representative?.full_name || ""
 
     const matchesSearch =
       productName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       teamName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       zoneName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      distributorName.toLowerCase().includes(searchTerm.toLowerCase())
+      distributorName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      captainName.toLowerCase().includes(searchTerm.toLowerCase())
 
     const matchesZone = selectedZone === "all" || sale.zone?.id === selectedZone
-    const matchesTeam = selectedTeam === "all" || sale.team?.id === selectedTeam
-    const matchesDistributor = selectedDistributor === "all" || sale.distributor?.id === selectedDistributor
 
-    return matchesSearch && matchesZone && matchesTeam && matchesDistributor
+    return matchesSearch && matchesZone
   })
-
-  const filteredTeams = selectedZone === "all" ? teams : teams.filter((team) => team.zone_id === selectedZone)
 
   const downloadExcel = () => {
     try {
-      // Preparar datos para Excel
+      if (filteredSales.length === 0) {
+        toast({
+          title: "Error",
+          description: "No hay datos para exportar",
+          variant: "destructive",
+        })
+        return
+      }
+
+      // Preparar datos para Excel - CORREGIDO: Convertir números explícitamente
       const excelData = filteredSales.map((sale) => ({
         Producto: sale.products?.name || "N/A",
+        Capitán: sale.representative?.full_name || "N/A",
+        Distribuidor: sale.distributor?.name || "N/A",
         Equipo: sale.team?.name || "N/A",
         Zona: sale.zone?.name || "N/A",
-        Distribuidor: sale.distributor?.name || "N/A",
-        Cantidad: sale.quantity,
-        Puntos: sale.points,
+        Cantidad: Number(sale.quantity), // Convertir a number
+        Puntos: Number(sale.points || 0), // Convertir a number
+        Kilos: Number(calculateKilos(sale.points || 0).toFixed(1)), // Convertir a number
         "Fecha de Venta": sale.sale_date ? new Date(sale.sale_date).toLocaleDateString() : "N/A",
         "Fecha de Registro": new Date(sale.created_at).toLocaleDateString(),
       }))
 
-      // Crear CSV
-      const headers = Object.keys(excelData[0] || {})
-      const csvContent = [
-        headers.join(","),
-        ...excelData.map((row) => headers.map((header) => `"${row[header as keyof typeof row]}"`).join(",")),
-      ].join("\n")
+      // Crear workbook y worksheet
+      const wb = XLSX.utils.book_new()
+      const ws = XLSX.utils.json_to_sheet(excelData)
 
-      // Descargar archivo
-      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" })
-      const link = document.createElement("a")
+      // Configurar anchos de columna
+      const colWidths = [
+        { wch: 25 }, // Producto
+        { wch: 20 }, // Capitán
+        { wch: 20 }, // Distribuidor
+        { wch: 20 }, // Equipo
+        { wch: 15 }, // Zona
+        { wch: 10 }, // Cantidad
+        { wch: 10 }, // Puntos
+        { wch: 10 }, // Kilos
+        { wch: 15 }, // Fecha de Venta
+        { wch: 18 }, // Fecha de Registro
+      ]
+      ws["!cols"] = colWidths
+
+      // Agregar worksheet al workbook
+      XLSX.utils.book_append_sheet(wb, ws, "Ventas")
+
+      // Generar archivo en formato binario
+      const excelBuffer = XLSX.write(wb, { bookType: "xlsx", type: "array" })
+
+      // Convertir a Blob
+      const blob = new Blob([excelBuffer], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      })
+
+      // Crear URL para el blob
       const url = URL.createObjectURL(blob)
-      link.setAttribute("href", url)
-      link.setAttribute("download", `ventas_${new Date().toISOString().split("T")[0]}.csv`)
-      link.style.visibility = "hidden"
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
+
+      // Crear elemento de enlace para descargar
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `ventas_${new Date().toISOString().split("T")[0]}.xlsx`
+
+      // Simular clic para iniciar descarga
+      document.body.appendChild(a)
+      a.click()
+
+      // Limpiar
+      setTimeout(() => {
+        document.body.removeChild(a)
+        URL.revokeObjectURL(url)
+      }, 0)
 
       toast({
         title: "Éxito",
@@ -266,6 +445,8 @@ export default function AdminVentasPage() {
   }
 
   const handleCreateSale = async () => {
+    const mounted = true
+    if (!mounted) return
     try {
       if (!formData.product_id || !formData.quantity || !formData.representative_id) {
         toast({
@@ -310,7 +491,8 @@ export default function AdminVentasPage() {
         setIsCreateDialogOpen(false)
         setFormData({ product_id: "", quantity: "", points: "", representative_id: "" })
         setSelectedProductPoints(0)
-        loadData()
+        // loadData()
+        refresh()
       } else {
         toast({
           title: "Error",
@@ -329,6 +511,8 @@ export default function AdminVentasPage() {
   }
 
   const handleEditSale = async () => {
+    const mounted = true
+    if (!mounted) return
     try {
       if (
         !editingSale ||
@@ -360,7 +544,8 @@ export default function AdminVentasPage() {
         })
         setIsEditDialogOpen(false)
         setEditingSale(null)
-        loadData()
+        // loadData()
+        refresh()
       } else {
         toast({
           title: "Error",
@@ -379,6 +564,8 @@ export default function AdminVentasPage() {
   }
 
   const handleDeleteSale = async (saleId: string) => {
+    const mounted = true
+    if (!mounted) return
     try {
       const result = await deleteSale(saleId)
 
@@ -387,7 +574,11 @@ export default function AdminVentasPage() {
           title: "Éxito",
           description: "Venta eliminada correctamente",
         })
-        loadData()
+        // Pequeño delay para asegurar sincronización
+        setTimeout(() => {
+          // loadData()
+          refresh()
+        }, 100)
       } else {
         toast({
           title: "Error",
@@ -514,9 +705,14 @@ export default function AdminVentasPage() {
                     placeholder="Selecciona producto y cantidad"
                   />
                   {selectedProductPoints > 0 && formData.quantity && (
-                    <p className="text-sm text-muted-foreground mt-1">
-                      {selectedProductPoints} puntos × {formData.quantity} = {formData.points} puntos totales
-                    </p>
+                    <div className="text-sm text-muted-foreground mt-1 space-y-1">
+                      <p>
+                        {selectedProductPoints} puntos × {formData.quantity} = {formData.points} puntos totales
+                      </p>
+                      <p className="text-green-600 font-medium">
+                        Kilos equivalentes: {calculateKilos(Number.parseFloat(formData.points) || 0).toFixed(1)} kg
+                      </p>
+                    </div>
                   )}
                 </div>
                 <Button onClick={handleCreateSale} className="w-full">
@@ -537,35 +733,19 @@ export default function AdminVentasPage() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
               <Label htmlFor="search">Buscar</Label>
               <div className="relative">
                 <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                 <Input
                   id="search"
-                  placeholder="Buscar por producto, equipo o zona..."
+                  placeholder="Buscar por producto, equipo, capitán..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="pl-10"
                 />
               </div>
-            </div>
-            <div>
-              <Label htmlFor="distributor">Distribuidor</Label>
-              <Select value={selectedDistributor} onValueChange={setSelectedDistributor}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Todos los distribuidores" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos los distribuidores</SelectItem>
-                  {distributors.map((distributor) => (
-                    <SelectItem key={distributor.id} value={distributor.id}>
-                      {distributor.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
             </div>
             <div>
               <Label htmlFor="zone">Zona</Label>
@@ -583,30 +763,12 @@ export default function AdminVentasPage() {
                 </SelectContent>
               </Select>
             </div>
-            <div>
-              <Label htmlFor="team">Equipo</Label>
-              <Select value={selectedTeam} onValueChange={setSelectedTeam}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Todos los equipos" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos los equipos</SelectItem>
-                  {filteredTeams.map((team) => (
-                    <SelectItem key={team.id} value={team.id}>
-                      {team.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
             <div className="flex items-end">
               <Button
                 variant="outline"
                 onClick={() => {
                   setSearchTerm("")
                   setSelectedZone("all")
-                  setSelectedTeam("all")
-                  setSelectedDistributor("all")
                 }}
                 className="w-full"
               >
@@ -632,7 +794,7 @@ export default function AdminVentasPage() {
               <Package className="mx-auto h-12 w-12 text-muted-foreground" />
               <h3 className="mt-4 text-lg font-semibold">No hay ventas</h3>
               <p className="text-muted-foreground">
-                {searchTerm || selectedZone !== "all" || selectedTeam !== "all" || selectedDistributor !== "all"
+                {searchTerm || selectedZone !== "all"
                   ? "No se encontraron ventas con los filtros aplicados"
                   : "Aún no hay ventas registradas"}
               </p>
@@ -642,11 +804,13 @@ export default function AdminVentasPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Producto</TableHead>
+                  <TableHead>Capitán</TableHead>
                   <TableHead>Distribuidor</TableHead>
                   <TableHead>Equipo</TableHead>
                   <TableHead>Zona</TableHead>
                   <TableHead>Cantidad</TableHead>
                   <TableHead>Puntos</TableHead>
+                  <TableHead>Kilos</TableHead>
                   <TableHead>Fecha</TableHead>
                   <TableHead>Acciones</TableHead>
                 </TableRow>
@@ -668,6 +832,11 @@ export default function AdminVentasPage() {
                       </div>
                     </TableCell>
                     <TableCell>
+                      <Badge variant="outline" className="bg-green-50">
+                        {sale.representative?.full_name || "N/A"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
                       <Badge variant="outline" className="bg-blue-50">
                         {sale.distributor?.name || "N/A"}
                       </Badge>
@@ -680,6 +849,9 @@ export default function AdminVentasPage() {
                     </TableCell>
                     <TableCell>{sale.quantity}</TableCell>
                     <TableCell>{sale.points?.toLocaleString() || "0"}</TableCell>
+                    <TableCell className="font-medium text-green-600">
+                      {calculateKilos(sale.points || 0).toFixed(1)} kg
+                    </TableCell>
                     <TableCell>{sale.sale_date ? new Date(sale.sale_date).toLocaleDateString() : "N/A"}</TableCell>
                     <TableCell>
                       <DropdownMenu>
@@ -774,9 +946,14 @@ export default function AdminVentasPage() {
                 placeholder="Se calculará automáticamente"
               />
               {selectedProductPoints > 0 && formData.quantity && (
-                <p className="text-sm text-muted-foreground mt-1">
-                  {selectedProductPoints} puntos × {formData.quantity} = {formData.points} puntos totales
-                </p>
+                <div className="text-sm text-muted-foreground mt-1 space-y-1">
+                  <p>
+                    {selectedProductPoints} puntos × {formData.quantity} = {formData.points} puntos totales
+                  </p>
+                  <p className="text-green-600 font-medium">
+                    Kilos equivalentes: {calculateKilos(Number.parseFloat(formData.points) || 0).toFixed(1)} kg
+                  </p>
+                </div>
               )}
             </div>
             <Button onClick={handleEditSale} className="w-full">

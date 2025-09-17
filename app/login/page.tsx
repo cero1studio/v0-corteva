@@ -1,20 +1,27 @@
 "use client"
 
 import type React from "react"
-
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { useAuth } from "@/components/auth-provider"
-import { Loader2 } from "lucide-react"
+import { Loader2, Eye, EyeOff } from "lucide-react"
 
 export default function LoginPage() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
+  const [showPassword, setShowPassword] = useState(false)
   const [localError, setLocalError] = useState<string | null>(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
   const { signIn, isLoading, error: authError } = useAuth()
+
+  useEffect(() => {
+    // Resetear estados cuando se monta el componente
+    setLocalError(null)
+    setIsSubmitting(false)
+  }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -25,17 +32,38 @@ export default function LoginPage() {
       return
     }
 
-    const result = await signIn(email, password)
-    if (result.error) {
-      setLocalError(result.error)
+    try {
+      setIsSubmitting(true)
+      console.log("LOGIN: Attempting sign in for:", email)
+
+      const result = await signIn(email, password)
+
+      if (result?.error) {
+        console.error("LOGIN: Sign in error:", result.error)
+        // Traducir mensajes de error comunes
+        if (result.error.includes("Invalid login")) {
+          setLocalError("Correo o contraseña incorrectos")
+        } else if (result.error.includes("too many requests")) {
+          setLocalError("Demasiados intentos fallidos. Intenta más tarde.")
+        } else if (result.error.includes("timeout")) {
+          setLocalError("La conexión está tardando mucho. Intenta nuevamente.")
+        } else {
+          setLocalError(result.error)
+        }
+        setIsSubmitting(false)
+      } else {
+        console.log("LOGIN: Sign in successful, waiting for redirection...")
+        // No resetear isSubmitting aquí, dejar que AuthGuard maneje la redirección
+      }
+    } catch (error: any) {
+      console.error("LOGIN: Error en inicio de sesión:", error)
+      setLocalError("Error al iniciar sesión. Intenta nuevamente.")
+      setIsSubmitting(false)
     }
   }
 
   // Mostrar error de autenticación o error local
   const displayError = localError || authError
-
-  // Si está cargando, mostrar spinner en el botón
-  const isSubmitting = isLoading
 
   return (
     <div className="min-h-screen flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
@@ -49,9 +77,8 @@ export default function LoginPage() {
               style={{ objectFit: "contain" }}
               priority
               onError={(e) => {
-                // Fallback to a text representation if image fails to load
                 const target = e.target as HTMLImageElement
-                target.onerror = null // Prevent infinite error loop
+                target.onerror = null
                 target.style.display = "none"
                 const parent = target.parentElement
                 if (parent) {
@@ -79,25 +106,37 @@ export default function LoginPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                disabled={isSubmitting}
+                disabled={isSubmitting || isLoading}
                 className="w-full"
               />
             </div>
-            <div className="space-y-2">
+            <div className="space-y-2 relative">
               <Input
                 id="password"
-                type="password"
+                type={showPassword ? "text" : "password"}
                 placeholder="Contraseña"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                disabled={isSubmitting}
-                className="w-full"
+                disabled={isSubmitting || isLoading}
+                className="w-full pr-10"
               />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                disabled={isSubmitting || isLoading}
+              >
+                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
             </div>
             {displayError && <div className="text-red-500 text-sm">{displayError}</div>}
-            <Button type="submit" className="w-full bg-[#006BA6] hover:bg-[#005A8C]" disabled={isSubmitting}>
-              {isSubmitting ? (
+            <Button
+              type="submit"
+              className="w-full bg-[#006BA6] hover:bg-[#005A8C]"
+              disabled={isSubmitting || isLoading}
+            >
+              {isSubmitting || isLoading ? (
                 <span className="flex items-center">
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   Iniciando sesión...
@@ -109,12 +148,6 @@ export default function LoginPage() {
           </form>
         </CardContent>
         <CardFooter className="flex flex-col items-center">
-          <p className="text-sm text-gray-500 mb-4">
-            ¿Primer acceso?{" "}
-            <a href="/primer-acceso" className="text-[#006BA6] hover:underline">
-              Configura tu contraseña
-            </a>
-          </p>
           <div className="w-24 h-12 relative">
             <Image
               src="/corteva-logo.png"
@@ -122,9 +155,8 @@ export default function LoginPage() {
               fill
               style={{ objectFit: "contain" }}
               onError={(e) => {
-                // Fallback to a text representation if image fails to load
                 const target = e.target as HTMLImageElement
-                target.onerror = null // Prevent infinite error loop
+                target.onerror = null
                 target.style.display = "none"
                 const parent = target.parentElement
                 if (parent) {

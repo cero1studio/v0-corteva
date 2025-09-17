@@ -1,9 +1,11 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { getUsers, deleteUser } from "@/app/actions/users"
+import { useState, useEffect, useCallback } from "react"
+import { getUsers, deleteUser, getZones } from "@/app/actions/users"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import {
   AlertDialog,
@@ -16,50 +18,47 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { useToast } from "@/components/ui/use-toast"
-import { Edit, Trash2, Plus, UserCheck, AlertCircle } from "lucide-react"
+import { Edit, Trash2, Plus, UserCheck, AlertCircle, Search, Filter } from "lucide-react"
 import Link from "next/link"
 import { Badge } from "@/components/ui/badge"
 import { EmptyState } from "@/components/empty-state"
 import { getDistributorLogoUrl } from "@/lib/utils/image"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { useCachedList } from "@/lib/global-cache"
 
 export default function UsuariosPage() {
-  const [users, setUsers] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
   const [userToDelete, setUserToDelete] = useState<string | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
   const { toast } = useToast()
+  const [zones, setZones] = useState<any[]>([])
+  const [selectedZone, setSelectedZone] = useState<string>("all")
+  const [searchTerm, setSearchTerm] = useState("")
+
+  const fetchUsers = useCallback(async () => {
+    const result = await getUsers(selectedZone)
+    if (result.error) throw new Error(result.error)
+    return result.data || []
+  }, [selectedZone])
+
+  const {
+    data: users,
+    loading,
+    error,
+    refresh,
+  } = useCachedList(`admin-users-${selectedZone}`, fetchUsers, [selectedZone])
 
   useEffect(() => {
-    fetchUsers()
+    fetchZones()
   }, [])
 
-  async function fetchUsers() {
+  async function fetchZones() {
     try {
-      setLoading(true)
-      const result = await getUsers()
-
-      console.log("Resultado de getUsers:", result)
-
-      if (result.error) {
-        toast({
-          title: "Error",
-          description: result.error,
-          variant: "destructive",
-        })
-        setUsers([])
-      } else {
-        setUsers(result.data || [])
+      const result = await getZones()
+      if (result.data) {
+        setZones(result.data)
       }
     } catch (error) {
-      console.error("Error al obtener usuarios:", error)
-      toast({
-        title: "Error",
-        description: "No se pudieron cargar los usuarios",
-        variant: "destructive",
-      })
-      setUsers([])
-    } finally {
-      setLoading(false)
+      console.error("Error al obtener zonas:", error)
     }
   }
 
@@ -81,7 +80,7 @@ export default function UsuariosPage() {
           title: "Usuario eliminado",
           description: "El usuario ha sido eliminado exitosamente",
         })
-        fetchUsers()
+        refresh()
       }
     } catch (error) {
       console.error("Error al eliminar usuario:", error)
@@ -116,6 +115,12 @@ export default function UsuariosPage() {
             Director Técnico
           </Badge>
         )
+      case "arbitro":
+        return (
+          <Badge variant="default" className="bg-purple-600">
+            Árbitro
+          </Badge>
+        )
       default:
         return <Badge variant="outline">{role}</Badge>
     }
@@ -141,30 +146,109 @@ export default function UsuariosPage() {
     }
   }
 
+  // Filtrar usuarios
+  const filteredUsers = (users || []).filter((user) => {
+    const matchesSearch =
+      user.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      user.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      user.team_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      user.zone_name?.toLowerCase().includes(searchTerm.toLowerCase())
+
+    return matchesSearch
+  })
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-3xl font-bold tracking-tight">Usuarios</h2>
-        <Button asChild>
-          <Link href="/admin/usuarios/nuevo">
-            <Plus className="mr-2 h-4 w-4" />
-            Nuevo Usuario
-          </Link>
-        </Button>
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-3xl font-bold tracking-tight">Usuarios</h2>
+          <Button asChild>
+            <Link href="/admin/usuarios/nuevo">
+              <Plus className="mr-2 h-4 w-4" />
+              Nuevo Usuario
+            </Link>
+          </Button>
+        </div>
+
+        {/* Filtros */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Filter className="h-5 w-5" />
+              Filtros
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <Label htmlFor="search">Buscar</Label>
+                <div className="relative">
+                  <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    id="search"
+                    placeholder="Buscar por nombre, email, equipo..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="pl-10"
+                  />
+                </div>
+              </div>
+              <div>
+                <Label htmlFor="zone-filter">Zona</Label>
+                <Select value={selectedZone} onValueChange={setSelectedZone}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Seleccionar zona" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todas las zonas</SelectItem>
+                    {zones.map((zone) => (
+                      <SelectItem key={zone.id} value={zone.id}>
+                        {zone.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex items-end">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setSearchTerm("")
+                    setSelectedZone("all")
+                  }}
+                  className="w-full"
+                >
+                  Limpiar Filtros
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       <Card>
         <CardHeader>
           <CardTitle>Gestión de Usuarios</CardTitle>
-          <CardDescription>Administra los usuarios del sistema</CardDescription>
+          <CardDescription>
+            {filteredUsers.length} usuario{filteredUsers.length !== 1 ? "s" : ""} encontrado
+            {filteredUsers.length !== 1 ? "s" : ""}
+          </CardDescription>
         </CardHeader>
         <CardContent>
           {loading ? (
             <div className="flex justify-center py-8">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-corteva-600"></div>
             </div>
-          ) : users.length === 0 ? (
-            <EmptyState title="No hay usuarios" description="No se encontraron usuarios en el sistema" icon="users" />
+          ) : filteredUsers.length === 0 ? (
+            <EmptyState
+              title={searchTerm || selectedZone !== "all" ? "No se encontraron usuarios" : "No hay usuarios"}
+              description={
+                searchTerm || selectedZone !== "all"
+                  ? "No se encontraron usuarios con los filtros aplicados"
+                  : "No se encontraron usuarios en el sistema"
+              }
+              icon="users"
+            />
           ) : (
             <div className="rounded-md border overflow-x-auto">
               <Table>
@@ -180,7 +264,7 @@ export default function UsuariosPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {users.map((user) => (
+                  {filteredUsers.map((user) => (
                     <TableRow key={user.id}>
                       <TableCell className="font-medium">{user.full_name || "Sin nombre"}</TableCell>
                       <TableCell>{getRoleBadge(user.role)}</TableCell>
@@ -205,7 +289,7 @@ export default function UsuariosPage() {
                               <img
                                 src={
                                   getDistributorLogoUrl({
-                                    name: user.distributor_name,
+                                    name: user.distributor_name ?? "",
                                     logo_url: user.distributor_logo,
                                   }) || "/placeholder.svg"
                                 }
@@ -236,7 +320,7 @@ export default function UsuariosPage() {
                           <Button
                             variant="outline"
                             size="icon"
-                            className="text-red-500"
+                            className="text-red-500 bg-transparent"
                             onClick={() => setUserToDelete(user.id)}
                           >
                             <Trash2 className="h-4 w-4" />

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useMemo, useCallback } from "react"
 import { supabase } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { useToast } from "@/components/ui/use-toast"
-import { PlusCircle, Edit, Trash2, Save } from "lucide-react"
+import { PlusCircle, Edit, Trash2, Save, Search, X } from "lucide-react"
 import {
   Dialog,
   DialogContent,
@@ -18,6 +18,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
+import { useCachedList } from "@/lib/global-cache"
 
 interface Zone {
   id: string
@@ -26,36 +27,38 @@ interface Zone {
 }
 
 export default function ZonasPage() {
-  const [zones, setZones] = useState<Zone[]>([])
-  const [loading, setLoading] = useState(true)
   const [newZoneName, setNewZoneName] = useState("")
   const [isAddingZone, setIsAddingZone] = useState(false)
   const [editingZone, setEditingZone] = useState<Zone | null>(null)
   const [isDialogOpen, setIsDialogOpen] = useState(false)
+  const [searchTerm, setSearchTerm] = useState("")
   const { toast } = useToast()
+  const [isZonesLoaded, setIsZonesLoaded] = useState(false)
 
-  useEffect(() => {
-    fetchZones()
+  const fetchZones = useCallback(async () => {
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error("Timeout: La consulta tardó demasiado")), 5000),
+    )
+
+    const fetchPromise = supabase.from("zones").select("*").order("name")
+    const result = (await Promise.race([fetchPromise, timeoutPromise])) as any
+
+    if (result.error) throw result.error
+    return result.data || []
   }, [])
 
-  async function fetchZones() {
-    setLoading(true)
-    try {
-      const { data, error } = await supabase.from("zones").select("*").order("name")
+  const { data: zones, loading, error, refresh } = useCachedList("admin-zones", fetchZones, [])
 
-      if (error) throw error
+  // Filtrar zonas basándose en el término de búsqueda
+  const filteredZones = useMemo(() => {
+    if (!searchTerm.trim()) return zones
 
-      setZones(data || [])
-    } catch (error) {
-      console.error("Error al cargar zonas:", error)
-      toast({
-        title: "Error",
-        description: "No se pudieron cargar las zonas",
-        variant: "destructive",
-      })
-    } finally {
-      setLoading(false)
-    }
+    const searchLower = searchTerm.toLowerCase().trim()
+    return zones.filter((zone) => zone.name.toLowerCase().includes(searchLower))
+  }, [zones, searchTerm])
+
+  const clearSearch = () => {
+    setSearchTerm("")
   }
 
   async function handleAddZone() {
@@ -69,22 +72,34 @@ export default function ZonasPage() {
     }
 
     setIsAddingZone(true)
+    const abortController = new AbortController()
+
     try {
-      const { data, error } = await supabase.from("zones").insert({ name: newZoneName.trim() }).select()
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("Timeout al crear zona")), 3000),
+      )
 
-      if (error) throw error
+      const insertPromise = supabase
+        .from("zones")
+        .insert({ name: newZoneName.trim() })
+        .select()
+        .abortSignal(abortController.signal)
 
-      setZones([...zones, data[0]])
+      const result = (await Promise.race([insertPromise, timeoutPromise])) as any
+
+      if (result.error) throw result.error
+
+      refresh()
       setNewZoneName("")
       toast({
         title: "Zona añadida",
         description: "La zona ha sido añadida exitosamente",
       })
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error al añadir zona:", error)
       toast({
         title: "Error",
-        description: "No se pudo añadir la zona",
+        description: "No se pudo añadir la zona: " + error.message,
         variant: "destructive",
       })
     } finally {
@@ -108,7 +123,7 @@ export default function ZonasPage() {
 
       if (error) throw error
 
-      setZones(zones.map((zone) => (zone.id === editingZone.id ? editingZone : zone)))
+      refresh()
 
       toast({
         title: "Zona actualizada",
@@ -145,7 +160,7 @@ export default function ZonasPage() {
         return
       }
 
-      setZones(zones.filter((zone) => zone.id !== id))
+      refresh()
 
       toast({
         title: "Zona eliminada",
@@ -216,6 +231,36 @@ export default function ZonasPage() {
           <CardDescription>Administra las zonas geográficas para distribuidores y equipos</CardDescription>
         </CardHeader>
         <CardContent>
+          {/* Filtro de búsqueda */}
+          <div className="mb-6">
+            <div className="relative max-w-sm">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+              <Input
+                placeholder="Buscar zonas por nombre..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10 pr-10"
+              />
+              {searchTerm && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={clearSearch}
+                  className="absolute right-1 top-1/2 transform -translate-y-1/2 h-8 w-8"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
+            {searchTerm && (
+              <p className="text-sm text-muted-foreground mt-2">
+                {filteredZones.length === 0
+                  ? `No se encontraron zonas que coincidan con "${searchTerm}"`
+                  : `Mostrando ${filteredZones.length} zona${filteredZones.length !== 1 ? "s" : ""} de ${zones.length}`}
+              </p>
+            )}
+          </div>
+
           {loading ? (
             <div className="flex justify-center py-8">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-corteva-600"></div>
@@ -230,8 +275,8 @@ export default function ZonasPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {zones.length > 0 ? (
-                  zones.map((zone) => (
+                {filteredZones.length > 0 ? (
+                  filteredZones.map((zone) => (
                     <TableRow key={zone.id}>
                       <TableCell>
                         {editingZone?.id === zone.id ? (
@@ -285,6 +330,15 @@ export default function ZonasPage() {
                       </TableCell>
                     </TableRow>
                   ))
+                ) : searchTerm ? (
+                  <TableRow>
+                    <TableCell colSpan={3} className="text-center py-8 text-muted-foreground">
+                      No se encontraron zonas que coincidan con "{searchTerm}".
+                      <Button variant="link" onClick={clearSearch} className="ml-2">
+                        Limpiar búsqueda
+                      </Button>
+                    </TableCell>
+                  </TableRow>
                 ) : (
                   <TableRow>
                     <TableCell colSpan={3} className="text-center py-8 text-muted-foreground">

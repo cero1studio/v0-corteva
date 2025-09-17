@@ -26,11 +26,16 @@ export const getSupabaseClient = () => {
         flowType: "pkce",
         storage: typeof window !== "undefined" ? window.localStorage : undefined,
         storageKey: "supabase.auth.token",
+        debug: process.env.NODE_ENV === "development",
       },
       global: {
         headers: {
           "x-client-info": "corteva-sales-platform",
         },
+      },
+      // Aumentar los timeouts para conexiones lentas
+      realtime: {
+        timeout: 60000, // 60 segundos
       },
     })
 

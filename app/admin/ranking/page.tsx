@@ -1,297 +1,176 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useState, useCallback } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Search, Filter, Download, Trophy, Medal, Database } from "lucide-react"
+import { Trophy, Medal, Award, Download } from "lucide-react"
+import { toast } from "@/hooks/use-toast"
+import { getTeamRankingByZone } from "@/app/actions/ranking"
+import { getAllZones } from "@/app/actions/zones"
 import { AdminRankingChart } from "@/components/admin-ranking-chart"
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
-import { EmptyState } from "@/components/empty-state"
+import { AdminZonesChart } from "@/components/admin-zones-chart"
+import * as XLSX from "xlsx"
+import { useCachedList } from "@/lib/global-cache"
 
-// Tipos para los datos
-type Team = {
+interface Team {
   id: string
   name: string
-  zone_id: string
-  zone_name?: string
-  goals: number
-  position?: number
+  captain_name: string
+  zone_name: string
   total_points: number
+  position: number
+  medal_type?: string
+  team_name: string
 }
 
-type Zone = {
+interface Zone {
   id: string
   name: string
-  total_goals?: number
-  total_points?: number
-  teams_count?: number
 }
 
 export default function RankingAdminPage() {
-  const [searchTerm, setSearchTerm] = useState("")
-  const [zoneFilter, setZoneFilter] = useState("all")
-  const [selectedZone, setSelectedZone] = useState<string | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
-  const [teams, setTeams] = useState<Team[]>([])
-  const [zones, setZones] = useState<Zone[]>([])
-  const [distributors, setDistributors] = useState<any[]>([])
-  const [distributorFilter, setDistributorFilter] = useState("all")
-  const [winningZone, setWinningZone] = useState<Zone | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const [selectedZone, setSelectedZone] = useState<string>("all")
 
-  const supabase = createClientComponentClient()
+  const fetchRankingData = useCallback(async () => {
+    const [teamsResult, zonesData] = await Promise.all([getTeamRankingByZone(), getAllZones()])
 
-  // Cargar datos
-  useEffect(() => {
-    async function loadData() {
-      setIsLoading(true)
-      setError(null)
-
-      try {
-        // Cargar zonas
-        const { data: zonesData, error: zonesError } = await supabase.from("zones").select("*")
-
-        if (zonesError) throw new Error(`Error al cargar zonas: ${zonesError.message}`)
-
-        // Cargar equipos con sus zonas
-        const { data: teamsData, error: teamsError } = await supabase.from("teams").select(`
-          id,
-          name,
-          zone_id,
-          zones (
-            id,
-            name
-          )
-        `)
-
-        if (teamsError) throw new Error(`Error al cargar equipos: ${teamsError.message}`)
-
-        // Cargar productos para obtener los puntos
-        const { data: productsData, error: productsError } = await supabase.from("products").select("id, points")
-
-        if (productsError) throw new Error(`Error al cargar productos: ${productsError.message}`)
-
-        // Cargar distribuidores
-        const { data: distributorsData, error: distributorsError } = await supabase.from("distributors").select("*")
-
-        if (distributorsError) throw new Error(`Error al cargar distribuidores: ${distributorsError.message}`)
-
-        // Cargar configuración del sistema para obtener puntos por gol
-        const { data: configData, error: configError } = await supabase.from("system_config").select("*").single()
-
-        if (configError) {
-          console.warn("No se pudo cargar la configuración del sistema:", configError.message)
-        }
-
-        const pointsPerGoal = configData?.points_per_goal || 100
-
-        // Inicializar equipos con puntos en 0
-        const processedTeams = teamsData.map((team) => {
-          return {
-            id: team.id,
-            name: team.name,
-            zone_id: team.zone_id,
-            zone_name: team.zones?.name || "Sin zona",
-            goals: 0,
-            total_points: 0,
-          }
-        })
-
-        // Crear un mapa de equipos para acceso rápido
-        const teamsMap = new Map()
-        processedTeams.forEach((team) => {
-          teamsMap.set(team.id, team)
-        })
-
-        // Crear un mapa de productos para acceso rápido
-        const productsMap = new Map()
-        productsData.forEach((product) => {
-          productsMap.set(product.id, product)
-        })
-
-        // Cargar ventas en lotes para evitar problemas con columnas específicas
-        const { data: salesData, error: salesError } = await supabase.from("sales").select("*")
-
-        if (salesError) throw new Error(`Error al cargar ventas: ${salesError.message}`)
-
-        // Procesar ventas y acumular puntos para cada equipo
-        salesData.forEach((sale) => {
-          // Buscar el ID del equipo en el objeto de venta
-          let teamId = null
-          for (const key in sale) {
-            if (key.includes("team") || key.includes("equipo")) {
-              if (sale[key] && teamsMap.has(sale[key])) {
-                teamId = sale[key]
-                break
-              }
-            }
-          }
-
-          if (!teamId) return // Si no encontramos un ID de equipo válido, saltamos esta venta
-
-          // Buscar el producto y sus puntos
-          const productId = sale.product_id
-          const quantity = sale.quantity || 1
-
-          if (productId && productsMap.has(productId)) {
-            const product = productsMap.get(productId)
-            const points = (product.points || 0) * quantity
-
-            // Actualizar puntos del equipo
-            const team = teamsMap.get(teamId)
-            if (team) {
-              team.total_points += points
-              team.goals = Math.floor(team.total_points / pointsPerGoal)
-            }
-          }
-        })
-
-        // Convertir el mapa de equipos de vuelta a un array
-        const updatedTeams = Array.from(teamsMap.values())
-
-        // Ordenar equipos por goles y luego por puntos totales
-        const sortedTeams = [...updatedTeams].sort((a, b) => {
-          if (b.goals !== a.goals) return b.goals - a.goals
-          return b.total_points - a.total_points
-        })
-
-        // Asignar posiciones
-        sortedTeams.forEach((team, index) => {
-          team.position = index + 1
-        })
-
-        // Calcular goles totales por zona
-        const processedZones = zonesData.map((zone) => {
-          const zoneTeams = sortedTeams.filter((team) => team.zone_id === zone.id)
-          const totalGoals = zoneTeams.reduce((total, team) => total + team.goals, 0)
-          const totalPoints = zoneTeams.reduce((total, team) => total + team.total_points, 0)
-
-          return {
-            id: zone.id,
-            name: zone.name,
-            total_goals: totalGoals,
-            total_points: totalPoints,
-            teams_count: zoneTeams.length,
-          }
-        })
-
-        // Encontrar zona ganadora
-        const sortedZones = [...processedZones].sort((a, b) => {
-          if (b.total_goals !== a.total_goals) return b.total_goals - a.total_goals
-          return b.total_points - a.total_points
-        })
-
-        setTeams(sortedTeams)
-        setZones(processedZones)
-        setDistributors(distributorsData)
-        setWinningZone(sortedZones.length > 0 ? sortedZones[0] : null)
-
-        // Establecer zona seleccionada por defecto si hay zonas
-        if (processedZones.length > 0 && !selectedZone) {
-          setSelectedZone(processedZones[0].id)
-        }
-      } catch (error: any) {
-        console.error("Error cargando datos:", error)
-        setError(error.message)
-      } finally {
-        setIsLoading(false)
-      }
+    if (!teamsResult.success) {
+      throw new Error("Error al cargar el ranking")
     }
 
-    loadData()
-  }, [supabase, selectedZone])
+    return {
+      teams: teamsResult.data || [],
+      zones: zonesData && Array.isArray(zonesData) ? zonesData : [],
+    }
+  }, [])
 
-  // Filtrar equipos
+  const { data, loading, error } = useCachedList("admin-ranking", fetchRankingData, [])
+  const teams = data?.teams || []
+  const zones = data?.zones || []
+
   const filteredTeams = teams.filter((team) => {
-    const matchesSearch = team.name.toLowerCase().includes(searchTerm.toLowerCase())
-    const matchesZone = zoneFilter === "all" || team.zone_id === zoneFilter
-    const matchesDistributor = true // Implementar cuando tengamos la relación equipo-distribuidor
-
-    return matchesSearch && matchesZone && matchesDistributor
+    if (selectedZone === "all") return true
+    return team.zone_name === zones.find((z) => z.id === selectedZone)?.name
   })
 
-  // Obtener equipos de la zona seleccionada
-  const teamsInSelectedZone = selectedZone
-    ? teams
-        .filter((team) => team.zone_id === selectedZone)
-        .sort((a, b) => (b.goals || 0) - (a.goals || 0))
-        .map((team, index) => ({ ...team, position: index + 1 }))
-    : []
+  const downloadExcel = () => {
+    try {
+      if (filteredTeams.length === 0) {
+        toast({
+          title: "Error",
+          description: "No hay datos para exportar",
+          variant: "destructive",
+        })
+        return
+      }
 
-  // Renderizar estado vacío
-  const renderEmptyState = () => (
-    <EmptyState
-      icon={Trophy}
-      title="No hay equipos en el ranking"
-      description="No hay equipos registrados o no tienen ventas registradas."
-      actionLabel="Crear equipo"
-      actionHref="/admin/equipos/nuevo"
-      iconClassName="bg-amber-100"
-    />
-  )
+      // CORREGIDO: Convertir números explícitamente a tipo number
+      const excelData = filteredTeams.map((team, index) => ({
+        Posición: Number(index + 1), // Convertir a number
+        Equipo: team.team_name,
+        Capitán: team.captain_name,
+        Zona: team.zone_name,
+        Goles: Number(Math.floor(team.total_points / 100)), // Convertir a number
+      }))
 
-  // Renderizar estado de error
-  const renderErrorState = () => (
-    <div className="flex flex-col items-center justify-center py-8 text-center">
-      <div className="rounded-full bg-red-100 p-3 text-red-600 mb-4">
-        <Database className="h-6 w-6" />
+      const wb = XLSX.utils.book_new()
+      const ws = XLSX.utils.json_to_sheet(excelData)
+
+      const colWidths = [
+        { wch: 10 }, // Posición
+        { wch: 25 }, // Equipo
+        { wch: 20 }, // Capitán
+        { wch: 15 }, // Zona
+        { wch: 10 }, // Goles
+      ]
+      ws["!cols"] = colWidths
+
+      XLSX.utils.book_append_sheet(wb, ws, "Ranking")
+
+      const excelBuffer = XLSX.write(wb, { bookType: "xlsx", type: "array" })
+      const blob = new Blob([excelBuffer], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      })
+
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `ranking_${new Date().toISOString().split("T")[0]}.xlsx`
+      document.body.appendChild(a)
+      a.click()
+
+      setTimeout(() => {
+        document.body.removeChild(a)
+        URL.revokeObjectURL(url)
+      }, 0)
+
+      toast({
+        title: "Éxito",
+        description: "Archivo Excel descargado correctamente",
+      })
+    } catch (error) {
+      console.error("Error downloading Excel:", error)
+      toast({
+        title: "Error",
+        description: "Error al descargar el archivo Excel",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const getMedalIcon = (position: number) => {
+    switch (position) {
+      case 1:
+        return <Trophy className="h-5 w-5 text-yellow-500" />
+      case 2:
+        return <Medal className="h-5 w-5 text-gray-400" />
+      case 3:
+        return <Award className="h-5 w-5 text-amber-600" />
+      default:
+        return <span className="h-5 w-5 flex items-center justify-center text-sm font-medium">{position}</span>
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-corteva-500 mx-auto"></div>
+          <p className="mt-2 text-muted-foreground">Cargando ranking...</p>
+        </div>
       </div>
-      <h3 className="text-lg font-medium">Error al cargar datos</h3>
-      <p className="text-sm text-muted-foreground mt-1 max-w-md">{error}</p>
-      <Button variant="outline" className="mt-4" onClick={() => window.location.reload()}>
-        Intentar nuevamente
-      </Button>
-    </div>
-  )
+    )
+  }
 
   return (
-    <div className="flex-1 space-y-4">
+    <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight">Ranking del Concurso</h2>
-          <p className="text-muted-foreground">Visualiza y gestiona el ranking de equipos</p>
+          <h1 className="text-3xl font-bold tracking-tight">Ranking Nacional</h1>
+          <p className="text-muted-foreground">Clasificación general de todos los equipos</p>
         </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" className="gap-2">
-            <Download className="h-4 w-4" />
-            Exportar Ranking
-          </Button>
-        </div>
+        <Button variant="outline" onClick={downloadExcel} disabled={filteredTeams.length === 0}>
+          <Download className="mr-2 h-4 w-4" />
+          Descargar Excel
+        </Button>
       </div>
 
-      <Tabs defaultValue="nacional" className="space-y-4">
-        <div className="flex flex-col items-center justify-between gap-4 md:flex-row">
-          <TabsList className="h-10">
-            <TabsTrigger value="nacional" className="text-sm">
-              Ranking Nacional
-            </TabsTrigger>
-            <TabsTrigger value="zona" className="text-sm">
-              Ranking por Zona
-            </TabsTrigger>
-            <TabsTrigger value="grafico" className="text-sm">
-              Gráfico Comparativo
-            </TabsTrigger>
-          </TabsList>
+      <Tabs defaultValue="general" className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="general">Estadísticas Generales</TabsTrigger>
+          <TabsTrigger value="zona">Rendimiento por Zonas</TabsTrigger>
+          <TabsTrigger value="grafico">Evolución del Concurso</TabsTrigger>
+        </TabsList>
 
-          <div className="flex items-center gap-2">
-            <div className="relative">
-              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input
-                type="search"
-                placeholder="Buscar equipo..."
-                className="w-[200px] pl-8"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
-            </div>
-
-            <Select value={zoneFilter} onValueChange={setZoneFilter}>
-              <SelectTrigger className="w-[180px]">
-                <SelectValue placeholder="Zona" />
+        <TabsContent value="general" className="space-y-4">
+          <div className="flex items-center gap-4 mb-4">
+            <Select value={selectedZone} onValueChange={setSelectedZone}>
+              <SelectTrigger className="w-48">
+                <SelectValue placeholder="Todas las zonas" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Todas las zonas</SelectItem>
@@ -302,51 +181,10 @@ export default function RankingAdminPage() {
                 ))}
               </SelectContent>
             </Select>
-
-            <Select value={distributorFilter} onValueChange={setDistributorFilter}>
-              <SelectTrigger className="w-[220px]">
-                <SelectValue placeholder="Distribuidor" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todos los distribuidores</SelectItem>
-                {distributors.map((distributor) => (
-                  <SelectItem key={distributor.id} value={distributor.id}>
-                    <div className="flex items-center gap-2">
-                      <div className="h-5 w-5 overflow-hidden rounded-full bg-gray-200 flex items-center justify-center">
-                        {distributor.logo_url ? (
-                          <img
-                            src={distributor.logo_url || "/placeholder.svg"}
-                            alt={`Logo ${distributor.name}`}
-                            className="h-full w-full object-cover"
-                          />
-                        ) : (
-                          <Database className="h-3 w-3 text-gray-500" />
-                        )}
-                      </div>
-                      <span>{distributor.name}</span>
-                    </div>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => {
-                setSearchTerm("")
-                setZoneFilter("all")
-                setDistributorFilter("all")
-              }}
-            >
-              <Filter className="h-4 w-4" />
-            </Button>
           </div>
-        </div>
 
-        <TabsContent value="nacional" className="space-y-6">
           <Card>
-            <CardHeader className="pb-2">
+            <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Trophy className="h-5 w-5 text-yellow-500" />
                 Ranking Nacional
@@ -354,145 +192,45 @@ export default function RankingAdminPage() {
               <CardDescription>Clasificación general de todos los equipos</CardDescription>
             </CardHeader>
             <CardContent>
-              {isLoading ? (
-                <div className="flex justify-center items-center py-8">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-corteva-600"></div>
+              {filteredTeams.length === 0 ? (
+                <div className="text-center py-12">
+                  <Trophy className="mx-auto h-12 w-12 text-muted-foreground" />
+                  <h3 className="mt-4 text-lg font-semibold">No hay equipos</h3>
+                  <p className="text-muted-foreground">
+                    {selectedZone !== "all"
+                      ? "No se encontraron equipos en la zona seleccionada"
+                      : "Aún no hay equipos registrados"}
+                  </p>
                 </div>
-              ) : error ? (
-                renderErrorState()
-              ) : teams.length === 0 ? (
-                renderEmptyState()
               ) : (
                 <Table>
                   <TableHeader>
                     <TableRow>
                       <TableHead className="w-16">Pos.</TableHead>
                       <TableHead>Equipo</TableHead>
+                      <TableHead>Capitán</TableHead>
                       <TableHead>Zona</TableHead>
                       <TableHead className="text-right">Goles</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredTeams.map((team) => (
+                    {filteredTeams.map((team, index) => (
                       <TableRow key={team.id}>
                         <TableCell className="font-medium">
-                          <div className="flex items-center gap-2">
-                            {team.position}
-                            {team.position === 1 && <span className="text-lg">🥇</span>}
-                            {team.position === 2 && <span className="text-lg">🥈</span>}
-                            {team.position === 3 && <span className="text-lg">🥉</span>}
-                          </div>
+                          <div className="flex items-center gap-2">{getMedalIcon(index + 1)}</div>
                         </TableCell>
-                        <TableCell>{team.name}</TableCell>
-                        <TableCell>{team.zone_name}</TableCell>
-                        <TableCell className="text-right font-bold text-corteva-600">{team.goals}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              )}
-            </CardContent>
-          </Card>
-
-          {winningZone && teams.length > 0 && !error && (
-            <div className="grid gap-6 md:grid-cols-3">
-              <Card className="col-span-1 md:col-span-3">
-                <CardHeader className="pb-2">
-                  <CardTitle className="flex items-center gap-2">
-                    <Medal className="h-5 w-5 text-yellow-500" />
-                    Zona Ganadora
-                  </CardTitle>
-                  <CardDescription>La zona con mayor puntaje acumulado</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex items-center justify-center gap-8 py-4">
-                    <div className="text-center">
-                      <div className="mx-auto h-20 w-20 rounded-full border-4 border-yellow-400 flex items-center justify-center bg-gray-100">
-                        <Trophy className="h-10 w-10 text-yellow-500" />
-                      </div>
-                      <h3 className="mt-2 text-xl font-bold">{winningZone.name}</h3>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-4xl font-bold text-corteva-600">{winningZone.total_goals || 0}</div>
-                      <p className="text-sm text-muted-foreground">Goles totales</p>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-4xl font-bold">{winningZone.teams_count || 0}</div>
-                      <p className="text-sm text-muted-foreground">Equipos</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-          )}
-        </TabsContent>
-
-        <TabsContent value="zona" className="space-y-6">
-          <div className="mb-4">
-            <Select
-              value={selectedZone || ""}
-              onValueChange={(value) => setSelectedZone(value)}
-              disabled={zones.length === 0 || isLoading || !!error}
-            >
-              <SelectTrigger className="w-full md:w-[200px]">
-                <SelectValue placeholder="Seleccionar zona" />
-              </SelectTrigger>
-              <SelectContent>
-                {zones.map((zone) => (
-                  <SelectItem key={zone.id} value={zone.id}>
-                    {zone.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="flex items-center gap-2">
-                <Trophy className="h-5 w-5 text-yellow-500" />
-                Ranking Zona {zones.find((z) => z.id === selectedZone)?.name || ""}
-              </CardTitle>
-              <CardDescription>Clasificación de equipos en la zona seleccionada</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {isLoading ? (
-                <div className="flex justify-center items-center py-8">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-corteva-600"></div>
-                </div>
-              ) : error ? (
-                renderErrorState()
-              ) : teamsInSelectedZone.length === 0 ? (
-                <EmptyState
-                  icon={Trophy}
-                  title="No hay equipos en esta zona"
-                  description="No hay equipos registrados en esta zona o no tienen ventas registradas."
-                  actionLabel="Crear equipo"
-                  actionHref="/admin/equipos/nuevo"
-                  iconClassName="bg-amber-100"
-                />
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-16">Pos.</TableHead>
-                      <TableHead>Equipo</TableHead>
-                      <TableHead className="text-right">Goles</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {teamsInSelectedZone.map((team) => (
-                      <TableRow key={team.id}>
-                        <TableCell className="font-medium">
-                          <div className="flex items-center gap-2">
-                            {team.position}
-                            {team.position === 1 && <span className="text-lg">🥇</span>}
-                            {team.position === 2 && <span className="text-lg">🥈</span>}
-                            {team.position === 3 && <span className="text-lg">🥉</span>}
-                          </div>
+                        <TableCell className="font-medium">{team.team_name}</TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className="bg-green-50">
+                            {team.captain_name}
+                          </Badge>
                         </TableCell>
-                        <TableCell>{team.name}</TableCell>
-                        <TableCell className="text-right font-bold text-corteva-600">{team.goals}</TableCell>
+                        <TableCell>
+                          <Badge variant="secondary">{team.zone_name}</Badge>
+                        </TableCell>
+                        <TableCell className="text-right font-bold text-blue-600">
+                          {Math.floor(team.total_points / 100)}
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -502,38 +240,12 @@ export default function RankingAdminPage() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="grafico" className="space-y-6">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="flex items-center gap-2">
-                <Trophy className="h-5 w-5 text-yellow-500" />
-                Comparativa de Equipos
-              </CardTitle>
-              <CardDescription>Visualización gráfica del ranking nacional</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="h-[500px]">
-                {isLoading ? (
-                  <div className="flex justify-center items-center h-full">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-corteva-600"></div>
-                  </div>
-                ) : error ? (
-                  <div className="flex justify-center items-center h-full">{renderErrorState()}</div>
-                ) : teams.length === 0 ? (
-                  <div className="flex justify-center items-center h-full">
-                    <EmptyState
-                      icon={Trophy}
-                      title="No hay datos para mostrar"
-                      description="No hay equipos con ventas registradas para mostrar en el gráfico."
-                      iconClassName="bg-amber-100"
-                    />
-                  </div>
-                ) : (
-                  <AdminRankingChart teams={teams} />
-                )}
-              </div>
-            </CardContent>
-          </Card>
+        <TabsContent value="zona" className="space-y-4">
+          <AdminZonesChart />
+        </TabsContent>
+
+        <TabsContent value="grafico" className="space-y-4">
+          <AdminRankingChart />
         </TabsContent>
       </Tabs>
     </div>

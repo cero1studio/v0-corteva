@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Trophy, Award, Flag, User, Package } from "lucide-react"
+import { Trophy, Award, Flag, User, Package, Target } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
@@ -14,9 +14,10 @@ import { useToast } from "@/hooks/use-toast"
 import { EmptyState } from "@/components/empty-state"
 import { useRouter } from "next/navigation"
 import { Progress } from "@/components/ui/progress"
-import { getImageUrl, getDistributorLogoUrl } from "@/lib/utils/image"
+import { getImageUrl } from "@/lib/utils/image"
 import { getTeamRankingByZone } from "@/app/actions/ranking"
 import { AuthGuard } from "@/components/auth-guard"
+import { chartsCache } from "@/lib/charts-cache"
 
 // Constante para la conversión de puntos a goles
 const PUNTOS_POR_GOL = 100
@@ -31,6 +32,7 @@ function CapitanDashboardContent() {
   const [teamData, setTeamData] = useState<any>(null)
   const [salesData, setSalesData] = useState<any[]>([])
   const [clientsData, setClientsData] = useState<any[]>([])
+  const [freeKickData, setFreeKickData] = useState<any[]>([])
   const [rankingPosition, setRankingPosition] = useState<number | null>(null)
   const [hasTeam, setHasTeam] = useState(false)
   const [zoneRanking, setZoneRanking] = useState<any[]>([])
@@ -38,16 +40,49 @@ function CapitanDashboardContent() {
   const [distributorData, setDistributorData] = useState<any>(null)
   const [puntosParaGol, setPuntosParaGol] = useState(PUNTOS_POR_GOL)
   const [systemConfig, setSystemConfig] = useState<any>(null)
+  const [retoActual, setRetoActual] = useState<string>("")
+  const [retoActivo, setRetoActivo] = useState(false)
 
   const [showCelebration, setShowCelebration] = useState(false)
 
   useEffect(() => {
-    checkUserAndTeam()
-    loadSystemConfig()
+    let mounted = true
+    let timeoutId: NodeJS.Timeout
+
+    // Timeout de seguridad para evitar loading infinito
+    timeoutId = setTimeout(() => {
+      if (mounted) {
+        console.log("CAPITAN DASHBOARD: Timeout reached, forcing loading to false")
+        setLoading(false)
+      }
+    }, 10000)
+
+    const initializeDashboard = async () => {
+      try {
+        console.log("CAPITAN DASHBOARD: Initializing dashboard")
+        await checkUserAndTeam()
+        await loadSystemConfig()
+      } catch (error) {
+        console.error("CAPITAN DASHBOARD: Error initializing:", error)
+      } finally {
+        if (mounted) {
+          setLoading(false)
+        }
+      }
+    }
+
+    initializeDashboard()
+
+    return () => {
+      mounted = false
+      clearTimeout(timeoutId)
+    }
   }, [])
 
   async function loadSystemConfig() {
     try {
+      console.log("CAPITAN DASHBOARD: Loading system config")
+
       // Obtener configuración del sistema
       const { data: configData, error: configError } = await supabase
         .from("system_config")
@@ -59,14 +94,36 @@ function CapitanDashboardContent() {
         setSystemConfig(configData)
         setPuntosParaGol(Number(configData.value) || PUNTOS_POR_GOL)
       }
+
+      // Cargar reto actual
+      const { data: retoData, error: retoError } = await supabase
+        .from("system_config")
+        .select("*")
+        .eq("key", "reto_actual")
+        .single()
+
+      if (!retoError && retoData && retoData.value) {
+        setRetoActual(retoData.value)
+      }
+
+      // Cargar estado del reto
+      const { data: activoData, error: activoError } = await supabase
+        .from("system_config")
+        .select("*")
+        .eq("key", "reto_activo")
+        .single()
+
+      if (!activoError && activoData) {
+        setRetoActivo(activoData.value === "true" || activoData.value === true)
+      }
     } catch (error) {
-      console.error("Error al cargar configuración:", error)
+      console.error("CAPITAN DASHBOARD: Error loading system config:", error)
     }
   }
 
   async function checkUserAndTeam() {
     try {
-      setLoading(true)
+      console.log("CAPITAN DASHBOARD: Checking user and team")
 
       // Obtener el usuario actual
       const {
@@ -74,25 +131,33 @@ function CapitanDashboardContent() {
       } = await supabase.auth.getUser()
 
       if (!authUser) {
+        console.log("CAPITAN DASHBOARD: No auth user, redirecting to login")
         router.push("/login")
         return
       }
+
+      console.log("CAPITAN DASHBOARD: Auth user found:", authUser.email)
 
       // Obtener el perfil del usuario con información detallada
       const { data: profileData, error: profileError } = await supabase
         .from("profiles")
         .select(`
-         *,
-         zones:zone_id(*),
-         teams:team_id(
-           *,
-           distributors:distributor_id(*)
-         )
-       `)
+        *,
+        zones:zone_id(*),
+        teams:team_id(
+          *,
+          distributors:distributor_id(*)
+        )
+      `)
         .eq("id", authUser.id)
         .single()
 
-      if (profileError) throw profileError
+      if (profileError) {
+        console.error("CAPITAN DASHBOARD: Profile error:", profileError)
+        throw profileError
+      }
+
+      console.log("CAPITAN DASHBOARD: Profile data:", profileData)
 
       setUser(profileData)
       setUserData(profileData)
@@ -104,146 +169,203 @@ function CapitanDashboardContent() {
 
       // Verificar si el usuario tiene un equipo
       if (!profileData.team_id) {
+        console.log("CAPITAN DASHBOARD: No team found, checking if captain")
         // Si no tiene equipo, verificar si es capitán
         if (profileData.role === "capitan") {
+          console.log("CAPITAN DASHBOARD: Captain without team, redirecting to create team")
           // Redirigir a la página de creación de equipo
           router.push("/capitan/crear-equipo")
           return
         }
       } else {
+        console.log("CAPITAN DASHBOARD: Team found, loading team data")
         // Si tiene equipo, obtener los datos del equipo con información detallada
         const { data: teamData, error: teamError } = await supabase
           .from("teams")
           .select(`
-           *,
-           zones:zone_id(*),
-           distributors:distributor_id(*)
-         `)
+          *,
+          zones:zone_id(*),
+          distributors:distributor_id(*)
+        `)
           .eq("id", profileData.team_id)
           .single()
 
-        if (teamError) throw teamError
-
-        setTeam(teamData)
-        setTeamData(teamData)
-        setHasTeam(true)
-
-        // Actualizar datos de zona con los del equipo si están disponibles
-        if (teamData.zones) {
-          setZoneData(teamData.zones)
+        if (teamError) {
+          console.error("CAPITAN DASHBOARD: Team error:", teamError)
+          throw teamError
         }
 
-        // Guardar datos del distribuidor del equipo
-        if (teamData.distributors) {
-          setDistributorData(teamData.distributors)
-        }
-      }
+        console.log("CAPITAN DASHBOARD: Team data:", teamData)
 
-      // Si tiene equipo, cargar datos adicionales
-      if (profileData.team_id) {
+        if (teamData) {
+          setTeam(teamData)
+          setTeamData(teamData)
+          setHasTeam(true)
+
+          // Actualizar datos de zona con los del equipo si están disponibles
+          if (teamData.zones) {
+            setZoneData(teamData.zones)
+          }
+
+          // Guardar datos del distribuidor del equipo
+          if (teamData.distributors) {
+            setDistributorData(teamData.distributors)
+          }
+        }
+
+        // Cargar datos adicionales del equipo
         await loadTeamData(authUser.id, profileData.team_id)
       }
     } catch (error: any) {
-      console.error("Error al verificar usuario y equipo:", error)
-      toast({
-        title: "Error",
-        description: error?.message || "No se pudo cargar la información del usuario o equipo",
-        variant: "destructive",
-      })
-    } finally {
-      setLoading(false)
+      console.error("CAPITAN DASHBOARD: Error checking user and team:", error)
+      if (userData) {
+        toast({
+          title: "Error",
+          description: error?.message || "No se pudo cargar la información del usuario o equipo",
+          variant: "destructive",
+        })
+      }
     }
   }
 
   async function loadTeamData(userId: string, teamId: string) {
     try {
-      console.log("Cargando datos del equipo para usuario:", userId, "equipo:", teamId)
+      console.log("CAPITAN DASHBOARD: Loading team data for:", teamId)
 
       // Obtener todos los miembros del equipo
-      const { data: teamMembers, error: teamError } = await supabase.from("profiles").select("id").eq("team_id", teamId)
+      const { data: teamMembers, error: teamMembersError } = await supabase
+        .from("profiles")
+        .select("id")
+        .eq("team_id", teamId)
 
-      if (teamError) {
-        console.error("Error al obtener miembros del equipo:", teamError)
-        return
-      }
+      if (teamMembersError) throw teamMembersError
 
-      if (!teamMembers || teamMembers.length === 0) {
-        console.log("No se encontraron miembros en el equipo")
-        return
-      }
+      const memberIds = teamMembers?.map((member) => member.id) || []
+      console.log("CAPITAN DASHBOARD: Team member IDs:", memberIds)
 
-      // Obtener IDs de todos los miembros del equipo
-      const memberIds = teamMembers.map((member) => member.id)
-      console.log("IDs de miembros del equipo:", memberIds)
+      // Obtener configuración de puntos para gol
+      const { data: puntosConfig } = await supabase
+        .from("system_config")
+        .select("value")
+        .eq("key", "puntos_para_gol")
+        .maybeSingle()
 
-      // Cargar ventas de todos los miembros del equipo
-      const { data: salesData, error: salesError } = await supabase
-        .from("sales")
-        .select(`
-         *,
-         products(id, name, image_url)
-       `)
-        .in("representative_id", memberIds)
-        .order("created_at", { ascending: false })
+      const puntosParaGol = puntosConfig?.value ? Number(puntosConfig.value) : PUNTOS_POR_GOL
+      setPuntosParaGol(puntosParaGol)
 
-      if (salesError) {
-        console.error("Error cargando ventas:", salesError)
-      } else {
-        console.log("Ventas cargadas:", salesData?.length || 0)
-        setSalesData(salesData || [])
-      }
+      // Obtener ventas del equipo (por miembros + ventas directas) - CON CACHE
+      const [salesByMembersResult, salesByTeamResult] = await Promise.all([
+        memberIds.length > 0
+          ? chartsCache.wrapChartQuery(`sales_members_${teamId}`, () =>
+              supabase
+                .from("sales")
+                .select(`*, products(id, name, image_url)`)
+                .in("representative_id", memberIds)
+                .order("created_at", { ascending: false }),
+            )
+          : Promise.resolve({ data: [], error: null }),
+        chartsCache.wrapChartQuery(`sales_team_${teamId}`, () =>
+          supabase
+            .from("sales")
+            .select(`*, products(id, name, image_url)`)
+            .eq("team_id", teamId)
+            .order("created_at", { ascending: false }),
+        ),
+      ])
 
-      // Cargar clientes de todos los miembros del equipo
-      const { data: clientsData, error: clientsError } = await supabase
-        .from("competitor_clients")
-        .select("*")
-        .in("representative_id", memberIds)
-        .order("created_at", { ascending: false })
+      const salesByMembers = salesByMembersResult.data || []
+      const salesByTeam = salesByTeamResult.data || []
+      const allSales = [...salesByMembers, ...salesByTeam]
 
-      if (clientsError) {
-        console.error("Error cargando clientes:", clientsError)
-      } else {
-        console.log("Clientes cargados:", clientsData?.length || 0)
-        setClientsData(clientsData || [])
-      }
+      console.log("CAPITAN DASHBOARD: Sales by members:", salesByMembers.length)
+      console.log("CAPITAN DASHBOARD: Sales by team:", salesByTeam.length)
+      console.log("CAPITAN DASHBOARD: Total sales:", allSales.length)
 
-      // Cargar ranking real de la zona usando las funciones de server actions
-      try {
-        if (teamId && teamId !== "null" && teamId !== "undefined") {
-          const zoneId = teamData?.zone_id || userData?.zone_id
+      // Obtener clientes del equipo
+      const [clientsByMembersResult, clientsByTeamResult] = await Promise.all([
+        memberIds.length > 0
+          ? supabase
+              .from("competitor_clients")
+              .select(`*, profiles(full_name)`)
+              .in("representative_id", memberIds)
+              .order("created_at", { ascending: false })
+          : Promise.resolve({ data: [], error: null }),
+        supabase
+          .from("competitor_clients")
+          .select(`*, profiles(full_name)`)
+          .eq("team_id", teamId)
+          .order("created_at", { ascending: false }),
+      ])
 
-          if (zoneId) {
-            // Usar la función de server action en lugar de fetch
-            const rankingResult = await getTeamRankingByZone(zoneId)
+      const clientsByMembers = clientsByMembersResult.data || []
+      const clientsByTeam = clientsByTeamResult.data || []
 
-            if (rankingResult.success && rankingResult.data) {
-              setZoneRanking(rankingResult.data)
-              const position = rankingResult.data.findIndex((t: any) => t.team_id === teamId) + 1
-              setRankingPosition(position > 0 ? position : null)
-            } else {
-              console.error("Error en ranking:", rankingResult.error)
-            }
-          }
+      // Eliminar duplicados por ID
+      const uniqueClientsMap = new Map()
+      ;[...clientsByMembers, ...clientsByTeam].forEach((client) => {
+        if (!uniqueClientsMap.has(client.id)) {
+          uniqueClientsMap.set(client.id, client)
         }
-      } catch (rankingError) {
-        console.error("Error al cargar ranking:", rankingError)
+      })
+      const allClients = Array.from(uniqueClientsMap.values())
+
+      console.log("CAPITAN DASHBOARD: Clients by members:", clientsByMembers.length)
+      console.log("CAPITAN DASHBOARD: Clients by team:", clientsByTeam.length)
+      console.log("CAPITAN DASHBOARD: Unique clients:", allClients.length)
+
+      // Obtener tiros libres del equipo
+      const { data: freeKicks, error: freeKicksError } = await supabase
+        .from("free_kick_goals")
+        .select("*")
+        .eq("team_id", teamId)
+        .order("created_at", { ascending: false })
+
+      if (freeKicksError) {
+        console.error("Error loading free kicks:", freeKicksError)
       }
+
+      const allFreeKicks = freeKicks || []
+      console.log("CAPITAN DASHBOARD: Free kicks:", allFreeKicks.length)
+
+      // Obtener ranking de la zona - CON CACHE
+      const rankingResult = await chartsCache.wrapRankingQuery(
+        () => getTeamRankingByZone(teamData?.zone_id || userData?.zone_id),
+        teamData?.zone_id || userData?.zone_id,
+      )
+
+      // Actualizar estados
+      setSalesData(allSales)
+      setClientsData(allClients)
+      setFreeKickData(allFreeKicks)
+      setZoneRanking(rankingResult.success ? rankingResult.data || [] : [])
+
+      // Calcular posición en el ranking
+      const position = zoneRanking.findIndex((t: any) => t.team_id === teamId) + 1
+      setRankingPosition(position > 0 ? position : null)
+
+      console.log("CAPITAN DASHBOARD: Final data loaded:")
+      console.log("- Sales:", allSales.length)
+      console.log("- Clients:", allClients.length)
+      console.log("- Free kicks:", allFreeKicks.length)
+      console.log("- Zone ranking position:", position)
     } catch (error) {
-      console.error("Error al cargar datos del equipo:", error)
+      console.error("CAPITAN DASHBOARD: Error loading team data:", error)
+      toast({
+        title: "Error",
+        description: "Error al cargar datos del equipo: " + (error as Error).message,
+        variant: "destructive",
+      })
     }
   }
-
-  useEffect(() => {
-    if (team && user) {
-      loadTeamData(user.id, team.id)
-    }
-  }, [team, user])
 
   // Si está cargando, mostrar indicador
   if (loading) {
     return (
-      <div className="flex justify-center items-center h-full">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-corteva-600"></div>
+      <div className="flex justify-center items-center h-full min-h-[400px]">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-corteva-600 mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Cargando dashboard...</p>
+        </div>
       </div>
     )
   }
@@ -265,21 +387,18 @@ function CapitanDashboardContent() {
     )
   }
 
-  // Calcular estadísticas usando datos reales de ventas
+  // Calcular estadísticas usando datos reales de ventas, clientes y tiros libres
   const puntosVentas = salesData.reduce((sum, sale) => sum + (sale.points || 0), 0)
   const puntosClientes = clientsData.length * 200 // 200 puntos por cliente
-  const totalPuntos = puntosVentas + puntosClientes
+  const puntosTirosLibres = freeKickData.reduce((sum, goal) => sum + (goal.points || 0), 0)
+  const totalPuntos = puntosVentas + puntosClientes + puntosTirosLibres
   const totalGoles = Math.floor(totalPuntos / puntosParaGol)
   const puntosSobrantes = totalPuntos % puntosParaGol
   const puntosParaSiguienteGol = puntosParaGol - puntosSobrantes
   const porcentajeCompletado = (puntosSobrantes / puntosParaGol) * 100
   const totalSales = salesData.length
   const totalClients = clientsData.length
-
-  // Agregar después de la línea donde se calculan las estadísticas
-  console.log("Datos de ventas:", salesData)
-  console.log("Puntos de ventas calculados:", puntosVentas)
-  console.log("Total de ventas:", totalSales)
+  const totalFreeKicks = freeKickData.length
 
   return (
     <div className="flex-1 space-y-6 p-6">
@@ -292,24 +411,29 @@ function CapitanDashboardContent() {
               Equipo: {teamData?.name || "Tu Equipo"}
             </div>
           </div>
-          <p className="text-muted-foreground flex items-center gap-2 mt-1">
+          <div className="text-muted-foreground flex items-center gap-2 mt-1">
             Zona: {zoneData?.name || "N/A"} |
-            <span className="flex items-center">
-              Distribuidor:
-              {distributorData && (
-                <img
-                  src={getDistributorLogoUrl(distributorData) || "/placeholder.svg"}
-                  alt={distributorData.name || "Distribuidor"}
-                  className="h-6 w-auto ml-2"
-                  onError={(e) => {
-                    e.currentTarget.src = "/placeholder.svg"
-                  }}
-                />
-              )}
-            </span>
-          </p>
+            <span className="flex items-center">Distribuidor: {distributorData?.name || "N/A"}</span>
+          </div>
         </div>
       </div>
+
+      {/* Tiro libre sin arquero - Solo mostrar si está activo */}
+      {retoActivo && retoActual && (
+        <Card className="border-2 border-corteva-200 bg-gradient-to-r from-corteva-50 to-orange-50">
+          <CardContent className="p-6">
+            <div className="flex items-start gap-4">
+              <div className="rounded-full p-3 bg-corteva-500 text-white">
+                <Target className="h-6 w-6" />
+              </div>
+              <div className="flex-1">
+                <h3 className="font-bold text-corteva-900 mb-2 text-lg">⚽ Tiro libre sin arquero</h3>
+                <p className="text-corteva-700 leading-relaxed">{retoActual}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
         <Card className="border-2 border-corteva-100">
@@ -365,6 +489,12 @@ function CapitanDashboardContent() {
                   <span>Puntos por clientes:</span>
                   <span>{puntosClientes.toLocaleString()}</span>
                 </div>
+                {puntosTirosLibres > 0 && (
+                  <div className="flex justify-between text-xs text-muted-foreground">
+                    <span>Puntos por tiros libres:</span>
+                    <span>{puntosTirosLibres.toLocaleString()}</span>
+                  </div>
+                )}
                 <div className="border-t pt-1 flex justify-between text-xs font-medium">
                   <span>Total puntos:</span>
                   <span>{totalPuntos.toLocaleString()}</span>
@@ -412,18 +542,23 @@ function CapitanDashboardContent() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Clientes Registrados</CardTitle>
+            <CardTitle className="text-sm font-medium">Clientes + Tiros Libres</CardTitle>
             <User className="h-4 w-4 text-corteva-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{totalClients}</div>
-            {totalClients > 0 ? (
-              <p className="text-xs text-muted-foreground mt-2">
-                Último registro: {clientsData[0] ? new Date(clientsData[0].created_at).toLocaleDateString() : "N/A"}
-              </p>
-            ) : (
-              <p className="text-xs text-muted-foreground mt-2">No has registrado clientes aún</p>
-            )}
+            <div className="text-2xl font-bold">{totalClients + totalFreeKicks}</div>
+            <div className="mt-2 space-y-1">
+              <div className="flex justify-between text-xs text-muted-foreground">
+                <span>Clientes:</span>
+                <span>{totalClients}</span>
+              </div>
+              {totalFreeKicks > 0 && (
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  <span>Tiros libres:</span>
+                  <span>{totalFreeKicks}</span>
+                </div>
+              )}
+            </div>
           </CardContent>
           {totalClients === 0 && (
             <CardFooter>
@@ -439,6 +574,7 @@ function CapitanDashboardContent() {
         <TabsList>
           <TabsTrigger value="ventas">Ventas</TabsTrigger>
           <TabsTrigger value="clientes">Clientes</TabsTrigger>
+          {totalFreeKicks > 0 && <TabsTrigger value="tiros-libres">Tiros Libres</TabsTrigger>}
         </TabsList>
 
         <TabsContent value="ventas" className="space-y-4">
@@ -530,14 +666,14 @@ function CapitanDashboardContent() {
                     {clientsData.slice(0, 5).map((client) => (
                       <div key={client.id} className="flex justify-between items-center border-b pb-2">
                         <div>
-                          <p className="font-medium">{client.ganadero_name || client.name || "Cliente"}</p>
+                          <p className="font-medium">{client.client_name || "Cliente"}</p>
                           <p className="text-sm text-muted-foreground">
                             {new Date(client.created_at).toLocaleDateString()}
                           </p>
                         </div>
                         <div className="text-right">
                           <p className="text-sm text-muted-foreground">
-                            {client.producto_anterior || "Competidor no especificado"}
+                            {client.profiles?.full_name || "No especificado"}
                           </p>
                         </div>
                       </div>
@@ -558,6 +694,38 @@ function CapitanDashboardContent() {
             </Card>
           </div>
         </TabsContent>
+
+        {totalFreeKicks > 0 && (
+          <TabsContent value="tiros-libres" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Target className="h-5 w-5 text-corteva-500" />
+                  Tiros Libres Otorgados
+                </CardTitle>
+                <CardDescription>Puntos adicionales otorgados por el administrador</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {freeKickData.slice(0, 5).map((goal) => (
+                    <div key={goal.id} className="flex justify-between items-center border-b pb-2">
+                      <div>
+                        <p className="font-medium">{goal.reason || "Tiro libre"}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {new Date(goal.created_at).toLocaleDateString()}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-medium text-green-600">+{goal.points || 0} puntos</p>
+                        <p className="text-sm text-muted-foreground">Tiro libre</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        )}
       </Tabs>
 
       <GoalCelebration

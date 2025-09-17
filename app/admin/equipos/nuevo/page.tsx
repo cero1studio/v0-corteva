@@ -12,7 +12,7 @@ import { AlertCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { createTeam } from "@/app/actions/teams"
 import { getZones } from "@/app/actions/zones"
-import { getDistributors } from "@/app/actions/distributors"
+import { getAllDistributors as getDistributors } from "@/app/actions/distributors"
 import { getCaptains } from "@/app/actions/captains"
 import { supabase } from "@/lib/supabase/client"
 

@@ -30,7 +30,7 @@ export async function signIn(formData: FormData) {
 
     if (profileError) {
       console.error("Error al obtener perfil:", profileError)
-      return { error: "Error al obtener información del usuario" }
+      return { error: "Error al obtener perfil: " + profileError.message }
     }
 
     // Devolver éxito y el rol para que el cliente maneje la redirección
@@ -40,7 +40,7 @@ export async function signIn(formData: FormData) {
     }
   } catch (error: any) {
     console.error("Error de inicio de sesión:", error)
-    return { error: "Error al iniciar sesión" }
+    return { error: "Error al iniciar sesión." }
   }
 }
 
