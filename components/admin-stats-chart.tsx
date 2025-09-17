@@ -52,28 +52,27 @@ export function AdminStatsChart() {
 
       const puntosParaGol = configData?.value ? Number(configData.value) : 100
 
-      // Colores para las barras (mantener los existentes)
       const colors = [
-        "#f59e0b",
-        "#4ade80",
-        "#3b82f6",
-        "#ec4899",
-        "#8b5cf6",
-        "#14b8a6",
-        "#f43f5e",
-        "#06b6d4",
-        "#eab308",
-        "#a855f7",
-        "#10b981",
-        "#ef4444",
-        "#6366f1",
-        "#84cc16",
-        "#d946ef",
-        "#0ea5e9",
-        "#f97316",
-        "#22c55e",
-        "#8b5cf6",
-        "#06b6d4",
+        "#3b82f6", // Azul brillante
+        "#10b981", // Verde esmeralda
+        "#f59e0b", // Amarillo dorado
+        "#ef4444", // Rojo vibrante
+        "#8b5cf6", // Púrpura
+        "#06b6d4", // Cian
+        "#f97316", // Naranja
+        "#84cc16", // Lima
+        "#ec4899", // Rosa
+        "#14b8a6", // Teal
+        "#6366f1", // Índigo
+        "#22c55e", // Verde brillante
+        "#eab308", // Amarillo
+        "#d946ef", // Magenta
+        "#0ea5e9", // Azul cielo
+        "#a855f7", // Violeta
+        "#059669", // Verde oscuro
+        "#dc2626", // Rojo oscuro
+        "#7c3aed", // Púrpura oscuro
+        "#0891b2", // Cian oscuro
       ]
 
       // Formatear datos para el gráfico usando datos del ranking
