@@ -87,9 +87,6 @@ export async function getFreeKickGoals() {
           captain_id,
           zones (
             name
-          ),
-          captain:captain_id (
-            full_name
           )
         ),
         profiles (
@@ -102,9 +99,29 @@ export async function getFreeKickGoals() {
       return []
     }
 
+    const teamIds = [...new Set((goals || []).map((goal) => goal.team_id))]
+    const captainNames: Record<string, string> = {}
+
+    for (const teamId of teamIds) {
+      const { data: team } = await adminSupabase
+        .from("teams")
+        .select(`
+          captain_id,
+          captain:captain_id (
+            full_name
+          )
+        `)
+        .eq("id", teamId)
+        .single()
+
+      if (team?.captain?.full_name) {
+        captainNames[teamId] = team.captain.full_name
+      }
+    }
+
     const goalsWithCaptains = (goals || []).map((goal) => ({
       ...goal,
-      captain_name: goal.teams?.captain?.full_name || "Sin capitán",
+      captain_name: captainNames[goal.team_id] || "Sin capitán",
     }))
 
     return goalsWithCaptains
@@ -203,7 +220,6 @@ export async function getTeamsByZone(zoneId: string) {
 
 export async function getCaptainsByZone(zoneId: string) {
   try {
-    // Usar la relación específica profiles.team_id -> teams.id
     const { data: captains, error } = await adminSupabase
       .from("profiles")
       .select(`
