@@ -291,8 +291,8 @@ export async function exportFreeKickGoalsToExcel() {
       Equipo: goal.teams?.name || "Sin equipo",
       Capitán: goal.captain_name || "Sin capitán",
       Zona: goal.teams?.zones?.name || "Sin zona",
-      Goles: Math.floor(goal.points / 100),
-      Puntos: goal.points,
+      Goles: Number(Math.floor(goal.points / 100)), // Asegurar que sea número
+      Puntos: Number(goal.points), // Asegurar que sea número
       Razón: goal.reason,
       Fecha: new Date(goal.created_at).toLocaleDateString("es-ES"),
       "Creado por": goal.profiles?.full_name || "Admin",

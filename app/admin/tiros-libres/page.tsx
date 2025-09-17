@@ -81,13 +81,38 @@ export default function TirosLibresPage() {
 
   const handleExportExcel = async () => {
     setExporting(true)
+    setMessage(null)
+
     try {
       const result = await exportFreeKickGoalsToExcel()
 
       if (result.success && result.data) {
-        const ws = XLSX.utils.json_to_sheet(result.data)
+        // Crear worksheet con formato específico para números
+        const ws = XLSX.utils.json_to_sheet(result.data, {
+          cellStyles: true,
+          raw: false,
+        })
+
+        // Configurar formato de columnas numéricas
+        const range = XLSX.utils.decode_range(ws["!ref"] || "A1")
+        for (let row = range.s.r + 1; row <= range.e.r; row++) {
+          // Columna Goles (D)
+          const golesCell = XLSX.utils.encode_cell({ r: row, c: 3 })
+          if (ws[golesCell]) {
+            ws[golesCell].t = "n" // Tipo número
+          }
+
+          // Columna Puntos (E)
+          const puntosCell = XLSX.utils.encode_cell({ r: row, c: 4 })
+          if (ws[puntosCell]) {
+            ws[puntosCell].t = "n" // Tipo número
+          }
+        }
+
         const wb = XLSX.utils.book_new()
         XLSX.utils.book_append_sheet(wb, ws, "Tiros Libres")
+
+        // Generar y descargar archivo
         XLSX.writeFile(wb, `tiros-libres-${new Date().toISOString().split("T")[0]}.xlsx`)
 
         setMessage({ type: "success", text: "Archivo Excel descargado exitosamente" })
