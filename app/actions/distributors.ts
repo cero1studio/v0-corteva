@@ -92,4 +92,4 @@ export async function deleteDistributor(id: string) {
   }
 }
 
-import { getDistributors } from "@/app/actions/distributors"
+export const getDistributors = getAllDistributors

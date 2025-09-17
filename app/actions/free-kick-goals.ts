@@ -186,3 +186,31 @@ export async function getTeamsByZone(zoneId: string) {
     return []
   }
 }
+
+export async function getCaptainsByZone(zoneId: string) {
+  try {
+    const { data: captains, error } = await adminSupabase
+      .from("profiles")
+      .select(`
+        id, 
+        full_name,
+        teams (
+          id,
+          name
+        )
+      `)
+      .eq("role", "capitan")
+      .eq("zone_id", zoneId)
+      .order("full_name", { ascending: true })
+
+    if (error) {
+      console.error("Error fetching captains:", error)
+      return []
+    }
+
+    return captains || []
+  } catch (error) {
+    console.error("Unexpected error fetching captains:", error)
+    return []
+  }
+}

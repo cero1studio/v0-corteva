@@ -28,3 +28,7 @@ export const adminSupabase = createClient<Database>(
     },
   },
 )
+
+export function createServerSupabaseClient() {
+  return createClient<Database>(supabaseUrl, supabaseAnonKey)
+}

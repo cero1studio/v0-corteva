@@ -15,7 +15,7 @@ import {
   getFreeKickGoals,
   deleteFreeKickGoal,
   getZones,
-  getTeamsByZone,
+  getCaptainsByZone, // importar getCaptainsByZone en lugar de getTeamsByZone
 } from "@/app/actions/free-kick-goals"
 import { useCachedList } from "@/lib/global-cache"
 
@@ -24,15 +24,19 @@ interface Zone {
   name: string
 }
 
-interface Team {
+interface Captain {
   id: string
-  name: string
+  full_name: string
+  teams: {
+    id: string
+    name: string
+  }
 }
 
 export default function TirosLibresPage() {
-  const [teams, setTeams] = useState<Team[]>([])
+  const [captains, setCaptains] = useState<Captain[]>([]) // cambiar teams por captains
   const [selectedZone, setSelectedZone] = useState<string>("")
-  const [selectedTeam, setSelectedTeam] = useState<string>("")
+  const [selectedCaptain, setSelectedCaptain] = useState<string>("") // cambiar selectedTeam por selectedCaptain
   const [submitting, setSubmitting] = useState(false)
   const [deleting, setDeleting] = useState<string | null>(null)
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
@@ -46,24 +50,25 @@ export default function TirosLibresPage() {
   const zones = data?.zones || []
   const freeKickGoals = data?.goals || []
 
-  // Cargar equipos cuando se selecciona una zona
+  // Cargar capitanes cuando se selecciona una zona
   useEffect(() => {
-    async function loadTeams() {
+    async function loadCaptains() {
+      // cambiar loadTeams por loadCaptains
       if (selectedZone) {
         try {
-          const teamsData = await getTeamsByZone(selectedZone)
-          setTeams(teamsData)
-          setSelectedTeam("") // Reset team selection
+          const captainsData = await getCaptainsByZone(selectedZone) // usar getCaptainsByZone
+          setCaptains(captainsData) // usar setCaptains
+          setSelectedCaptain("") // Reset captain selection
         } catch (error) {
-          console.error("Error loading teams:", error)
-          setMessage({ type: "error", text: "Error al cargar los equipos" })
+          console.error("Error loading captains:", error)
+          setMessage({ type: "error", text: "Error al cargar los capitanes" }) // mensaje de capitanes
         }
       } else {
-        setTeams([])
-        setSelectedTeam("")
+        setCaptains([]) // usar setCaptains
+        setSelectedCaptain("") // usar setSelectedCaptain
       }
     }
-    loadTeams()
+    loadCaptains() // llamar loadCaptains
   }, [selectedZone])
 
   const handleSubmit = async (formData: FormData) => {
@@ -79,7 +84,7 @@ export default function TirosLibresPage() {
         await refresh()
         // Reset form
         setSelectedZone("")
-        setSelectedTeam("")
+        setSelectedCaptain("") // usar setSelectedCaptain
         const form = document.querySelector("form") as HTMLFormElement
         form?.reset()
       } else {
@@ -187,17 +192,32 @@ export default function TirosLibresPage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="team_id">Equipo</Label>
-                <Select name="team_id" value={selectedTeam} onValueChange={setSelectedTeam} disabled={!selectedZone}>
+                <Label htmlFor="team_id">Capitán</Label> {/* cambiar label de Equipo a Capitán */}
+                <Select
+                  name="team_id"
+                  value={selectedCaptain}
+                  onValueChange={setSelectedCaptain}
+                  disabled={!selectedZone}
+                >
+                  {" "}
+                  {/* usar selectedCaptain */}
                   <SelectTrigger>
-                    <SelectValue placeholder={selectedZone ? "Selecciona un equipo" : "Primero selecciona una zona"} />
+                    <SelectValue placeholder={selectedZone ? "Selecciona un capitán" : "Primero selecciona una zona"} />{" "}
+                    {/* cambiar placeholder */}
                   </SelectTrigger>
                   <SelectContent>
-                    {teams.map((team) => (
-                      <SelectItem key={team.id} value={team.id}>
-                        {team.name}
-                      </SelectItem>
-                    ))}
+                    {captains.map(
+                      (
+                        captain, // usar captains en lugar de teams
+                      ) => (
+                        <SelectItem key={captain.id} value={captain.teams?.id || captain.id}>
+                          {" "}
+                          {/* usar team_id del capitán */}
+                          {captain.full_name} {captain.teams?.name ? `(${captain.teams.name})` : ""}{" "}
+                          {/* mostrar nombre del capitán y equipo */}
+                        </SelectItem>
+                      ),
+                    )}
                   </SelectContent>
                 </Select>
               </div>
@@ -213,7 +233,9 @@ export default function TirosLibresPage() {
                 <Textarea id="reason" name="reason" placeholder="Describe la razón del tiro libre..." required />
               </div>
 
-              <Button type="submit" className="w-full" disabled={!selectedTeam || submitting}>
+              <Button type="submit" className="w-full" disabled={!selectedCaptain || submitting}>
+                {" "}
+                {/* usar selectedCaptain */}
                 <Zap className="mr-2 h-4 w-4" />
                 {submitting ? "Adjudicando..." : "Adjudicar Tiro Libre"}
               </Button>
