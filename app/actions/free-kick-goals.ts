@@ -213,12 +213,22 @@ export async function getTeamsByZone(zoneId: string) {
 
 export async function getCaptainsByZone(zoneId: string) {
   try {
-    // Primero obtener los capitanes de la zona
+    console.log("[v0] Getting captains for zone:", zoneId)
+
     const { data: captains, error: captainsError } = await adminSupabase
       .from("profiles")
-      .select("id, full_name, team_id")
+      .select(`
+        id, 
+        full_name, 
+        team_id,
+        teams!inner (
+          id,
+          name,
+          zone_id
+        )
+      `)
       .eq("role", "capitan")
-      .eq("zone_id", zoneId)
+      .eq("teams.zone_id", zoneId)
       .order("full_name", { ascending: true })
 
     if (captainsError) {
@@ -226,39 +236,17 @@ export async function getCaptainsByZone(zoneId: string) {
       return []
     }
 
+    console.log("[v0] Found captains:", captains?.length || 0)
+
     if (!captains || captains.length === 0) {
       return []
     }
 
-    // Obtener los equipos de estos capitanes
-    const teamIds = captains.map((captain) => captain.team_id).filter(Boolean)
-
-    if (teamIds.length === 0) {
-      // Si no hay equipos, devolver capitanes sin información de equipo
-      return captains.map((captain) => ({
-        id: captain.id,
-        full_name: captain.full_name,
-        team_id: captain.team_id,
-        teams: null,
-      }))
-    }
-
-    const { data: teams, error: teamsError } = await adminSupabase.from("teams").select("id, name").in("id", teamIds)
-
-    if (teamsError) {
-      console.error("Error fetching teams:", teamsError)
-      // Continuar sin información de equipos
-    }
-
-    // Crear mapa de equipos
-    const teamMap = (teams || []).reduce((map, team) => ({ ...map, [team.id]: team }), {})
-
-    // Combinar capitanes con información de equipos
     return captains.map((captain) => ({
       id: captain.id,
       full_name: captain.full_name,
       team_id: captain.team_id,
-      teams: captain.team_id && teamMap[captain.team_id] ? teamMap[captain.team_id] : null,
+      teams: captain.teams,
     }))
   } catch (error) {
     console.error("Unexpected error fetching captains:", error)
