@@ -18,6 +18,9 @@ export interface FreeKickGoal {
     zones: {
       name: string
     }
+    captain: {
+      full_name: string
+    }
   }
   profiles: {
     full_name: string
@@ -84,6 +87,9 @@ export async function getFreeKickGoals() {
           captain_id,
           zones (
             name
+          ),
+          captain:captain_id (
+            full_name
           )
         ),
         profiles (
@@ -96,26 +102,10 @@ export async function getFreeKickGoals() {
       return []
     }
 
-    const goalsWithCaptains = await Promise.all(
-      (goals || []).map(async (goal) => {
-        if (goal.teams?.captain_id) {
-          const { data: captain } = await adminSupabase
-            .from("profiles")
-            .select("full_name")
-            .eq("id", goal.teams.captain_id)
-            .single()
-
-          return {
-            ...goal,
-            captain_name: captain?.full_name || "Sin capitán",
-          }
-        }
-        return {
-          ...goal,
-          captain_name: "Sin capitán",
-        }
-      }),
-    )
+    const goalsWithCaptains = (goals || []).map((goal) => ({
+      ...goal,
+      captain_name: goal.teams?.captain?.full_name || "Sin capitán",
+    }))
 
     return goalsWithCaptains
   } catch (error) {
