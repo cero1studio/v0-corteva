@@ -87,6 +87,9 @@ export async function getFreeKickGoals() {
           captain_id,
           zones (
             name
+          ),
+          captain:captain_id (
+            full_name
           )
         ),
         profiles (
@@ -99,29 +102,9 @@ export async function getFreeKickGoals() {
       return []
     }
 
-    const teamIds = [...new Set((goals || []).map((goal) => goal.team_id))]
-    const captainNames: Record<string, string> = {}
-
-    for (const teamId of teamIds) {
-      const { data: team } = await adminSupabase
-        .from("teams")
-        .select(`
-          captain_id,
-          captain:captain_id (
-            full_name
-          )
-        `)
-        .eq("id", teamId)
-        .single()
-
-      if (team?.captain?.full_name) {
-        captainNames[teamId] = team.captain.full_name
-      }
-    }
-
     const goalsWithCaptains = (goals || []).map((goal) => ({
       ...goal,
-      captain_name: captainNames[goal.team_id] || "Sin capitán",
+      captain_name: goal.teams?.captain?.full_name || "Sin capitán",
     }))
 
     return goalsWithCaptains
@@ -220,33 +203,38 @@ export async function getTeamsByZone(zoneId: string) {
 
 export async function getCaptainsByZone(zoneId: string) {
   try {
-    const { data: captains, error } = await adminSupabase
-      .from("profiles")
+    const { data: teams, error } = await adminSupabase
+      .from("teams")
       .select(`
         id,
-        full_name,
-        team_id,
-        teams:team_id (
+        name,
+        captain_id,
+        captain:captain_id (
           id,
-          name,
-          zone_id
+          full_name
         )
       `)
-      .eq("role", "capitan")
-      .eq("teams.zone_id", zoneId)
-      .order("full_name", { ascending: true })
+      .eq("zone_id", zoneId)
+      .not("captain_id", "is", null)
+      .order("name", { ascending: true })
 
     if (error) {
       console.error("Error fetching captains by zone:", error)
       return []
     }
 
-    return (captains || []).map((captain) => ({
-      id: captain.id,
-      full_name: captain.full_name,
-      team_id: captain.team_id,
-      teams: captain.teams,
-    }))
+    return (teams || [])
+      .filter((team) => team.captain)
+      .map((team) => ({
+        id: team.captain.id,
+        full_name: team.captain.full_name,
+        team_id: team.id,
+        teams: {
+          id: team.id,
+          name: team.name,
+          zone_id: zoneId,
+        },
+      }))
   } catch (error) {
     console.error("Unexpected error fetching captains by zone:", error)
     return []
