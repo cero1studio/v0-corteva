@@ -19,9 +19,6 @@ export interface FreeKickGoal {
       id: string
       name: string
     }
-    captain: {
-      full_name: string
-    }
   }
   profiles: {
     full_name: string
@@ -89,9 +86,6 @@ export async function getFreeKickGoals() {
           zones (
             id,
             name
-          ),
-          captain:captain_id (
-            full_name
           )
         ),
         profiles (
@@ -104,9 +98,29 @@ export async function getFreeKickGoals() {
       return []
     }
 
+    const teamIds = (goals || []).map((goal) => goal.teams?.captain_id).filter(Boolean)
+
+    let captainNames = {}
+    if (teamIds.length > 0) {
+      const { data: captains, error: captainsError } = await adminSupabase
+        .from("profiles")
+        .select("id, full_name")
+        .in("id", teamIds)
+
+      if (!captainsError && captains) {
+        captainNames = captains.reduce(
+          (acc, captain) => ({
+            ...acc,
+            [captain.id]: captain.full_name,
+          }),
+          {},
+        )
+      }
+    }
+
     const goalsWithCaptains = (goals || []).map((goal) => ({
       ...goal,
-      captain_name: goal.teams?.captain?.full_name || "Sin capitán",
+      captain_name: goal.teams?.captain_id ? captainNames[goal.teams.captain_id] || "Sin capitán" : "Sin capitán",
     }))
 
     return goalsWithCaptains
