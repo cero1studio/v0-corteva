@@ -189,27 +189,53 @@ export async function getTeamsByZone(zoneId: string) {
 
 export async function getCaptainsByZone(zoneId: string) {
   try {
-    const { data: captains, error } = await adminSupabase
+    // Primero obtener los capitanes de la zona
+    const { data: captains, error: captainsError } = await adminSupabase
       .from("profiles")
-      .select(`
-        id, 
-        full_name,
-        team_id,
-        teams!profiles_team_id_fkey (
-          id,
-          name
-        )
-      `)
+      .select("id, full_name, team_id")
       .eq("role", "capitan")
       .eq("zone_id", zoneId)
       .order("full_name", { ascending: true })
 
-    if (error) {
-      console.error("Error fetching captains:", error)
+    if (captainsError) {
+      console.error("Error fetching captains:", captainsError)
       return []
     }
 
-    return captains || []
+    if (!captains || captains.length === 0) {
+      return []
+    }
+
+    // Obtener los equipos de estos capitanes
+    const teamIds = captains.map((captain) => captain.team_id).filter(Boolean)
+
+    if (teamIds.length === 0) {
+      // Si no hay equipos, devolver capitanes sin información de equipo
+      return captains.map((captain) => ({
+        id: captain.id,
+        full_name: captain.full_name,
+        team_id: captain.team_id,
+        teams: null,
+      }))
+    }
+
+    const { data: teams, error: teamsError } = await adminSupabase.from("teams").select("id, name").in("id", teamIds)
+
+    if (teamsError) {
+      console.error("Error fetching teams:", teamsError)
+      // Continuar sin información de equipos
+    }
+
+    // Crear mapa de equipos
+    const teamMap = (teams || []).reduce((map, team) => ({ ...map, [team.id]: team }), {})
+
+    // Combinar capitanes con información de equipos
+    return captains.map((captain) => ({
+      id: captain.id,
+      full_name: captain.full_name,
+      team_id: captain.team_id,
+      teams: captain.team_id && teamMap[captain.team_id] ? teamMap[captain.team_id] : null,
+    }))
   } catch (error) {
     console.error("Unexpected error fetching captains:", error)
     return []
