@@ -194,7 +194,8 @@ export async function getCaptainsByZone(zoneId: string) {
       .select(`
         id, 
         full_name,
-        teams (
+        team_id,
+        teams!profiles_team_id_fkey (
           id,
           name
         )
