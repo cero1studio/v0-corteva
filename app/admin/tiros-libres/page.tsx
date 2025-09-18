@@ -112,8 +112,18 @@ export default function TirosLibresPage() {
         const wb = XLSX.utils.book_new()
         XLSX.utils.book_append_sheet(wb, ws, "Tiros Libres")
 
-        // Generar y descargar archivo
-        XLSX.writeFile(wb, `tiros-libres-${new Date().toISOString().split("T")[0]}.xlsx`)
+        const excelBuffer = XLSX.write(wb, { bookType: "xlsx", type: "array" })
+        const blob = new Blob([excelBuffer], {
+          type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement("a")
+        a.href = url
+        a.download = `tiros-libres-${new Date().toISOString().split("T")[0]}.xlsx`
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        URL.revokeObjectURL(url)
 
         setMessage({ type: "success", text: "Archivo Excel descargado exitosamente" })
       } else {
