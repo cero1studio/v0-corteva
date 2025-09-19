@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Zap } from "lucide-react"
+import { Zap, Search } from "lucide-react"
 import { getCaptainsByZone, getCurrentChallenge } from "@/app/actions/free-kick-goals"
 
 interface Zone {
@@ -40,6 +40,7 @@ export function AwardFreeKickModal({ open, onOpenChange, zones, onSubmit, submit
   const [useChallenge, setUseChallenge] = useState(false)
   const [challengeText, setChallengeText] = useState("")
   const [reasonText, setReasonText] = useState("")
+  const [captainSearch, setCaptainSearch] = useState("")
 
   useEffect(() => {
     async function loadCaptains() {
@@ -75,13 +76,19 @@ export function AwardFreeKickModal({ open, onOpenChange, zones, onSubmit, submit
     }
   }, [useChallenge, challengeText])
 
+  const filteredCaptains = captains.filter(
+    (captain) =>
+      captain.full_name.toLowerCase().includes(captainSearch.toLowerCase()) ||
+      captain.teams?.name?.toLowerCase().includes(captainSearch.toLowerCase()),
+  )
+
   const handleSubmit = async (formData: FormData) => {
     await onSubmit(formData)
-    // Reset form
     setSelectedZone("")
     setSelectedCaptain("")
     setReasonText("")
     setUseChallenge(false)
+    setCaptainSearch("")
   }
 
   return (
@@ -114,16 +121,30 @@ export function AwardFreeKickModal({ open, onOpenChange, zones, onSubmit, submit
 
           <div className="space-y-2">
             <Label htmlFor="team_id">Capitán</Label>
+            {selectedZone && captains.length > 0 && (
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
+                <Input
+                  placeholder="Buscar capitán o equipo..."
+                  value={captainSearch}
+                  onChange={(e) => setCaptainSearch(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+            )}
             <Select name="team_id" value={selectedCaptain} onValueChange={setSelectedCaptain} disabled={!selectedZone}>
               <SelectTrigger>
                 <SelectValue placeholder={selectedZone ? "Selecciona un capitán" : "Primero selecciona una zona"} />
               </SelectTrigger>
               <SelectContent>
-                {captains.map((captain) => (
+                {filteredCaptains.map((captain) => (
                   <SelectItem key={captain.id} value={captain.teams?.id || captain.id}>
                     {captain.full_name} {captain.teams?.name ? `(${captain.teams.name})` : ""}
                   </SelectItem>
                 ))}
+                {captainSearch && filteredCaptains.length === 0 && (
+                  <div className="px-2 py-1 text-sm text-muted-foreground">No se encontraron capitanes</div>
+                )}
               </SelectContent>
             </Select>
           </div>
