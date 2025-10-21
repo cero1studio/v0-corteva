@@ -89,7 +89,7 @@ export function NewClientForm({ zones, teams, captains }: NewClientFormProps) {
     const razon_social = formData.get("razon_social") as string
     const competitor_name = formData.get("competitor_name") as string
     const ubicacion_finca = formData.get("ubicacion_finca") as string
-    const volumen_venta_real = formData.get("volumen_venta_real") as string
+    const volumen_venta_estimado = formData.get("volumen_venta_estimado") as string
     const area_finca_hectareas_str = formData.get("area_finca_hectareas") as string
     const producto_anterior = formData.get("producto_anterior") as string
     const producto_super_ganaderia = formData.get("producto_super_ganaderia") as string
@@ -138,8 +138,11 @@ export function NewClientForm({ zones, teams, captains }: NewClientFormProps) {
       newErrors.nombre_almacen = "El nombre del almacén es requerido para este tipo de venta."
       isValid = false
     }
-    if (!volumen_venta_real?.trim()) {
-      newErrors.volumen_venta_real = "El volumen de venta real es requerido."
+    if (!volumen_venta_estimado?.trim()) {
+      newErrors.volumen_venta_estimado = "El volumen de venta real es requerido."
+      isValid = false
+    } else if (isNaN(Number(volumen_venta_estimado)) || Number(volumen_venta_estimado) < 100) {
+      newErrors.volumen_venta_estimado = "El volumen debe ser un número y mínimo 100 litros."
       isValid = false
     }
     if (!area_finca_hectareas_str?.trim()) {
@@ -161,13 +164,7 @@ export function NewClientForm({ zones, teams, captains }: NewClientFormProps) {
       newErrors.contact_info = "El celular del ganadero es requerido."
       isValid = false
     }
-    if (!points_str?.trim()) {
-      newErrors.points = "Los puntos asignados son requeridos."
-      isValid = false
-    } else if (isNaN(Number(points_str))) {
-      newErrors.points = "Los puntos deben ser un número válido."
-      isValid = false
-    }
+    // Eliminamos validación de puntos visibles: se asignan por defecto a 200
     if (!notes?.trim()) {
       newErrors.notes = "Las notas adicionales son requeridas."
       isValid = false
@@ -201,7 +198,9 @@ export function NewClientForm({ zones, teams, captains }: NewClientFormProps) {
     formData.append("team_id", selectedTeamId)
     formData.append("representative_id", teamCaptain!.id) // teamCaptain is guaranteed to exist here due to validation
     formData.append("tipo_venta", tipoVenta)
-    formData.append("nombre_almacen", tipoVenta === "distribuidor" ? nombreAlmacen : "")
+    formData.append("nombre_almacen", tipoVenta === "Venta por Almacén" ? nombreAlmacen : "")
+    // Alinear con capitán: puntos fijos por cliente
+    formData.append("points", "200")
 
     try {
       const result = await registerCompetitorClient(formData)
@@ -375,23 +374,21 @@ export function NewClientForm({ zones, teams, captains }: NewClientFormProps) {
               <h3 className="text-lg font-semibold">Información de Venta</h3>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="tipo_venta">Tipo de Venta *</Label>
-                  <Select value={tipoVenta} onValueChange={setTipoVenta}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Seleccionar tipo de venta" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="venta_directa">Venta Directa</SelectItem>
-                      <SelectItem value="distribuidor">A través de Distribuidor</SelectItem>
-                      <SelectItem value="venta_credito">Venta a Crédito</SelectItem>
-                      <SelectItem value="venta_contado">Venta de Contado</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  {formErrors.tipo_venta && <p className="text-red-500 text-sm mt-1">{formErrors.tipo_venta}</p>}
-                </div>
+              <div>
+                <Label htmlFor="tipo_venta">Tipo de Venta *</Label>
+                <Select value={tipoVenta} onValueChange={setTipoVenta}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Seleccionar tipo de venta" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Venta Directa">Venta Directa</SelectItem>
+                    <SelectItem value="Venta por Almacén">Venta por Almacén</SelectItem>
+                  </SelectContent>
+                </Select>
+                {formErrors.tipo_venta && <p className="text-red-500 text-sm mt-1">{formErrors.tipo_venta}</p>}
+              </div>
 
-                {tipoVenta === "distribuidor" && (
+              {tipoVenta === "Venta por Almacén" && (
                   <div>
                     <Label htmlFor="nombre_almacen">Nombre del Almacén *</Label>
                     <Input
@@ -409,15 +406,17 @@ export function NewClientForm({ zones, teams, captains }: NewClientFormProps) {
                 )}
 
                 <div>
-                  <Label htmlFor="volumen_venta_real">Volumen de Venta Real *</Label>
+                  <Label htmlFor="volumen_venta_estimado">Volumen de Venta Real (litros) *</Label>
                   <Input
-                    id="volumen_venta_real"
-                    name="volumen_venta_real"
-                    placeholder="Ej: 50 bultos, 2 toneladas"
+                    id="volumen_venta_estimado"
+                    name="volumen_venta_estimado"
+                    type="number"
+                    min={100}
+                    placeholder="Mínimo 100 litros"
                     required
                   />
-                  {formErrors.volumen_venta_real && (
-                    <p className="text-red-500 text-sm mt-1">{formErrors.volumen_venta_real}</p>
+                  {formErrors.volumen_venta_estimado && (
+                    <p className="text-red-500 text-sm mt-1">{formErrors.volumen_venta_estimado}</p>
                   )}
                 </div>
 
@@ -436,18 +435,7 @@ export function NewClientForm({ zones, teams, captains }: NewClientFormProps) {
                   )}
                 </div>
 
-                <div>
-                  <Label htmlFor="points">Puntos Asignados *</Label>
-                  <Input
-                    id="points"
-                    name="points"
-                    type="number"
-                    defaultValue="5" // Default value as per schema
-                    placeholder="Puntos asignados"
-                    required
-                  />
-                  {formErrors.points && <p className="text-red-500 text-sm mt-1">{formErrors.points}</p>}
-                </div>
+              {/* Los puntos ya no se piden en UI; se asignan automáticamente */}
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

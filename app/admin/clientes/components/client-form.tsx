@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { toast } from "@/hooks/use-toast"
-import { registerCompetitorClient } from "@/app/actions/competitor-clients"
+import { registerCompetitorClient, updateCompetitorClient } from "@/app/actions/competitor-clients"
 
 interface Zone {
   id: string
@@ -36,30 +36,98 @@ interface ClientFormProps {
   teams: Team[]
   users: User[]
   onSuccess?: () => void
+  // modo edición opcional
+  clientToEdit?: {
+    id: string
+    client_name: string
+    competitor_name: string | null
+    ganadero_name: string | null
+    razon_social: string | null
+    tipo_venta: string | null
+    nombre_almacen: string | null
+    ubicacion_finca: string | null
+    area_finca_hectareas: number | null
+    producto_anterior: string | null
+    producto_super_ganaderia: string | null
+    volumen_venta_estimado: string | null
+    contact_info: string | null
+    notes: string | null
+    team_id: string
+    representative_id: string
+  }
 }
 
-export function ClientForm({ open, setOpen, zones, teams, users, onSuccess }: ClientFormProps) {
+export function ClientForm({ open, setOpen, zones, teams, users, onSuccess, clientToEdit }: ClientFormProps) {
   const [loading, setLoading] = useState(false)
-  const [selectedZoneId, setSelectedZoneId] = useState<string>("")
-  const [selectedTeamId, setSelectedTeamId] = useState<string>("")
+  const [selectedZoneId, setSelectedZoneId] = useState<string>(clientToEdit ? teams.find(t => t.id === clientToEdit.team_id)?.zone_id || "" : "")
+  const [selectedTeamId, setSelectedTeamId] = useState<string>(clientToEdit?.team_id || "")
   const [formErrors, setFormErrors] = useState<Record<string, string>>({})
 
   const [formData, setFormData] = useState({
-    client_name: "",
-    competitor_name: "",
-    ganadero_name: "",
-    razon_social: "",
-    tipo_venta: "",
-    nombre_almacen: "",
-    ubicacion_finca: "",
-    area_finca_hectareas: "",
-    producto_anterior: "",
-    producto_super_ganaderia: "",
-    volumen_venta_estimado: "",
-    points: "5", // Default value as per schema
-    contact_info: "",
-    notes: "",
+    client_name: clientToEdit?.client_name || "",
+    competitor_name: clientToEdit?.competitor_name || "",
+    ganadero_name: clientToEdit?.ganadero_name || "",
+    razon_social: clientToEdit?.razon_social || "",
+    tipo_venta: clientToEdit?.tipo_venta || "",
+    nombre_almacen: clientToEdit?.nombre_almacen || "",
+    ubicacion_finca: clientToEdit?.ubicacion_finca || "",
+    area_finca_hectareas: clientToEdit?.area_finca_hectareas ? String(clientToEdit.area_finca_hectareas) : "",
+    producto_anterior: clientToEdit?.producto_anterior || "",
+    producto_super_ganaderia: clientToEdit?.producto_super_ganaderia || "",
+    volumen_venta_estimado: clientToEdit?.volumen_venta_estimado || "",
+    points: "200",
+    contact_info: clientToEdit?.contact_info || "",
+    notes: clientToEdit?.notes || "",
   })
+
+  // Cargar datos del cliente cuando se abre para editar
+  useEffect(() => {
+    if (clientToEdit) {
+      // Encontrar la zona del equipo
+      const team = teams.find(t => t.id === clientToEdit.team_id)
+      const zoneId = team?.zone_id || ""
+      
+      setSelectedZoneId(zoneId)
+      setSelectedTeamId(clientToEdit.team_id)
+      
+      setFormData({
+        client_name: clientToEdit.client_name || "",
+        competitor_name: clientToEdit.competitor_name || "",
+        ganadero_name: clientToEdit.ganadero_name || "",
+        razon_social: clientToEdit.razon_social || "",
+        tipo_venta: clientToEdit.tipo_venta || "",
+        nombre_almacen: clientToEdit.nombre_almacen || "",
+        ubicacion_finca: clientToEdit.ubicacion_finca || "",
+        area_finca_hectareas: clientToEdit.area_finca_hectareas ? String(clientToEdit.area_finca_hectareas) : "",
+        producto_anterior: clientToEdit.producto_anterior || "",
+        producto_super_ganaderia: clientToEdit.producto_super_ganaderia || "",
+        volumen_venta_estimado: clientToEdit.volumen_venta_estimado || "",
+        points: "200",
+        contact_info: clientToEdit.contact_info || "",
+        notes: clientToEdit.notes || "",
+      })
+    } else {
+      // Reset form when no client to edit
+      setSelectedZoneId("")
+      setSelectedTeamId("")
+      setFormData({
+        client_name: "",
+        competitor_name: "",
+        ganadero_name: "",
+        razon_social: "",
+        tipo_venta: "",
+        nombre_almacen: "",
+        ubicacion_finca: "",
+        area_finca_hectareas: "",
+        producto_anterior: "",
+        producto_super_ganaderia: "",
+        volumen_venta_estimado: "",
+        points: "200",
+        contact_info: "",
+        notes: "",
+      })
+    }
+  }, [clientToEdit, teams])
 
   // Filter teams based on selected zone
   const availableTeams = selectedZoneId ? teams.filter((team) => team.zone_id === selectedZoneId) : teams
@@ -93,7 +161,7 @@ export function ClientForm({ open, setOpen, zones, teams, users, onSuccess }: Cl
       setFormErrors((prev) => ({ ...prev, team: "" }))
     } else if (id === "tipo_venta") {
       setFormData((prev) => ({ ...prev, tipo_venta: value }))
-      if (value !== "distribuidor") {
+      if (value !== "Venta por Almacén") {
         setFormData((prev) => ({ ...prev, nombre_almacen: "" }))
         setFormErrors((prev) => ({ ...prev, nombre_almacen: "" }))
       }
@@ -120,7 +188,7 @@ export function ClientForm({ open, setOpen, zones, teams, users, onSuccess }: Cl
       newErrors.team = "El equipo seleccionado no tiene un Capitán asignado."
       isValid = false
     }
-    if (formData.tipo_venta === "distribuidor" && !formData.nombre_almacen.trim()) {
+    if (formData.tipo_venta === "Venta por Almacén" && !formData.nombre_almacen.trim()) {
       newErrors.nombre_almacen = "El nombre del almacén es requerido para este tipo de venta."
       isValid = false
     }
@@ -138,24 +206,51 @@ export function ClientForm({ open, setOpen, zones, teams, users, onSuccess }: Cl
   }
 
   const resetForm = () => {
-    setFormData({
-      client_name: "",
-      competitor_name: "",
-      ganadero_name: "",
-      razon_social: "",
-      tipo_venta: "",
-      nombre_almacen: "",
-      ubicacion_finca: "",
-      area_finca_hectareas: "",
-      producto_anterior: "",
-      producto_super_ganaderia: "",
-      volumen_venta_estimado: "",
-      points: "5",
-      contact_info: "",
-      notes: "",
-    })
-    setSelectedZoneId("")
-    setSelectedTeamId("")
+    if (clientToEdit) {
+      // Si estamos editando, resetear a los valores del cliente
+      const team = teams.find(t => t.id === clientToEdit.team_id)
+      const zoneId = team?.zone_id || ""
+      
+      setSelectedZoneId(zoneId)
+      setSelectedTeamId(clientToEdit.team_id)
+      
+      setFormData({
+        client_name: clientToEdit.client_name || "",
+        competitor_name: clientToEdit.competitor_name || "",
+        ganadero_name: clientToEdit.ganadero_name || "",
+        razon_social: clientToEdit.razon_social || "",
+        tipo_venta: clientToEdit.tipo_venta || "",
+        nombre_almacen: clientToEdit.nombre_almacen || "",
+        ubicacion_finca: clientToEdit.ubicacion_finca || "",
+        area_finca_hectareas: clientToEdit.area_finca_hectareas ? String(clientToEdit.area_finca_hectareas) : "",
+        producto_anterior: clientToEdit.producto_anterior || "",
+        producto_super_ganaderia: clientToEdit.producto_super_ganaderia || "",
+        volumen_venta_estimado: clientToEdit.volumen_venta_estimado || "",
+        points: "200",
+        contact_info: clientToEdit.contact_info || "",
+        notes: clientToEdit.notes || "",
+      })
+    } else {
+      // Si estamos creando, resetear a valores vacíos
+      setSelectedZoneId("")
+      setSelectedTeamId("")
+      setFormData({
+        client_name: "",
+        competitor_name: "",
+        ganadero_name: "",
+        razon_social: "",
+        tipo_venta: "",
+        nombre_almacen: "",
+        ubicacion_finca: "",
+        area_finca_hectareas: "",
+        producto_anterior: "",
+        producto_super_ganaderia: "",
+        volumen_venta_estimado: "",
+        points: "200",
+        contact_info: "",
+        notes: "",
+      })
+    }
     setFormErrors({})
   }
 
@@ -176,24 +271,30 @@ export function ClientForm({ open, setOpen, zones, teams, users, onSuccess }: Cl
     try {
       const form = new FormData()
       Object.entries(formData).forEach(([key, value]) => {
-        if (key === "nombre_almacen" && formData.tipo_venta !== "distribuidor") {
-          return // Skip nombre_almacen if not distributor type
+        if (key === "nombre_almacen" && formData.tipo_venta !== "Venta por Almacén") {
+          return // Skip nombre_almacen if not store sale type
         }
         form.append(key, value)
       })
       form.append("team_id", selectedTeamId)
-      form.append("representative_id", teamCaptain!.id) // Use representative_id
+      
+      // En modo edición, usar el representative_id del cliente original si no hay teamCaptain
+      const representativeId = teamCaptain ? teamCaptain.id : (clientToEdit?.representative_id || "")
+      form.append("representative_id", representativeId)
 
-      const result = await registerCompetitorClient(form)
+      const result = clientToEdit ? await updateCompetitorClient(clientToEdit.id, form) : await registerCompetitorClient(form)
 
       if (result.success) {
+        console.log("DEBUG: Update successful, calling onSuccess...")
         toast({
           title: "Éxito",
-          description: "Cliente registrado correctamente",
+          description: clientToEdit ? "Cliente actualizado correctamente" : "Cliente registrado correctamente",
         })
         resetForm()
         setOpen(false)
+        // Llamar onSuccess para refrescar la lista
         onSuccess?.()
+        console.log("DEBUG: onSuccess called")
       } else {
         toast({
           title: "Error",
@@ -358,15 +459,13 @@ export function ClientForm({ open, setOpen, zones, teams, users, onSuccess }: Cl
                     <SelectValue placeholder="Seleccionar tipo de venta" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="directa">Venta Directa</SelectItem>
-                    <SelectItem value="distribuidor">A través de Distribuidor</SelectItem>
-                    <SelectItem value="credito">Venta a Crédito</SelectItem>
-                    <SelectItem value="contado">Venta de Contado</SelectItem>
+                    <SelectItem value="Venta Directa">Venta Directa</SelectItem>
+                    <SelectItem value="Venta por Almacén">Venta por Almacén</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
-              {formData.tipo_venta === "distribuidor" && (
+              {formData.tipo_venta === "Venta por Almacén" && (
                 <div>
                   <Label htmlFor="nombre_almacen">Nombre del Almacén *</Label>
                   <Input
@@ -383,12 +482,15 @@ export function ClientForm({ open, setOpen, zones, teams, users, onSuccess }: Cl
               )}
 
               <div>
-                <Label htmlFor="volumen_venta_estimado">Volumen de Venta Estimado</Label>
+                <Label htmlFor="volumen_venta_estimado">Volumen de Venta Real (litros) *</Label>
                 <Input
                   id="volumen_venta_estimado"
                   value={formData.volumen_venta_estimado}
                   onChange={handleInputChange}
-                  placeholder="Ej: 50 bultos, 2 toneladas"
+                  type="number"
+                  min={100}
+                  placeholder="Mínimo 100 litros"
+                  required
                 />
               </div>
 
@@ -407,17 +509,7 @@ export function ClientForm({ open, setOpen, zones, teams, users, onSuccess }: Cl
                 )}
               </div>
 
-              <div>
-                <Label htmlFor="points">Puntos Asignados</Label>
-                <Input
-                  id="points"
-                  type="number"
-                  value={formData.points}
-                  onChange={handleInputChange}
-                  placeholder="Puntos asignados"
-                />
-                {formErrors.points && <p className="text-red-500 text-sm mt-1">{formErrors.points}</p>}
-              </div>
+              {/* Los puntos ya no se editan en UI; se asignan automáticamente */}
             </div>
           </div>
 

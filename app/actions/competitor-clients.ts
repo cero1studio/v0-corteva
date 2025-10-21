@@ -40,8 +40,8 @@ export async function registerCompetitorClient(formData: FormData) {
       volumen_venta_estimado,
       contact_info,
       notes,
-      nombre_almacen: tipo_venta === "distribuidor" ? nombre_almacen : null,
-      points: isNaN(points) ? 5 : points,
+      nombre_almacen: tipo_venta === "Venta por Almacén" ? nombre_almacen : null,
+      points: isNaN(points) ? 200 : points,
       team_id,
       representative_id,
     })
@@ -130,5 +130,63 @@ export async function deleteCompetitorClient(clientId: string) {
   } catch (error: any) {
     console.error("Error inesperado al eliminar cliente de la competencia:", error)
     return { success: false, error: error.message || "Error inesperado al eliminar cliente" }
+  }
+}
+
+export async function updateCompetitorClient(clientId: string, formData: FormData) {
+  const supabase = createServerClient()
+
+  const client_name = formData.get("client_name") as string
+  const competitor_name = formData.get("competitor_name") as string | null
+  const ganadero_name = formData.get("ganadero_name") as string | null
+  const razon_social = formData.get("razon_social") as string | null
+  const tipo_venta = formData.get("tipo_venta") as string | null
+  const ubicacion_finca = formData.get("ubicacion_finca") as string | null
+  const area_finca_hectareas_str = formData.get("area_finca_hectareas") as string
+  const producto_anterior = formData.get("producto_anterior") as string | null
+  const producto_super_ganaderia = formData.get("producto_super_ganaderia") as string | null
+  const volumen_venta_estimado = formData.get("volumen_venta_estimado") as string | null
+  const contact_info = formData.get("contact_info") as string | null
+  const notes = formData.get("notes") as string | null
+  const nombre_almacen = formData.get("nombre_almacen") as string | null
+  const team_id = formData.get("team_id") as string
+  const representative_id = formData.get("representative_id") as string
+
+  const area_finca_hectareas = area_finca_hectareas_str ? Number.parseFloat(area_finca_hectareas_str) : null
+
+  try {
+    const { error } = await supabase
+      .from("competitor_clients")
+      .update({
+        client_name,
+        competitor_name,
+        ganadero_name,
+        razon_social,
+        tipo_venta,
+        ubicacion_finca,
+        area_finca_hectareas: isNaN(area_finca_hectareas as number) ? null : area_finca_hectareas,
+        producto_anterior,
+        producto_super_ganaderia,
+        volumen_venta_estimado,
+        contact_info,
+        notes,
+        nombre_almacen: tipo_venta === "Venta por Almacén" ? nombre_almacen : null,
+        team_id,
+        representative_id,
+      })
+      .eq("id", clientId)
+
+    if (error) {
+      console.error("Error al actualizar cliente de la competencia:", error)
+      return { success: false, error: error.message }
+    }
+
+    revalidatePath("/admin/clientes")
+    revalidatePath("/admin/ranking")
+    revalidatePath("/admin/dashboard")
+    return { success: true, message: "Cliente actualizado exitosamente" }
+  } catch (error: any) {
+    console.error("Error inesperado al actualizar cliente de la competencia:", error)
+    return { success: false, error: error.message || "Error inesperado al actualizar cliente" }
   }
 }

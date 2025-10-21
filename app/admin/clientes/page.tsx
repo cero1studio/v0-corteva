@@ -19,13 +19,15 @@ import { Badge } from "@/components/ui/badge"
 import { PlusIcon, Search, Filter, MoreHorizontal, Edit, Trash2, Users, Download } from "lucide-react"
 import { toast } from "@/hooks/use-toast"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { Dialog } from "@/components/ui/dialog"
+import { ClientForm } from "./components/client-form"
 import { getAllCompetitorClients, deleteCompetitorClient } from "@/app/actions/competitor-clients"
 import { getAllZones } from "@/app/actions/zones"
 import { getAllTeams } from "@/app/actions/teams"
 import { getAllUsers } from "@/app/actions/users"
 import * as XLSX from "xlsx"
 import Link from "next/link" // Import Link
-import { useCachedList } from "@/lib/global-cache"
+import { useCachedList, useGlobalCache } from "@/lib/global-cache"
 
 interface CompetitorClient {
   id: string
@@ -110,6 +112,23 @@ export default function AdminClientesPage() {
   }, [])
 
   const { data: clients, loading, error, refresh } = useCachedList("admin-clients", fetchClients, [])
+  const { clearCache } = useGlobalCache()
+  
+  // Función para forzar recarga completa
+  const forceRefresh = async () => {
+    console.log("DEBUG: Force refreshing clients...")
+    // Limpiar cache específico
+    clearCache("admin-clients")
+    try {
+      const result = await fetchClients()
+      console.log("DEBUG: Fresh data loaded:", result.length, "clients")
+    } catch (error) {
+      console.error("DEBUG: Error refreshing:", error)
+    }
+  }
+
+  const [editOpen, setEditOpen] = useState(false)
+  const [clientEditing, setClientEditing] = useState<CompetitorClient | null>(null)
 
   // --- column definition must live inside the component so it can access state ---
   const columns: ColumnDef<CompetitorClient>[] = useMemo(() => {
@@ -200,7 +219,12 @@ export default function AdminClientesPage() {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => alert("Editar - Por implementar")}>
+                <DropdownMenuItem
+                  onClick={() => {
+                    setClientEditing(client)
+                    setEditOpen(true)
+                  }}
+                >
                   <Edit className="mr-2 h-4 w-4" />
                   Editar
                 </DropdownMenuItem>
@@ -477,6 +501,51 @@ export default function AdminClientesPage() {
           </Link>
         </div>
       </div>
+
+      <ClientForm
+        open={editOpen}
+        setOpen={(open) => {
+          setEditOpen(open)
+          if (!open) setClientEditing(null)
+        }}
+        zones={zones}
+        teams={teams}
+        users={captains as any}
+        onSuccess={async () => {
+          console.log("DEBUG: onSuccess called, refreshing data...")
+          // Cerrar el modal primero
+          setEditOpen(false)
+          setClientEditing(null)
+          
+          // Limpiar cache y refrescar
+          clearCache("admin-clients")
+          await refresh()
+          
+          // Pequeño delay para asegurar que se actualice
+          setTimeout(() => {
+            console.log("DEBUG: Final refresh after delay")
+            refresh()
+          }, 500)
+        }}
+        clientToEdit={clientEditing ? {
+          id: clientEditing.id,
+          client_name: clientEditing.client_name,
+          competitor_name: clientEditing.competitor_name,
+          ganadero_name: clientEditing.ganadero_name,
+          razon_social: clientEditing.razon_social,
+          tipo_venta: clientEditing.tipo_venta,
+          nombre_almacen: clientEditing.nombre_almacen,
+          ubicacion_finca: clientEditing.ubicacion_finca,
+          area_finca_hectareas: clientEditing.area_finca_hectareas,
+          producto_anterior: clientEditing.producto_anterior,
+          producto_super_ganaderia: clientEditing.producto_super_ganaderia,
+          volumen_venta_estimado: clientEditing.volumen_venta_estimado,
+          contact_info: clientEditing.contact_info,
+          notes: clientEditing.notes,
+          team_id: clientEditing.team?.id || "",
+          representative_id: clientEditing.representative_profile?.id || "",
+        } : undefined}
+      />
 
       {/* Filtros */}
       <Card>
