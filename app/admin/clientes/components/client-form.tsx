@@ -511,6 +511,45 @@ export function ClientForm({ open, setOpen, zones, teams, users, onSuccess, clie
 
               {/* Los puntos ya no se editan en UI; se asignan automáticamente */}
             </div>
+
+            {/* Información de Productos */}
+            <div className="space-y-4">
+              <h3 className="text-lg font-semibold">Información de Productos</h3>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="producto_anterior">Producto Anterior</Label>
+                  <Input
+                    id="producto_anterior"
+                    value={formData.producto_anterior}
+                    onChange={handleInputChange}
+                    placeholder="Producto que usaba anteriormente"
+                  />
+                  {formErrors.producto_anterior && (
+                    <p className="text-red-500 text-sm mt-1">{formErrors.producto_anterior}</p>
+                  )}
+                </div>
+
+                <div>
+                  <Label htmlFor="producto_super_ganaderia">Producto Súper Ganadería</Label>
+                  <Select 
+                    value={formData.producto_super_ganaderia} 
+                    onValueChange={(value) => setFormData({ ...formData, producto_super_ganaderia: value })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Seleccionar producto" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Combatran XT">Combatran XT</SelectItem>
+                      <SelectItem value="Pastar D">Pastar D</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {formErrors.producto_super_ganaderia && (
+                    <p className="text-red-500 text-sm mt-1">{formErrors.producto_super_ganaderia}</p>
+                  )}
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* Notas */}
