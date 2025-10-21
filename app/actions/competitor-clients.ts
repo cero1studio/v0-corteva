@@ -6,8 +6,6 @@ import { revalidatePath } from "next/cache"
 export async function registerCompetitorClient(formData: FormData) {
   const supabase = createServerClient()
 
-  const client_name = formData.get("client_name") as string
-  const competitor_name = formData.get("competitor_name") as string | null
   const ganadero_name = formData.get("ganadero_name") as string | null
   const razon_social = formData.get("razon_social") as string | null
   const tipo_venta = formData.get("tipo_venta") as string | null
@@ -24,12 +22,12 @@ export async function registerCompetitorClient(formData: FormData) {
   const representative_id = formData.get("representative_id") as string
 
   const area_finca_hectareas = area_finca_hectareas_str ? Number.parseFloat(area_finca_hectareas_str) : null
-  const points = points_str ? Number.parseInt(points_str) : 5
+  const points = points_str ? Number.parseInt(points_str) : 200
 
   try {
     const { error } = await supabase.from("competitor_clients").insert({
-      client_name,
-      competitor_name,
+      client_name: ganadero_name, // Usar ganadero_name como client_name
+      competitor_name: ganadero_name, // Usar ganadero_name como competitor_name
       ganadero_name,
       razon_social,
       tipo_venta,
@@ -136,8 +134,6 @@ export async function deleteCompetitorClient(clientId: string) {
 export async function updateCompetitorClient(clientId: string, formData: FormData) {
   const supabase = createServerClient()
 
-  const client_name = formData.get("client_name") as string
-  const competitor_name = formData.get("competitor_name") as string | null
   const ganadero_name = formData.get("ganadero_name") as string | null
   const razon_social = formData.get("razon_social") as string | null
   const tipo_venta = formData.get("tipo_venta") as string | null
@@ -158,8 +154,8 @@ export async function updateCompetitorClient(clientId: string, formData: FormDat
     const { error } = await supabase
       .from("competitor_clients")
       .update({
-        client_name,
-        competitor_name,
+        client_name: ganadero_name, // Usar ganadero_name como client_name
+        competitor_name: ganadero_name, // Usar ganadero_name como competitor_name
         ganadero_name,
         razon_social,
         tipo_venta,

@@ -138,12 +138,13 @@ export default function AdminClientesPage() {
       try {
         const result = await deleteCompetitorClient(clientId)
         if (result.success) {
+          // Limpiar caché para que se elimine inmediatamente de la tabla
+          clearCache("admin-clients")
+          
           toast({ title: "Éxito", description: "Cliente eliminado correctamente" })
-          // remove from local table
-          // setClients((prev) => prev.filter((c) => c.id !== clientId))
-          // tiny delay -> guarantee DB finished & ISR revalidated
-          // setTimeout(() => loadData(), 100)
-          refresh()
+          
+          // Refrescar datos
+          await refresh()
         } else {
           toast({
             title: "Error",

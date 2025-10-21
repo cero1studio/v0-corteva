@@ -15,6 +15,7 @@ import Link from "next/link"
 import { ArrowLeft, Phone } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { formatColombianMobile, getPhoneValidationError, PHONE_INPUT_PROPS } from "@/lib/phone-validation"
+import { useGlobalCache } from "@/lib/global-cache"
 
 interface Zone {
   id: string
@@ -49,6 +50,7 @@ export function NewClientForm({ zones, teams, captains }: NewClientFormProps) {
   const [contactInfo, setContactInfo] = useState<string>("")
   const [isSubmitting, setIsSubmitting] = useState(false)
   const router = useRouter()
+  const { clearCache } = useGlobalCache()
 
   // Filter teams based on selected zone
   const availableTeams = selectedZoneId ? teams.filter((team) => team.zone_id === selectedZoneId) : teams
@@ -84,10 +86,8 @@ export function NewClientForm({ zones, teams, captains }: NewClientFormProps) {
     let isValid = true
 
     // Obtener todos los valores del formulario
-    const client_name = formData.get("client_name") as string
     const ganadero_name = formData.get("ganadero_name") as string
     const razon_social = formData.get("razon_social") as string
-    const competitor_name = formData.get("competitor_name") as string
     const ubicacion_finca = formData.get("ubicacion_finca") as string
     const volumen_venta_estimado = formData.get("volumen_venta_estimado") as string
     const area_finca_hectareas_str = formData.get("area_finca_hectareas") as string
@@ -97,20 +97,12 @@ export function NewClientForm({ zones, teams, captains }: NewClientFormProps) {
     const notes = formData.get("notes") as string
 
     // Validaciones obligatorias
-    if (!client_name?.trim()) {
-      newErrors.client_name = "El nombre del cliente es requerido."
-      isValid = false
-    }
     if (!ganadero_name?.trim()) {
       newErrors.ganadero_name = "El nombre del ganadero es requerido."
       isValid = false
     }
     if (!razon_social?.trim()) {
       newErrors.razon_social = "La razón social es requerida."
-      isValid = false
-    }
-    if (!competitor_name?.trim()) {
-      newErrors.competitor_name = "El nombre en empresa competidora es requerido."
       isValid = false
     }
     if (!selectedZoneId) {
@@ -206,6 +198,9 @@ export function NewClientForm({ zones, teams, captains }: NewClientFormProps) {
       const result = await registerCompetitorClient(formData)
 
       if (result.success) {
+        // Limpiar caché para que aparezca inmediatamente en la tabla
+        clearCache("admin-clients")
+        
         toast({
           title: "Éxito",
           description: "Cliente registrado correctamente",
@@ -305,34 +300,15 @@ export function NewClientForm({ zones, teams, captains }: NewClientFormProps) {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <Label htmlFor="client_name">Nombre del Cliente *</Label>
-                  <Input id="client_name" name="client_name" placeholder="Nombre del cliente" required />
-                  {formErrors.client_name && <p className="text-red-500 text-sm mt-1">{formErrors.client_name}</p>}
-                </div>
-
-                <div>
                   <Label htmlFor="ganadero_name">Nombre del Ganadero *</Label>
-                  <Input id="ganadero_name" name="ganadero_name" placeholder="Nombre del ganadero" required />
+                  <Input id="ganadero_name" name="ganadero_name" placeholder="Nombre completo del cliente" required />
                   {formErrors.ganadero_name && <p className="text-red-500 text-sm mt-1">{formErrors.ganadero_name}</p>}
                 </div>
 
                 <div>
                   <Label htmlFor="razon_social">Razón Social *</Label>
-                  <Input id="razon_social" name="razon_social" placeholder="Razón social" required />
+                  <Input id="razon_social" name="razon_social" placeholder="Nombre legal de la empresa" required />
                   {formErrors.razon_social && <p className="text-red-500 text-sm mt-1">{formErrors.razon_social}</p>}
-                </div>
-
-                <div>
-                  <Label htmlFor="competitor_name">Cliente en Competidora *</Label>
-                  <Input
-                    id="competitor_name"
-                    name="competitor_name"
-                    placeholder="Nombre en empresa competidora"
-                    required
-                  />
-                  {formErrors.competitor_name && (
-                    <p className="text-red-500 text-sm mt-1">{formErrors.competitor_name}</p>
-                  )}
                 </div>
 
                 <div>
@@ -355,12 +331,11 @@ export function NewClientForm({ zones, teams, captains }: NewClientFormProps) {
               </div>
 
               <div>
-                <Label htmlFor="ubicacion_finca">Ubicación de la Finca *</Label>
-                <Textarea
+                <Label htmlFor="ubicacion_finca">Ubicación de la Finca del ganadero *</Label>
+                <Input
                   id="ubicacion_finca"
                   name="ubicacion_finca"
-                  placeholder="Dirección o ubicación de la finca"
-                  rows={2}
+                  placeholder="Departamento, municipio o vereda"
                   required
                 />
                 {formErrors.ubicacion_finca && (
