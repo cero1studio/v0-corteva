@@ -5,6 +5,7 @@ import { createContext, useContext, useEffect, useState, useCallback } from "rea
 import { supabase } from "@/lib/supabase/client"
 import { useRouter, usePathname } from "next/navigation"
 import type { Session, User } from "@supabase/supabase-js"
+import { cacheSession, cacheProfile, getCachedSession, getCachedProfile, clearAllCache } from "@/lib/session-cache"
 
 export type UserProfile = {
   id: string
@@ -22,6 +23,7 @@ type AuthContextType = {
   user: User | null
   profile: UserProfile | null
   isLoading: boolean
+  isInitialized: boolean
   error: string | null
   signIn: (email: string, password: string) => Promise<{ error: string | null }>
   signOut: () => Promise<void>
@@ -35,6 +37,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [isInitialized, setIsInitialized] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const router = useRouter()
@@ -119,9 +122,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (isPublicRoute) {
           console.log("[v0] AUTH: Public route, skipping auth check")
           setIsLoading(false)
+          setIsInitialized(true)
           return
         }
 
+        // Primero intentar usar caché
+        const { session: cachedSession, user: cachedUser } = getCachedSession()
+        const cachedProfile = getCachedProfile()
+
+        if (cachedSession && cachedUser && cachedProfile) {
+          console.log("[v0] AUTH: Using cached session")
+          setSession(cachedSession)
+          setUser(cachedUser)
+          setProfile(cachedProfile)
+          setIsLoading(false)
+          setIsInitialized(true)
+          return
+        }
+
+        // Si no hay caché, verificar con Supabase
         const {
           data: { session },
           error,
@@ -139,9 +158,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setSession(session)
           setUser(session.user)
 
+          // Guardar en caché
+          cacheSession(session, session.user)
+
           const userProfile = await fetchUserProfile(session.user.id, session.user.email)
           if (mounted && userProfile) {
             setProfile(userProfile)
+            // Guardar perfil en caché
+            cacheProfile(userProfile)
 
             // Solo redirigir desde login
             if (pathname === "/login") {
@@ -161,6 +185,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } finally {
         if (mounted) {
           setIsLoading(false)
+          setIsInitialized(true)
         }
       }
     }
@@ -183,9 +208,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(session.user)
         setError(null)
 
+        // Guardar en caché
+        cacheSession(session, session.user)
+
         const userProfile = await fetchUserProfile(session.user.id, session.user.email)
         if (userProfile) {
           setProfile(userProfile)
+          // Guardar perfil en caché
+          cacheProfile(userProfile)
 
           if (pathname === "/login") {
             const dashboardRoute = getDashboardRoute(userProfile.role, userProfile.team_id)
@@ -198,6 +228,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(null)
         setProfile(null)
         setError(null)
+
+        // Limpiar caché
+        clearAllCache()
 
         // Solo redirigir si no estamos en login
         if (pathname !== "/login") {
@@ -245,6 +278,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setProfile(null)
       setError(null)
 
+      // Limpiar caché personalizado
+      clearAllCache()
+
       // Cerrar sesión en Supabase
       await supabase.auth.signOut()
 
@@ -264,6 +300,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setSession(null)
       setUser(null)
       setProfile(null)
+      clearAllCache()
       window.location.href = "/login"
     }
   }
@@ -280,7 +317,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [user, fetchUserProfile])
 
   return (
-    <AuthContext.Provider value={{ session, user, profile, isLoading, error, signIn, signOut, refreshProfile }}>
+    <AuthContext.Provider value={{ session, user, profile, isLoading, isInitialized, error, signIn, signOut, refreshProfile }}>
       {children}
     </AuthContext.Provider>
   )
