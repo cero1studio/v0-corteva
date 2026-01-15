@@ -159,8 +159,10 @@ export default function CrearEquipoPage() {
         description: "Tu equipo ha sido nombrado exitosamente",
       })
 
-      // 3. Redirigir al dashboard
-      router.push("/capitan/dashboard")
+      // 3. Esperar y redirigir con recarga completa para actualizar sesión
+      setTimeout(() => {
+        window.location.href = "/capitan/dashboard"
+      }, 1000)
     } catch (err: any) {
       console.error("Error al crear equipo:", err)
       setError(err.message || "Error al crear equipo")
