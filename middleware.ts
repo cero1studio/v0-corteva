@@ -94,6 +94,19 @@ export async function middleware(req: NextRequest) {
       console.log(`[MIDDLEWARE] User with role '${role}' tried to access '${pathname}', redirecting to ${dashboardUrl}`)
       return NextResponse.redirect(new URL(dashboardUrl, req.url))
     }
+
+    // Caso especial: capitán sin team_id en token intentando acceder a dashboard
+    // Permitir acceso para que el dashboard verifique en BD si realmente no hay equipo
+    if (role === "capitan" && !token.team_id && pathname === "/capitan/dashboard") {
+      console.log("[MIDDLEWARE] Capitán sin team_id en token accediendo a dashboard, permitiendo para verificación en BD")
+      return NextResponse.next()
+    }
+
+    // Si el capitán no tiene equipo y no está en crear-equipo ni dashboard, redirigir
+    if (role === "capitan" && !token.team_id && !pathname.includes("/crear-equipo") && !pathname.includes("/dashboard")) {
+      console.log("[MIDDLEWARE] Capitán sin equipo intentando acceder a:", pathname, "redirigiendo a crear-equipo")
+      return NextResponse.redirect(new URL("/capitan/crear-equipo", req.url))
+    }
   }
 
   return NextResponse.next()
