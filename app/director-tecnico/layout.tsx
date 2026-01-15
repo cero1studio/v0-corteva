@@ -5,7 +5,7 @@ import { DashboardNav } from "@/components/dashboard-nav"
 import { Button } from "@/components/ui/button"
 import { Menu, X } from "lucide-react"
 import { useState } from "react"
-import { useAuth } from "@/components/auth-provider"
+import { useAuth } from "@/hooks/useAuth"
 
 export default function DirectorTecnicoLayout({ children }: { children: React.ReactNode }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)

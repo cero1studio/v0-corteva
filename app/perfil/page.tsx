@@ -3,8 +3,7 @@
 import type React from "react"
 
 import { useState } from "react"
-import { useAuth } from "@/components/auth-provider"
-import { supabase } from "@/lib/supabase/client"
+import { useAuth } from "@/hooks/useAuth"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -40,20 +39,15 @@ export default function PerfilPage() {
     setMessage(null)
 
     try {
-      // Actualizar contraseña en Supabase Auth
-      const { error } = await supabase.auth.updateUser({
-        password: newPassword,
+      // NextAuth no proporciona actualización de contraseña directamente
+      // Se requiere un endpoint API personalizado para cambiar contraseñas
+      setMessage({ 
+        type: "error", 
+        text: "La funcionalidad de cambio de contraseña está en desarrollo. Por favor, contacta al administrador." 
       })
-
-      if (error) {
-        console.error("Error al cambiar contraseña:", error)
-        setMessage({ type: "error", text: "Error al actualizar la contraseña: " + error.message })
-      } else {
-        setMessage({ type: "success", text: "Contraseña actualizada exitosamente" })
-        setCurrentPassword("")
-        setNewPassword("")
-        setConfirmPassword("")
-      }
+      
+      // TODO: Implementar endpoint API para cambio de contraseña
+      // que actualice la contraseña en auth.users de Supabase
     } catch (error: any) {
       console.error("Error inesperado:", error)
       setMessage({ type: "error", text: "Error inesperado al actualizar la contraseña" })

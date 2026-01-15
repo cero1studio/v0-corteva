@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { User, Mail, MapPin, Calendar } from "lucide-react"
-import { useAuth } from "@/components/auth-provider"
+import { useAuth } from "@/hooks/useAuth"
 import { ProtectedLayout } from "@/components/ProtectedLayout"
 
 export default function ArbitroPerfil() {

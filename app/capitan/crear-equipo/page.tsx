@@ -9,11 +9,12 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useToast } from "@/components/ui/use-toast"
+import { useAuth } from "@/hooks/useAuth"
+import { useSession } from "next-auth/react"
 import { supabase } from "@/lib/supabase/client"
 
 export default function CrearEquipoPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [user, setUser] = useState<any>(null)
   const [zone, setZone] = useState<any>(null)
   const [distributor, setDistributor] = useState<any>(null)
   const [loading, setLoading] = useState(true)
@@ -21,51 +22,57 @@ export default function CrearEquipoPage() {
 
   const router = useRouter()
   const { toast } = useToast()
+  const { profile, isLoading: authLoading } = useAuth()
+  const { update: updateSession } = useSession()
 
   useEffect(() => {
+    let mounted = true
+    let timeoutId: NodeJS.Timeout
+
+    // Timeout de seguridad para evitar loading infinito
+    timeoutId = setTimeout(() => {
+      if (mounted) {
+        console.log("[CREAR EQUIPO] Timeout alcanzado, forzando loading a false")
+        setLoading(false)
+      }
+    }, 10000) // 10 segundos máximo
+
     const fetchUserData = async () => {
       try {
+        console.log("[CREAR EQUIPO] Iniciando carga de datos, authLoading:", authLoading, "profile:", !!profile)
         setLoading(true)
         setError(null)
 
-        // 1. Obtener la sesión actual
-        const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
-
-        if (sessionError) {
-          throw new Error(`Error de sesión: ${sessionError.message}`)
+        // Esperar a que la autenticación se cargue
+        if (authLoading) {
+          console.log("[CREAR EQUIPO] Esperando autenticación...")
+          setLoading(false)
+          return
         }
 
-        if (!sessionData.session) {
+        // 1. Verificar que hay perfil (usando NextAuth)
+        if (!profile) {
+          setLoading(false)
           router.push("/login")
           return
         }
 
-        const userId = sessionData.session.user.id
-        console.log("ID de usuario:", userId)
+        console.log("Datos del perfil desde NextAuth:", {
+          id: profile.id,
+          role: profile.role,
+          zone_id: profile.zone_id,
+          distributor_id: profile.distributor_id,
+          hasZone: !!profile.zone_id,
+          hasDistributor: !!profile.distributor_id,
+        })
 
-        // 2. Obtener el perfil del usuario
-        const { data: profileData, error: profileError } = await supabase
-          .from("profiles")
-          .select("*")
-          .eq("id", userId)
-          .single()
-
-        if (profileError) {
-          throw new Error(`Error al obtener perfil: ${profileError.message}`)
-        }
-
-        console.log("Datos del perfil:", profileData)
-
-        if (!profileData) {
-          throw new Error("No se encontró el perfil del usuario")
-        }
-
-        // 3. Verificar si el usuario es capitán
-        if (profileData.role !== "capitan") {
+        // 2. Verificar si el usuario es capitán
+        if (profile.role !== "capitan") {
+          setLoading(false)
           const redirectPath =
-            profileData.role === "admin"
+            profile.role === "admin"
               ? "/admin/dashboard"
-              : profileData.role === "director_tecnico"
+              : profile.role === "director_tecnico"
                 ? "/director-tecnico/dashboard"
                 : "/login"
 
@@ -73,20 +80,22 @@ export default function CrearEquipoPage() {
           return
         }
 
-        // 4. Verificar si ya tiene equipo
-        if (profileData.team_id) {
+        // 3. Verificar si ya tiene equipo
+        if (profile.team_id) {
+          setLoading(false)
           router.push("/capitan/dashboard")
           return
         }
 
-        setUser(profileData)
+        // 4. Obtener datos de zona y distribuidor (no bloquear si no existen)
+        console.log("[CREAR EQUIPO] Usuario tiene zone_id:", profile.zone_id, "distributor_id:", profile.distributor_id)
 
         // 5. Obtener datos de zona
-        if (profileData.zone_id) {
+        if (profile.zone_id) {
           const { data: zoneData, error: zoneError } = await supabase
             .from("zones")
             .select("*")
-            .eq("id", profileData.zone_id)
+            .eq("id", profile.zone_id)
             .single()
 
           if (zoneError) {
@@ -95,16 +104,14 @@ export default function CrearEquipoPage() {
             console.log("Datos de zona:", zoneData)
             setZone(zoneData)
           }
-        } else {
-          console.warn("El usuario no tiene zona asignada")
         }
 
         // 6. Obtener datos de distribuidor
-        if (profileData.distributor_id) {
+        if (profile.distributor_id) {
           const { data: distData, error: distError } = await supabase
             .from("distributors")
             .select("*")
-            .eq("id", profileData.distributor_id)
+            .eq("id", profile.distributor_id)
             .single()
 
           if (distError) {
@@ -113,8 +120,6 @@ export default function CrearEquipoPage() {
             console.log("Datos de distribuidor:", distData)
             setDistributor(distData)
           }
-        } else {
-          console.warn("El usuario no tiene distribuidor asignado")
         }
       } catch (err: any) {
         console.error("Error en la inicialización:", err)
@@ -125,15 +130,43 @@ export default function CrearEquipoPage() {
           variant: "destructive",
         })
       } finally {
-        setLoading(false)
+        if (mounted) {
+          console.log("[CREAR EQUIPO] Finalizando carga, estableciendo loading a false")
+          setLoading(false)
+          clearTimeout(timeoutId)
+        }
       }
     }
 
     fetchUserData()
-  }, [router, toast])
+
+    return () => {
+      mounted = false
+      clearTimeout(timeoutId)
+    }
+  }, [router, toast, profile, authLoading])
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    event.stopPropagation()
+    
+    // Prevenir cualquier comportamiento por defecto
+    if (event.defaultPrevented) {
+      return
+    }
+    
+    console.log("[CREAR EQUIPO] Submit iniciado")
+    console.log("[CREAR EQUIPO] Profile:", profile)
+    console.log("[CREAR EQUIPO] Zone:", zone)
+    console.log("[CREAR EQUIPO] Distributor:", distributor)
+    console.log("[CREAR EQUIPO] isSubmitting:", isSubmitting)
+    
+    // Si ya está enviando, no hacer nada
+    if (isSubmitting) {
+      console.log("[CREAR EQUIPO] Ya está enviando, ignorando submit")
+      return
+    }
+    
     setIsSubmitting(true)
     setError(null)
 
@@ -141,102 +174,132 @@ export default function CrearEquipoPage() {
       const formData = new FormData(event.currentTarget)
       const teamName = formData.get("teamName") as string
 
-      if (!teamName) {
-        throw new Error("El nombre del equipo es obligatorio")
+      if (!teamName || teamName.trim() === "") {
+        setIsSubmitting(false)
+        setError("El nombre del equipo es obligatorio")
+        return
       }
 
-      if (!user) {
-        throw new Error("No se ha cargado la información del usuario")
+      if (!profile) {
+        console.error("[CREAR EQUIPO] Error: Profile no disponible")
+        setIsSubmitting(false)
+        setError("No se ha cargado la información del usuario. Por favor, recarga la página.")
+        return
       }
 
-      if (!user.zone_id) {
-        throw new Error("No tienes una zona asignada")
+      if (!profile.zone_id) {
+        console.error("[CREAR EQUIPO] Error: zone_id no disponible", profile)
+        setIsSubmitting(false)
+        setError("No tienes una zona asignada. Contacta al administrador.")
+        return
       }
 
-      if (!user.distributor_id) {
-        throw new Error("No tienes un distribuidor asignado")
+      if (!profile.distributor_id) {
+        console.error("[CREAR EQUIPO] Error: distributor_id no disponible", profile)
+        setIsSubmitting(false)
+        setError("No tienes un distribuidor asignado. Contacta al administrador.")
+        return
       }
 
-      console.log("Creando equipo:", {
+      console.log("[CREAR EQUIPO] Creando equipo con datos:", {
         name: teamName,
-        zone_id: user.zone_id,
-        distributor_id: user.distributor_id,
+        zone_id: profile.zone_id,
+        distributor_id: profile.distributor_id,
+        profile_id: profile.id,
       })
 
       // 1. Crear el equipo
+      console.log("[CREAR EQUIPO] Insertando equipo en Supabase...")
       const { data: teamData, error: teamError } = await supabase
         .from("teams")
         .insert({
-          name: teamName,
-          zone_id: user.zone_id,
-          distributor_id: user.distributor_id,
+          name: teamName.trim(),
+          zone_id: profile.zone_id,
+          distributor_id: profile.distributor_id,
         })
         .select()
         .single()
 
       if (teamError) {
+        console.error("[CREAR EQUIPO] Error al crear equipo:", teamError)
         throw new Error(`Error al crear equipo: ${teamError.message}`)
       }
 
-      if (!teamData) {
-        throw new Error("No se pudo crear el equipo")
+      if (!teamData || !teamData.id) {
+        console.error("[CREAR EQUIPO] No se recibió data del equipo creado")
+        throw new Error("No se pudo crear el equipo. Intenta nuevamente.")
       }
 
-      console.log("Equipo creado:", teamData)
+      console.log("[CREAR EQUIPO] Equipo creado exitosamente:", teamData)
 
       // 2. Actualizar el perfil del usuario
+      console.log("[CREAR EQUIPO] Actualizando perfil con team_id:", teamData.id)
       const { error: updateError } = await supabase
         .from("profiles")
         .update({
           team_id: teamData.id,
         })
-        .eq("id", user.id)
+        .eq("id", profile.id)
 
       if (updateError) {
+        console.error("[CREAR EQUIPO] Error al actualizar perfil:", updateError)
+        // Aunque falle la actualización del perfil, el equipo ya está creado
+        // Podríamos intentar eliminarlo, pero por ahora solo mostramos el error
         throw new Error(`Error al actualizar perfil: ${updateError.message}`)
       }
 
+      console.log("[CREAR EQUIPO] Perfil actualizado exitosamente")
+
+      // 3. Actualizar la sesión de NextAuth con el nuevo team_id
+      console.log("[CREAR EQUIPO] Actualizando sesión de NextAuth...")
+      try {
+        await updateSession({
+          team_id: teamData.id,
+          team_name: teamName.trim(),
+        })
+        console.log("[CREAR EQUIPO] Sesión de NextAuth actualizada")
+      } catch (sessionError) {
+        console.error("[CREAR EQUIPO] Error al actualizar sesión:", sessionError)
+        // No fallar si la actualización de sesión falla, el equipo ya está creado
+      }
+
       toast({
-        title: "Equipo nombrado",
-        description: "Tu equipo ha sido nombrado exitosamente",
+        title: "Equipo creado",
+        description: "Tu equipo ha sido creado exitosamente",
       })
 
-      // 3. Redirigir al dashboard
-      router.push("/capitan/dashboard")
+      // 4. Esperar un momento antes de redirigir para que el toast se muestre
+      await new Promise((resolve) => setTimeout(resolve, 500))
+
+      // 5. Forzar recarga completa para que el middleware y el dashboard vean el nuevo team_id
+      console.log("[CREAR EQUIPO] Redirigiendo al dashboard con recarga completa...")
+      window.location.href = "/capitan/dashboard"
     } catch (err: any) {
-      console.error("Error al crear equipo:", err)
-      setError(err.message || "Error al crear equipo")
+      console.error("[CREAR EQUIPO] Error capturado:", err)
+      const errorMessage = err.message || "Error al crear equipo. Intenta nuevamente."
+      setError(errorMessage)
+      setIsSubmitting(false)
       toast({
         title: "Error",
-        description: err.message || "Error al crear equipo",
+        description: errorMessage,
         variant: "destructive",
       })
-    } finally {
-      setIsSubmitting(false)
     }
   }
 
-  if (loading) {
+  if (loading || authLoading) {
     return (
-      <div className="flex justify-center items-center min-h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-corteva-600"></div>
+      <div className="flex flex-col justify-center items-center min-h-screen">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-corteva-600 mb-4"></div>
+        <p className="text-gray-600">Cargando...</p>
+        <p className="text-sm text-gray-400 mt-2">
+          {authLoading ? "Verificando autenticación..." : "Cargando datos del usuario..."}
+        </p>
       </div>
     )
   }
 
-  if (error) {
-    return (
-      <div className="flex flex-col justify-center items-center min-h-screen p-4">
-        <div className="bg-red-50 border border-red-200 rounded-lg p-6 max-w-md w-full">
-          <h2 className="text-xl font-bold text-red-700 mb-2">Error</h2>
-          <p className="text-red-600">{error}</p>
-          <Button className="mt-4 bg-red-600 hover:bg-red-700" onClick={() => router.push("/login")}>
-            Volver al inicio
-          </Button>
-        </div>
-      </div>
-    )
-  }
+  // No bloquear el formulario con errores, solo mostrarlos como advertencias
 
   return (
     <div className="space-y-6 max-w-3xl mx-auto p-8">
@@ -351,11 +414,22 @@ export default function CrearEquipoPage() {
               )}
             </div>
 
+            {error && (
+              <div className="p-3 border border-red-300 bg-red-50 rounded-md text-red-700 text-sm">
+                <strong>Error:</strong> {error}
+              </div>
+            )}
+
             <div className="flex justify-end">
               <Button
                 type="submit"
-                disabled={isSubmitting || !zone || !distributor}
+                disabled={isSubmitting}
                 className="bg-corteva-600 hover:bg-corteva-700"
+                onClick={(e) => {
+                  // Asegurar que el click no cause recarga
+                  e.preventDefault()
+                  e.stopPropagation()
+                }}
               >
                 {isSubmitting ? "Guardando..." : "Guardar Nombre"}
               </Button>

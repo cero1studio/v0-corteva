@@ -19,7 +19,7 @@ import {
   Target,
   Zap,
 } from "lucide-react"
-import { useAuth } from "@/components/auth-provider"
+import { useAuth } from "@/hooks/useAuth"
 import { useRouter } from "next/navigation"
 
 interface NavProps {
@@ -42,25 +42,12 @@ export function DashboardNav({ role, onMobileMenuClose }: NavProps) {
       .substring(0, 2)
   }
 
-  // Función para cerrar sesión independiente
+  // Función para cerrar sesión usando el hook useAuth
   const handleSignOut = async () => {
     try {
-      console.log("Dashboard: Iniciando logout independiente...")
-      // Usar el endpoint independiente con timeout
-      const timeoutId = setTimeout(() => {
-        window.location.href = "/login"
-      }, 2000) // 2 segundos máximo
-
-      // Intentar usar el endpoint
-      fetch("/api/auth/logout", { method: "POST" })
-        .then(() => {
-          clearTimeout(timeoutId)
-          window.location.href = "/login"
-        })
-        .catch(() => {
-          clearTimeout(timeoutId)
-          window.location.href = "/login"
-        })
+      console.log("Dashboard: Iniciando logout...")
+      await signOut()
+      // signOut ya maneja la redirección y limpieza
     } catch (error) {
       console.error("Dashboard: Error en logout, forzando redirect:", error)
       window.location.href = "/login"

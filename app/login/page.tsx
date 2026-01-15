@@ -2,11 +2,13 @@
 
 import type React from "react"
 import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
+import { useSession } from "next-auth/react"
 import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import { useAuth } from "@/components/auth-provider"
+import { useAuth } from "@/hooks/useAuth"
 import { Loader2, Eye, EyeOff } from "lucide-react"
 
 export default function LoginPage() {
@@ -14,14 +16,49 @@ export default function LoginPage() {
   const [password, setPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
   const [localError, setLocalError] = useState<string | null>(null)
+  const [localSuccess, setLocalSuccess] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isRedirecting, setIsRedirecting] = useState(false)
   const { signIn, isLoading, error: authError } = useAuth()
+  const { data: session, status } = useSession()
+  const router = useRouter()
+
+  // Función para obtener la ruta del dashboard según el rol
+  const getDashboardRoute = (role: string, teamId?: string | null) => {
+    switch (role) {
+      case "admin":
+        return "/admin/dashboard"
+      case "capitan":
+        return teamId ? "/capitan/dashboard" : "/capitan/crear-equipo"
+      case "director_tecnico":
+        return "/director-tecnico/dashboard"
+      case "supervisor":
+        return "/supervisor/dashboard"
+      case "representante":
+        return "/representante/dashboard"
+      case "arbitro":
+        return "/arbitro/dashboard"
+      default:
+        return "/login"
+    }
+  }
 
   useEffect(() => {
     // Resetear estados cuando se monta el componente
     setLocalError(null)
     setIsSubmitting(false)
   }, [])
+
+  // Redirigir si ya hay una sesión activa
+  useEffect(() => {
+    if (session?.user && status === "authenticated") {
+      const role = session.user.role
+      const teamId = session.user.team_id
+      const dashboardRoute = getDashboardRoute(role, teamId)
+      console.log("LOGIN: User already logged in, role:", role, "redirecting to:", dashboardRoute)
+      router.push(dashboardRoute)
+    }
+  }, [session, status, router])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -40,20 +77,46 @@ export default function LoginPage() {
 
       if (result?.error) {
         console.error("LOGIN: Sign in error:", result.error)
-        // Traducir mensajes de error comunes
-        if (result.error.includes("Invalid login")) {
-          setLocalError("Correo o contraseña incorrectos")
-        } else if (result.error.includes("too many requests")) {
-          setLocalError("Demasiados intentos fallidos. Intenta más tarde.")
-        } else if (result.error.includes("timeout")) {
-          setLocalError("La conexión está tardando mucho. Intenta nuevamente.")
-        } else {
-          setLocalError(result.error)
-        }
-        setIsSubmitting(false) // Always reset submitting state on error
-      } else {
-        console.log("LOGIN: Sign in successful, waiting for redirection...")
+        // El mensaje ya viene traducido desde el hook useAuth
+        setLocalError(result.error)
         setIsSubmitting(false)
+      } else {
+        console.log("LOGIN: Sign in successful, waiting for session...")
+        setIsSubmitting(false)
+        setLocalSuccess("Inicio de sesión exitoso. Redirigiendo...")
+        setIsRedirecting(true)
+        
+        // Polling para verificar que la sesión esté disponible y redirigir
+        let attempts = 0
+        const maxAttempts = 20 // 4 segundos máximo
+        
+        const checkSessionAndRedirect = setInterval(async () => {
+          attempts++
+          try {
+            const response = await fetch("/api/auth/session")
+            const sessionData = await response.json()
+            
+            if (sessionData?.user?.role) {
+              clearInterval(checkSessionAndRedirect)
+              const role = sessionData.user.role
+              const teamId = sessionData.user.team_id
+              const dashboardRoute = getDashboardRoute(role, teamId)
+              console.log("LOGIN: Session ready, role:", role, "redirecting to:", dashboardRoute)
+              router.push(dashboardRoute)
+            } else if (attempts >= maxAttempts) {
+              clearInterval(checkSessionAndRedirect)
+              console.log("LOGIN: Session not ready after timeout, reloading for middleware")
+              // Fallback: recargar para que el middleware maneje la redirección
+              window.location.href = "/login"
+            }
+          } catch (error) {
+            console.error("LOGIN: Error checking session:", error)
+            if (attempts >= maxAttempts) {
+              clearInterval(checkSessionAndRedirect)
+              window.location.href = "/login"
+            }
+          }
+        }, 200)
       }
     } catch (error: any) {
       console.error("LOGIN: Error en inicio de sesión:", error)
@@ -131,15 +194,21 @@ export default function LoginPage() {
               </button>
             </div>
             {displayError && <div className="text-red-500 text-sm">{displayError}</div>}
+            {localSuccess && (
+              <div className="text-green-600 text-sm flex items-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                {localSuccess}
+              </div>
+            )}
             <Button
               type="submit"
               className="w-full bg-[#006BA6] hover:bg-[#005A8C]"
-              disabled={isSubmitting || isLoading}
+              disabled={isSubmitting || isLoading || isRedirecting}
             >
-              {isSubmitting || isLoading ? (
+              {isSubmitting || isLoading || isRedirecting ? (
                 <span className="flex items-center">
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Iniciando sesión...
+                  {isRedirecting ? "Redirigiendo..." : "Iniciando sesión..."}
                 </span>
               ) : (
                 "Iniciar sesión"

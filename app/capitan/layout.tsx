@@ -10,7 +10,7 @@ import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Menu, X } from "lucide-react"
 import { DashboardNav } from "@/components/dashboard-nav"
-import { useAuth } from "@/components/auth-provider"
+import { useAuth } from "@/hooks/useAuth"
 import { usePathname } from "next/navigation"
 
 export default function CapitanLayout({

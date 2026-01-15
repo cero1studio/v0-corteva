@@ -18,15 +18,11 @@ export const getSupabaseClient = () => {
   }
 
   try {
+    // Cliente simplificado - NextAuth maneja la autenticación
     supabaseInstance = createClient<Database>(supabaseUrl, supabaseAnonKey, {
       auth: {
-        persistSession: true,
-        autoRefreshToken: true,
-        detectSessionInUrl: false,
-        flowType: "pkce",
-        storage: typeof window !== "undefined" ? window.localStorage : undefined,
-        storageKey: "supabase.auth.token",
-        debug: process.env.NODE_ENV === "development",
+        persistSession: false, // NextAuth maneja las sesiones
+        autoRefreshToken: false,
       },
       global: {
         headers: {
@@ -39,7 +35,7 @@ export const getSupabaseClient = () => {
       },
     })
 
-    console.log("✅ Supabase client initialized successfully")
+    console.log("✅ Supabase client initialized successfully (Auth handled by NextAuth)")
     return supabaseInstance
   } catch (error) {
     console.error("❌ Error initializing Supabase client:", error)

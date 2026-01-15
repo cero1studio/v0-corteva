@@ -190,27 +190,36 @@ export interface Database {
         Row: {
           id: string
           user_id: string | null
+          email: string
           full_name: string | null
           role: string | null
           team_id: string | null
+          zone_id: string | null
+          distributor_id: string | null
           created_at: string | null
           updated_at: string | null
         }
         Insert: {
           id?: string
           user_id?: string | null
+          email: string
           full_name?: string | null
           role?: string | null
           team_id?: string | null
+          zone_id?: string | null
+          distributor_id?: string | null
           created_at?: string | null
           updated_at?: string | null
         }
         Update: {
           id?: string
           user_id?: string | null
+          email?: string
           full_name?: string | null
           role?: string | null
           team_id?: string | null
+          zone_id?: string | null
+          distributor_id?: string | null
           created_at?: string | null
           updated_at?: string | null
         }

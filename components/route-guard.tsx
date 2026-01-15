@@ -3,7 +3,7 @@
 import type React from "react"
 
 import { useEffect, useState } from "react"
-import { useAuth } from "@/components/auth-provider"
+import { useAuth } from "@/hooks/useAuth"
 import { usePathname, useRouter } from "next/navigation"
 import { Loader2 } from "lucide-react"
 

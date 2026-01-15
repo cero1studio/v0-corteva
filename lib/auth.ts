@@ -1,18 +1,25 @@
-import { createServerClient } from "@/lib/supabase/server"
+import { getServerSession } from "next-auth"
+import { authOptions } from "@/app/api/auth/[...nextauth]/route"
+import { createClient } from "@supabase/supabase-js"
+import type { Database } from "@/types/supabase"
 
 export async function getCurrentUser() {
-  const supabase = createServerClient()
-
   try {
-    const {
-      data: { session },
-      error: sessionError,
-    } = await supabase.auth.getSession()
+    const session = await getServerSession(authOptions)
 
-    if (sessionError || !session) {
+    if (!session || !session.user) {
       return null
     }
 
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+    if (!supabaseUrl || !supabaseAnonKey) {
+      return null
+    }
+
+    // Obtener datos adicionales del perfil si es necesario
+    const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey)
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
       .select("*")

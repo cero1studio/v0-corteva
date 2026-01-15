@@ -20,7 +20,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import { supabase } from "@/lib/supabase/client"
-import { useAuth } from "@/components/auth-provider"
+import { useAuth } from "@/hooks/useAuth"
 import Link from "next/link"
 
 interface Sale {
