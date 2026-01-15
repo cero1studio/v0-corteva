@@ -125,17 +125,17 @@ function CapitanDashboardContent() {
     try {
       console.log("CAPITAN DASHBOARD: Checking user and team")
 
-      // Obtener el usuario actual
-      const {
-        data: { user: authUser },
-      } = await supabase.auth.getUser()
+      // Obtener el usuario actual desde NextAuth
+      const sessionRes = await fetch("/api/auth/session")
+      const sessionData = await sessionRes.json()
 
-      if (!authUser) {
-        console.log("CAPITAN DASHBOARD: No auth user, redirecting to login")
+      if (!sessionData?.user) {
+        console.log("CAPITAN DASHBOARD: No session user, redirecting to login")
         router.push("/login")
         return
       }
 
+      const authUser = { id: sessionData.user.id, email: sessionData.user.email }
       console.log("CAPITAN DASHBOARD: Auth user found:", authUser.email)
 
       // Obtener el perfil del usuario con información detallada

@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useToast } from "@/components/ui/use-toast"
 import { useAuth } from "@/hooks/useAuth"
+import { signIn } from "next-auth/react"
 import { supabase } from "@/lib/supabase/client"
 
 export default function CrearEquipoPage() {
@@ -154,15 +155,17 @@ export default function CrearEquipoPage() {
         throw new Error(`Error al actualizar perfil: ${updateError.message}`)
       }
 
+      console.log("Equipo creado exitosamente")
+
       toast({
         title: "Equipo nombrado",
         description: "Tu equipo ha sido nombrado exitosamente",
       })
 
-      // 3. Esperar y redirigir con recarga completa para actualizar sesión
+      // 3. Redirigir al dashboard con parámetro especial para evitar loop de redirección
       setTimeout(() => {
-        window.location.href = "/capitan/dashboard"
-      }, 1000)
+        window.location.href = "/capitan/dashboard?team_created=true"
+      }, 800)
     } catch (err: any) {
       console.error("Error al crear equipo:", err)
       setError(err.message || "Error al crear equipo")
