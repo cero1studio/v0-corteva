@@ -1,30 +1,51 @@
-import { createServerSupabaseClient } from "@/lib/supabase/server"
+import { getFreeKicksRankingByZone, getTeamRankingByZone } from "@/app/actions/ranking"
+import { getSystemConfig } from "@/app/actions/system-config"
 import { type NextRequest, NextResponse } from "next/server"
 
-// Devuelve el ranking general o por zona usando las funciones que SÍ existen
+/**
+ * Ranking oficial (ventas + clientes) y ranking de premio tiros libres.
+ * `data` mantiene el array principal por compatibilidad; `freeKicks` es la clasificación aparte.
+ */
 export async function GET(req: NextRequest) {
-  const supabase = createServerSupabaseClient()
-  const zoneId = req.nextUrl.searchParams.get("zoneId") || null
+  const zoneId = req.nextUrl.searchParams.get("zoneId") || undefined
 
   try {
-    if (zoneId) {
-      // Ranking por zona usando get_zone_ranking_with_limit
-      const { data, error } = await supabase.rpc("get_zone_ranking_with_limit", {
-        zone_id_param: zoneId,
-        limit_count: 100,
-      })
-      if (error) throw error
-      return NextResponse.json({ success: true, data: data || [] })
+    const [official, freeKicks, puntosRes] = await Promise.all([
+      getTeamRankingByZone(zoneId),
+      getFreeKicksRankingByZone(zoneId),
+      getSystemConfig("puntos_para_gol"),
+    ])
+
+    const puntosParaGol =
+      puntosRes.success && puntosRes.data != null && puntosRes.data !== ""
+        ? Number(puntosRes.data)
+        : 100
+
+    if (!official.success) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: official.error ?? "Error al cargar ranking",
+          data: [],
+          freeKicks: [],
+          puntosParaGol,
+        },
+        { status: 500 },
+      )
     }
 
-    // Ranking general usando get_team_ranking_with_limit
-    const { data, error } = await supabase.rpc("get_team_ranking_with_limit", {
-      limit_count: 100,
+    return NextResponse.json({
+      success: true,
+      data: official.data ?? [],
+      freeKicks: freeKicks.success ? freeKicks.data ?? [] : [],
+      puntosParaGol,
     })
-    if (error) throw error
-    return NextResponse.json({ success: true, data: data || [] })
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Unexpected error"
     console.error("Error en /api/ranking-list:", error)
-    return NextResponse.json({ success: false, error: error.message ?? "Unexpected error", data: [] }, { status: 500 })
+    return NextResponse.json(
+      { success: false, error: message, data: [], freeKicks: [], puntosParaGol: 100 },
+      { status: 500 },
+    )
   }
 }

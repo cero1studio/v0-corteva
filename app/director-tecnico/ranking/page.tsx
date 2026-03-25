@@ -3,151 +3,46 @@
 import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Trophy, TrendingUp, RefreshCw } from "lucide-react"
+import { Trophy, TrendingUp, RefreshCw, Target } from "lucide-react"
 import { supabase } from "@/lib/supabase/client"
 import { useToast } from "@/hooks/use-toast"
 import { EmptyState } from "@/components/empty-state"
 import { AuthGuard } from "@/components/auth-guard"
 import { TeamLevelBadge } from "@/components/team-level-badge"
 import { Button } from "@/components/ui/button"
-
-interface TeamRanking {
-  id: string
-  name: string
-  total_points: number
-  goals: number
-  distributor_name: string
-  zone_name: string
-}
+import {
+  getFreeKicksRankingByZone,
+  getTeamRankingByZone,
+  type FreeKicksRankingItem,
+  type TeamRanking,
+} from "@/app/actions/ranking"
 
 function DirectorTecnicoRankingContent() {
   const [loading, setLoading] = useState(true)
-  const [zoneTeams, setZoneTeams] = useState<TeamRanking[]>([])
-  const [nationalTeams, setNationalTeams] = useState<TeamRanking[]>([])
-  const [userData, setUserData] = useState<any>(null)
+  const [zoneOfficial, setZoneOfficial] = useState<TeamRanking[]>([])
+  const [zoneFk, setZoneFk] = useState<FreeKicksRankingItem[]>([])
+  const [nationalOfficial, setNationalOfficial] = useState<TeamRanking[]>([])
+  const [nationalFk, setNationalFk] = useState<FreeKicksRankingItem[]>([])
+  const [userData, setUserData] = useState<{ zones?: { name?: string } } | null>(null)
   const { toast } = useToast()
-
-  useEffect(() => {
-    loadData()
-
-    // Establecer un timeout para evitar carga infinita
-    const timeout = setTimeout(() => {
-      if (loading) {
-        setLoading(false)
-        toast({
-          title: "Tiempo de carga excedido",
-          description: "La carga está tomando más tiempo de lo esperado. Intente nuevamente.",
-          variant: "destructive",
-        })
-      }
-    }, 30000) // 30 segundos máximo
-
-    return () => clearTimeout(timeout)
-  }, [])
-
-  // Función optimizada para calcular puntos de un equipo
-  async function calculateTeamPoints(teamId: string) {
-    try {
-      // 1. Obtener miembros del equipo
-      const { data: teamMembers } = await supabase.from("profiles").select("id").eq("team_id", teamId)
-      const memberIds = teamMembers?.map((member) => member.id) || []
-
-      // 2. Calcular puntos en paralelo
-      const [salesResult, clientsResult, freeKicksResult] = await Promise.all([
-        // Ventas (representantes + equipo)
-        Promise.all([
-          memberIds.length > 0
-            ? supabase.from("sales").select("points").in("representative_id", memberIds)
-            : Promise.resolve({ data: [] }),
-          supabase.from("sales").select("points").eq("team_id", teamId),
-        ]),
-
-        // Clientes (representantes + equipo)
-        Promise.all([
-          memberIds.length > 0
-            ? supabase.from("competitor_clients").select("id, points").in("representative_id", memberIds)
-            : Promise.resolve({ data: [] }),
-          supabase.from("competitor_clients").select("id, points").eq("team_id", teamId),
-        ]),
-
-        // Tiros libres
-        supabase
-          .from("free_kick_goals")
-          .select("points")
-          .eq("team_id", teamId),
-      ])
-
-      // 3. Calcular puntos de ventas
-      const salesByRep = salesResult[0].data || []
-      const salesByTeam = salesResult[1].data || []
-      const totalSalesPoints =
-        salesByRep.reduce((sum, sale) => sum + (sale.points || 0), 0) +
-        salesByTeam.reduce((sum, sale) => sum + (sale.points || 0), 0)
-
-      // 4. Calcular puntos de clientes (evitando duplicados)
-      const clientsByRep = clientsResult[0].data || []
-      const clientsByTeam = clientsResult[1].data || []
-      const countedClientIds = new Set()
-      let totalClientsPoints = 0
-
-      for (const client of clientsByRep) {
-        if (!countedClientIds.has(client.id)) {
-          totalClientsPoints += client.points || 200
-          countedClientIds.add(client.id)
-        }
-      }
-
-      for (const client of clientsByTeam) {
-        if (!countedClientIds.has(client.id)) {
-          totalClientsPoints += client.points || 200
-          countedClientIds.add(client.id)
-        }
-      }
-
-      // 5. Calcular puntos de tiros libres
-      const freeKicks = freeKicksResult.data || []
-      const totalFreeKickPoints = freeKicks.reduce((sum, freeKick) => sum + (freeKick.points || 0), 0)
-
-      // 6. Sumar todos los puntos
-      return totalSalesPoints + totalClientsPoints + totalFreeKickPoints
-    } catch (error) {
-      console.error("Error calculando puntos para equipo", teamId, error)
-      return 0
-    }
-  }
 
   async function loadData() {
     try {
       setLoading(true)
 
-      // Obtener el usuario actual
       const {
         data: { user: authUser },
       } = await supabase.auth.getUser()
-
       if (!authUser) return
 
-      // Obtener el perfil del usuario
       const { data: profileData, error: profileError } = await supabase
         .from("profiles")
-        .select(`
-         *,
-         zones:zone_id(*)
-       `)
+        .select(`*, zones:zone_id(*)`)
         .eq("id", authUser.id)
         .single()
 
       if (profileError) throw profileError
       setUserData(profileData)
-
-      // Obtener configuración de puntos para gol
-      const { data: puntosConfig } = await supabase
-        .from("system_config")
-        .select("value")
-        .eq("key", "puntos_para_gol")
-        .maybeSingle()
-
-      const puntosParaGol = puntosConfig?.value ? Number(puntosConfig.value) : 100
 
       if (!profileData.zone_id) {
         toast({
@@ -159,93 +54,22 @@ function DirectorTecnicoRankingContent() {
         return
       }
 
-      // Obtener equipos de la zona (optimizado)
-      const { data: zoneTeamsData, error: zoneTeamsError } = await supabase
-        .from("teams")
-        .select(`
-          id, 
-          name,
-          distributors(name),
-          zones(name)
-        `)
-        .eq("zone_id", profileData.zone_id)
+      const [zOff, zFk, nOff, nFk] = await Promise.all([
+        getTeamRankingByZone(profileData.zone_id),
+        getFreeKicksRankingByZone(profileData.zone_id),
+        getTeamRankingByZone(),
+        getFreeKicksRankingByZone(),
+      ])
 
-      if (zoneTeamsError) {
-        console.error("Error al obtener equipos de zona:", zoneTeamsError)
-        toast({
-          title: "Error",
-          description: "No se pudieron cargar los equipos de tu zona",
-          variant: "destructive",
-        })
-      } else if (zoneTeamsData && zoneTeamsData.length > 0) {
-        // Calcular puntos para todos los equipos de la zona en paralelo
-        const zoneTeamsWithPoints = await Promise.all(
-          zoneTeamsData.map(async (team) => {
-            const totalPoints = await calculateTeamPoints(team.id)
-            return {
-              id: team.id,
-              name: team.name,
-              total_points: totalPoints,
-              goals: Math.floor(totalPoints / puntosParaGol),
-              distributor_name: team.distributors?.name || "Sin distribuidor",
-              zone_name: team.zones?.name || "Sin zona",
-            }
-          }),
-        )
-
-        // Ordenar por puntos totales
-        const sortedZoneRanking = zoneTeamsWithPoints.sort((a, b) => b.total_points - a.total_points)
-        setZoneTeams(sortedZoneRanking)
-      } else {
-        setZoneTeams([])
-      }
-
-      // Obtener ranking nacional (optimizado - limitado a 20 equipos para mejor rendimiento)
-      const { data: nationalTeamsData, error: nationalTeamsError } = await supabase
-        .from("teams")
-        .select(`
-          id, 
-          name,
-          zone_id,
-          distributors(name),
-          zones(name)
-        `)
-        .limit(20)
-
-      if (nationalTeamsError) {
-        console.error("Error al obtener equipos nacionales:", nationalTeamsError)
-        toast({
-          title: "Error",
-          description: "No se pudo cargar el ranking nacional",
-          variant: "destructive",
-        })
-      } else if (nationalTeamsData && nationalTeamsData.length > 0) {
-        // Calcular puntos para todos los equipos nacionales en paralelo
-        const nationalTeamsWithPoints = await Promise.all(
-          nationalTeamsData.map(async (team) => {
-            const totalPoints = await calculateTeamPoints(team.id)
-            return {
-              id: team.id,
-              name: team.name,
-              total_points: totalPoints,
-              goals: Math.floor(totalPoints / puntosParaGol),
-              distributor_name: team.distributors?.name || "Sin distribuidor",
-              zone_name: team.zones?.name || "Sin zona",
-            }
-          }),
-        )
-
-        // Ordenar por puntos totales
-        const sortedNationalRanking = nationalTeamsWithPoints.sort((a, b) => b.total_points - a.total_points)
-        setNationalTeams(sortedNationalRanking)
-      } else {
-        setNationalTeams([])
-      }
-    } catch (error: any) {
+      if (zOff.success) setZoneOfficial(zOff.data || [])
+      if (zFk.success) setZoneFk(zFk.data || [])
+      if (nOff.success) setNationalOfficial(nOff.data || [])
+      if (nFk.success) setNationalFk(nFk.data || [])
+    } catch (error: unknown) {
       console.error("Error al cargar datos:", error)
       toast({
         title: "Error",
-        description: error?.message || "No se pudieron cargar los rankings",
+        description: error instanceof Error ? error.message : "No se pudieron cargar los rankings",
         variant: "destructive",
       })
     } finally {
@@ -253,20 +77,112 @@ function DirectorTecnicoRankingContent() {
     }
   }
 
+  useEffect(() => {
+    loadData()
+  }, [])
+
+  function renderOfficialTable(teams: TeamRanking[], emptyTitle: string) {
+    if (loading) {
+      return (
+        <div className="flex justify-center items-center py-8">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-corteva-600" />
+        </div>
+      )
+    }
+    if (!teams.length) {
+      return <EmptyState icon="trophy" title={emptyTitle} description="Cuando haya equipos, aparecerán aquí." />
+    }
+    return (
+      <div className="rounded-md border">
+        <table className="min-w-full divide-y divide-gray-200">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Posición</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Equipo</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Distribuidor</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Goles</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Puntos oficiales</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Nivel</th>
+            </tr>
+          </thead>
+          <tbody className="bg-white divide-y divide-gray-200">
+            {teams.map((team) => (
+              <tr key={team.team_id}>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                  <div className="flex items-center justify-center w-8 h-8 rounded-full bg-gray-100 text-gray-800 font-bold">
+                    {team.position}
+                  </div>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{team.team_name}</td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{team.distributor_name}</td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-green-600 font-semibold">{team.goals}</td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-blue-600 font-semibold">{team.total_points}</td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                  <TeamLevelBadge position={team.position} />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    )
+  }
+
+  function renderFkTable(teams: FreeKicksRankingItem[], showZone: boolean, emptyTitle: string) {
+    if (loading) {
+      return (
+        <div className="flex justify-center items-center py-8">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-corteva-600" />
+        </div>
+      )
+    }
+    if (!teams.length) {
+      return <EmptyState icon="trophy" title={emptyTitle} description="Aún no hay datos de tiros libres." />
+    }
+    return (
+      <div className="rounded-md border">
+        <table className="min-w-full divide-y divide-gray-200">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Posición</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Equipo</th>
+              {showZone ? (
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Zona</th>
+              ) : null}
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Distribuidor</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Puntos premio</th>
+            </tr>
+          </thead>
+          <tbody className="bg-white divide-y divide-gray-200">
+            {teams.map((team) => (
+              <tr key={team.team_id}>
+                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">{team.position}</td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{team.team_name}</td>
+                {showZone ? (
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{team.zone_name}</td>
+                ) : null}
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{team.distributor_name}</td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-amber-600 font-semibold">
+                  {team.free_kick_points}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
           <h2 className="text-3xl font-bold tracking-tight">Rankings</h2>
-          <p className="text-muted-foreground">Clasificación de equipos por puntos</p>
+          <p className="text-muted-foreground">
+            Ranking oficial (ventas + clientes) y premio tiros libres, que no suma goles ni posición oficial.
+          </p>
         </div>
-        <Button
-          onClick={() => loadData()}
-          variant="outline"
-          size="sm"
-          disabled={loading}
-          className="flex items-center gap-2"
-        >
+        <Button onClick={() => loadData()} variant="outline" size="sm" disabled={loading} className="flex items-center gap-2">
           <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
           Actualizar
         </Button>
@@ -274,160 +190,92 @@ function DirectorTecnicoRankingContent() {
 
       <Tabs defaultValue="zona" className="space-y-4">
         <TabsList>
-          <TabsTrigger value="zona">Ranking de Zona</TabsTrigger>
-          <TabsTrigger value="nacional">Ranking Nacional</TabsTrigger>
+          <TabsTrigger value="zona">Mi zona</TabsTrigger>
+          <TabsTrigger value="nacional">Nacional</TabsTrigger>
         </TabsList>
 
         <TabsContent value="zona" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Trophy className="h-5 w-5 text-yellow-500" />
-                Ranking de {userData?.zones?.name || "mi zona"}
-              </CardTitle>
-              <CardDescription>Posiciones de los equipos en tu zona</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {loading ? (
-                <div className="flex justify-center items-center py-8">
-                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-corteva-600"></div>
-                </div>
-              ) : zoneTeams && zoneTeams.length > 0 ? (
-                <div className="rounded-md border">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Posición
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Equipo
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Distribuidor
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Goles
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Puntos
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Nivel
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                      {zoneTeams.map((team, index) => (
-                        <tr key={team.id}>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                            <div className="flex items-center justify-center w-8 h-8 rounded-full bg-gray-100 text-gray-800 font-bold">
-                              {index + 1}
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{team.name}</td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{team.distributor_name}</td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-green-600 font-semibold">
-                            {team.goals}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-blue-600 font-semibold">
-                            {team.total_points}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                            <TeamLevelBadge position={index + 1} />
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                <EmptyState
-                  icon="trophy"
-                  title="No hay equipos en esta zona"
-                  description="Cuando se creen equipos en esta zona, aparecerán en el ranking"
-                />
-              )}
-            </CardContent>
-          </Card>
+          <Tabs defaultValue="oficial">
+            <TabsList>
+              <TabsTrigger value="oficial" className="gap-1">
+                <Trophy className="h-4 w-4" />
+                Ranking oficial
+              </TabsTrigger>
+              <TabsTrigger value="fk" className="gap-1">
+                <Target className="h-4 w-4" />
+                Tiros libres
+              </TabsTrigger>
+            </TabsList>
+            <TabsContent value="oficial" className="mt-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Trophy className="h-5 w-5 text-yellow-500" />
+                    Ranking de {userData?.zones?.name || "mi zona"}
+                  </CardTitle>
+                  <CardDescription>
+                    Solo puntos oficiales definen posición y goles. Los tiros libres están en la pestaña aparte.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {renderOfficialTable(zoneOfficial, "No hay equipos en esta zona")}
+                </CardContent>
+              </Card>
+            </TabsContent>
+            <TabsContent value="fk" className="mt-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Target className="h-5 w-5 text-amber-500" />
+                    Premio tiros libres — {userData?.zones?.name || "zona"}
+                  </CardTitle>
+                  <CardDescription>No suma al ranking oficial ni a los goles del concurso.</CardDescription>
+                </CardHeader>
+                <CardContent>{renderFkTable(zoneFk, false, "No hay datos de tiros libres en la zona")}</CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
         </TabsContent>
 
         <TabsContent value="nacional" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <TrendingUp className="h-5 w-5 text-blue-500" />
-                Ranking Nacional
-              </CardTitle>
-              <CardDescription>Los mejores equipos a nivel nacional</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {loading ? (
-                <div className="flex justify-center items-center py-8">
-                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-corteva-600"></div>
-                </div>
-              ) : nationalTeams && nationalTeams.length > 0 ? (
-                <div className="rounded-md border">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Posición
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Equipo
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Zona
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Distribuidor
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Goles
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Puntos
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Nivel
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                      {nationalTeams.map((team, index) => (
-                        <tr key={team.id}>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                            <div className="flex items-center justify-center w-8 h-8 rounded-full bg-gray-100 text-gray-800 font-bold">
-                              {index + 1}
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{team.name}</td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{team.zone_name}</td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{team.distributor_name}</td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-green-600 font-semibold">
-                            {team.goals}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-blue-600 font-semibold">
-                            {team.total_points}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                            <TeamLevelBadge position={index + 1} />
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                <EmptyState
-                  icon="trophy"
-                  title="No hay equipos registrados"
-                  description="Cuando se registren equipos, aparecerán en el ranking nacional"
-                />
-              )}
-            </CardContent>
-          </Card>
+          <Tabs defaultValue="oficial">
+            <TabsList>
+              <TabsTrigger value="oficial" className="gap-1">
+                <TrendingUp className="h-4 w-4" />
+                Ranking oficial
+              </TabsTrigger>
+              <TabsTrigger value="fk" className="gap-1">
+                <Target className="h-4 w-4" />
+                Tiros libres
+              </TabsTrigger>
+            </TabsList>
+            <TabsContent value="oficial" className="mt-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <TrendingUp className="h-5 w-5 text-blue-500" />
+                    Ranking nacional oficial
+                  </CardTitle>
+                  <CardDescription>Clasificación por puntos oficiales a nivel nacional.</CardDescription>
+                </CardHeader>
+                <CardContent>{renderOfficialTable(nationalOfficial, "No hay equipos registrados")}</CardContent>
+              </Card>
+            </TabsContent>
+            <TabsContent value="fk" className="mt-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Target className="h-5 w-5 text-amber-500" />
+                    Premio tiros libres — nacional
+                  </CardTitle>
+                  <CardDescription>Clasificación aparte; no altera posición en el ranking oficial.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {renderFkTable(nationalFk, true, "No hay datos de tiros libres")}
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
         </TabsContent>
       </Tabs>
     </div>

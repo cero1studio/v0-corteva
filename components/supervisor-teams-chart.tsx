@@ -8,10 +8,12 @@ import { AlertCircle, Users } from "lucide-react"
 import { EmptyState } from "./empty-state"
 
 type TeamPerformanceData = {
-  name: string // Team name
+  name: string
+  /** Goles según puntos oficiales (ventas + clientes), sin tiros libres. */
   goals: number
-  sales: number // Total sales count
-  clients: number // Total clients count
+  sales: number
+  clients: number
+  freeKickPoints: number
 }
 
 export function SupervisorTeamsChart() {
@@ -98,12 +100,11 @@ export function SupervisorTeamsChart() {
         }
       })
 
-      // Aggregate free kicks
+      // Tiros libres: no entran en goles oficiales del gráfico (solo tracking aparte)
       freeKicks.forEach((fk) => {
         if (fk.team_id && teamStatsMap.has(fk.team_id)) {
           const stats = teamStatsMap.get(fk.team_id)!
-          stats.totalPoints += fk.points || 0
-          stats.freeKicksPoints += fk.points || 0 // Store free kick points separately if needed
+          stats.freeKicksPoints += fk.points || 0
           teamStatsMap.set(fk.team_id, stats)
         }
       })
@@ -116,6 +117,7 @@ export function SupervisorTeamsChart() {
             goals: Math.floor(stats.totalPoints / puntosParaGol),
             sales: stats.salesCount,
             clients: stats.clientsCount,
+            freeKickPoints: stats.freeKicksPoints,
           }
         })
         .sort((a, b) => b.goals - a.goals) // Sort by goals
@@ -174,7 +176,8 @@ export function SupervisorTeamsChart() {
         <Tooltip />
         <Legend />
         <Bar yAxisId="left" dataKey="sales" name="Ventas" fill="#4ade80" radius={[4, 4, 0, 0]} />
-        <Bar yAxisId="right" dataKey="goals" name="Goles" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+        <Bar yAxisId="right" dataKey="goals" name="Goles (oficial)" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+        <Bar yAxisId="right" dataKey="freeKickPoints" name="Premio tiros libres (pts)" fill="#d97706" radius={[4, 4, 0, 0]} />
       </BarChart>
     </ResponsiveContainer>
   )

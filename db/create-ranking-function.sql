@@ -44,12 +44,12 @@ BEGIN
       FROM free_kick_goals
       WHERE team_id = $1
     )
+  -- total_points = solo ventas + clientes (tiros libres en free_kick_points, no ordenan el ranking oficial)
   SELECT 
     (COALESCE((SELECT points FROM sales_by_rep), 0) + 
      COALESCE((SELECT points FROM sales_by_team), 0) + 
      COALESCE((SELECT SUM(points) FROM clients_by_rep), 0) + 
-     COALESCE((SELECT SUM(points) FROM clients_by_team), 0) + 
-     COALESCE((SELECT points FROM free_kicks), 0)) as total_points,
+     COALESCE((SELECT SUM(points) FROM clients_by_team), 0)) as total_points,
     (COALESCE((SELECT points FROM sales_by_rep), 0) + 
      COALESCE((SELECT points FROM sales_by_team), 0)) as sales_points,
     (COALESCE((SELECT SUM(points) FROM clients_by_rep), 0) + 

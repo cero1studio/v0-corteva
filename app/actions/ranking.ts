@@ -14,6 +14,22 @@ export interface TeamRanking {
   goals: number
   total_points: number
   zone_name: string
+  /** Puntos de ventas (solo ventas). */
+  total_sales_points?: number
+  /** Puntos de clientes competencia. */
+  total_clients_points?: number
+  /** Puntos de tiros libres (premio aparte; no suman al ranking oficial). */
+  free_kick_points?: number
+}
+
+export interface FreeKicksRankingItem {
+  position: number
+  team_id: string
+  team_name: string
+  distributor_name: string
+  zone_name: string
+  captain_name?: string
+  free_kick_points: number
 }
 
 export interface SalesRanking {
@@ -43,8 +59,13 @@ export interface UserTeamInfo {
   zone_name: string
   position: number
   goals: number
+  /** Puntos oficiales (ventas + clientes); definen posición y goles del concurso. */
   total_points: number
   goals_to_next_position: number
+  /** Puntos de tiros libres; no cuentan para total_points ni goles oficiales. */
+  free_kick_points: number
+  /** Posición en el ranking de premio tiros libres de la zona (1 = primero). */
+  free_kicks_position: number
 }
 
 export async function getTeamRankingByZone(zoneId?: string) {
@@ -60,15 +81,8 @@ export async function getTeamRankingByZone(zoneId?: string) {
     // Si no está en cache, continuar con la lógica existente...
     const supabase = createServerClient()
 
-    // Obtener configuración de puntos para gol
-    const { data: puntosConfig } = await supabase
-      .from("system_config")
-      .select("value")
-      .eq("key", "puntos_para_gol")
-      .maybeSingle()
-
-    const puntosParaGol = puntosConfig?.value ? Number(puntosConfig.value) : 100
-    console.log("DEBUG: Puntos para gol (getTeamRankingByZone):", puntosParaGol) // Log de depuración
+    const { data: puntosRow } = await supabase.from("system_config").select("value").eq("key", "puntos_para_gol").maybeSingle()
+    const puntosParaGol = puntosRow?.value ? Number(puntosRow.value) : 100
 
     // Obtener equipos con sus zonas y distribuidores (sin capitanes por ahora)
     let teamsQuery = supabase.from("teams").select(`
@@ -283,29 +297,34 @@ export async function getTeamRankingByZone(zoneId?: string) {
       const totalFreeKickPoints = freeKicksByTeamMap.get(team.id) || 0
       console.log(`DEBUG: Team ${team.name} - Total Free Kick Points:`, totalFreeKickPoints)
 
-      // 4. SUMAR TODOS LOS PUNTOS Y CALCULAR GOLES
-      const finalTotalPoints = totalSalesPoints + totalClientsPoints + totalFreeKickPoints
-      const goals = Math.floor(finalTotalPoints / puntosParaGol)
+      // 4. Ranking oficial: solo ventas + clientes (tiros libres aparte)
+      const pointsForGoals = totalSalesPoints + totalClientsPoints
+      const finalTotalPoints = pointsForGoals
+      const goals = Math.floor(pointsForGoals / puntosParaGol)
 
-      console.log(`DEBUG: Team ${team.name} - Final Total Points: ${finalTotalPoints}, Goals: ${goals}`)
+      console.log(
+        `DEBUG: Team ${team.name} - Points for goals: ${pointsForGoals}, Goals: ${goals}, Free kicks (apart): ${totalFreeKickPoints}`,
+      )
 
       const captainInfo = captainsMap.get(team.id)
 
       ranking.push({
-        position: 0, // Se asignará después del ordenamiento
+        position: 0,
         team_id: team.id,
         team_name: team.name,
         distributor_name: team.distributors?.name || "Sin distribuidor",
         distributor_logo: team.distributors?.logo_url || null,
         captain_name: captainInfo?.name || "Sin capitán",
         captain_id: captainInfo?.id || null,
-        goals: goals,
+        goals,
         total_points: finalTotalPoints,
         zone_name: team.zones?.name || "Sin zona",
+        total_sales_points: totalSalesPoints,
+        total_clients_points: totalClientsPoints,
+        free_kick_points: totalFreeKickPoints,
       })
     }
 
-    // Ordenar por puntos totales y asignar posiciones
     const sortedRanking = ranking
       .sort((a, b) => b.total_points - a.total_points)
       .map((team, index) => ({
@@ -320,6 +339,75 @@ export async function getTeamRankingByZone(zoneId?: string) {
     return { success: true, data: sortedRanking }
   } catch (error) {
     console.error("Error in getTeamRankingByZone:", error)
+    return { success: false, error: "Error interno del servidor" }
+  }
+}
+
+export async function getFreeKicksRankingByZone(
+  zoneId?: string,
+): Promise<{ success: boolean; data?: FreeKicksRankingItem[]; error?: string }> {
+  try {
+    const supabase = createServerClient()
+
+    let teamsQuery = supabase.from("teams").select(`
+      id,
+      name,
+      zone_id,
+      zones!left(id, name),
+      distributors!left(id, name)
+    `)
+    if (zoneId) {
+      teamsQuery = teamsQuery.eq("zone_id", zoneId)
+    }
+    const { data: teams, error: teamsError } = await teamsQuery
+
+    if (teamsError || !teams?.length) {
+      return { success: true, data: [] }
+    }
+
+    const teamIds = teams.map((t) => t.id)
+    const { data: freeKicksData } = await supabase
+      .from("free_kick_goals")
+      .select("points, team_id")
+      .in("team_id", teamIds)
+
+    const freeKicksByTeam = new Map<string, number>()
+    freeKicksData?.forEach((fk) => {
+      if (fk.team_id) {
+        freeKicksByTeam.set(fk.team_id, (freeKicksByTeam.get(fk.team_id) || 0) + (fk.points || 0))
+      }
+    })
+
+    const { data: captains } = await supabase
+      .from("profiles")
+      .select("id, full_name, team_id")
+      .eq("role", "capitan")
+      .in("team_id", teamIds)
+
+    const captainByTeam = new Map<string, { name: string }>()
+    captains?.forEach((c) => {
+      if (c.team_id) {
+        captainByTeam.set(c.team_id, { name: c.full_name || "Sin capitán" })
+      }
+    })
+
+    const ranking: FreeKicksRankingItem[] = teams.map((team) => ({
+      position: 0,
+      team_id: team.id,
+      team_name: team.name,
+      distributor_name: team.distributors?.name || "Sin distribuidor",
+      zone_name: team.zones?.name || "Sin zona",
+      captain_name: captainByTeam.get(team.id)?.name,
+      free_kick_points: freeKicksByTeam.get(team.id) || 0,
+    }))
+
+    const sorted = ranking
+      .sort((a, b) => b.free_kick_points - a.free_kick_points)
+      .map((item, index) => ({ ...item, position: index + 1 }))
+
+    return { success: true, data: sorted }
+  } catch (error) {
+    console.error("Error in getFreeKicksRankingByZone:", error)
     return { success: false, error: "Error interno del servidor" }
   }
 }
@@ -598,27 +686,16 @@ export async function getUserTeamInfo(
       totalPointsFromFreeKicks = freeKicks.reduce((sum, freeKick) => sum + (freeKick.points || 0), 0)
     }
 
-    // 4. SUMAR TODOS LOS PUNTOS
-    const totalPoints = totalPointsFromSales + totalPointsFromClients + totalPointsFromFreeKicks
+    const pointsForGoals = totalPointsFromSales + totalPointsFromClients
 
-    console.log(`Desglose de puntos para ${team.name}:`)
-    console.log(`- Ventas: ${totalPointsFromSales}`)
-    console.log(`- Clientes: ${totalPointsFromClients}`)
-    console.log(`- Tiros libres: ${totalPointsFromFreeKicks}`)
-    console.log(`- Total: ${totalPoints}`)
+    const { data: puntosRow } = await supabase.from("system_config").select("value").eq("key", "puntos_para_gol").maybeSingle()
+    const puntosParaGol = puntosRow?.value ? Number(puntosRow.value) : 100
+    const goals = Math.floor(pointsForGoals / puntosParaGol)
 
-    // Obtener configuración de puntos para gol
-    const { data: puntosConfig } = await supabase
-      .from("system_config")
-      .select("value")
-      .eq("key", "puntos_para_gol")
-      .maybeSingle()
-
-    const puntosParaGol = puntosConfig?.value ? Number(puntosConfig.value) : 100
-    const goals = Math.floor(totalPoints / puntosParaGol)
-
-    // Obtener ranking de la zona para calcular la posición
-    const rankingResult = await getTeamRankingByZone(team.zone_id)
+    const [rankingResult, fkRankingResult] = await Promise.all([
+      getTeamRankingByZone(team.zone_id),
+      getFreeKicksRankingByZone(team.zone_id),
+    ])
 
     let position = 0
     let goalsToNext = 0
@@ -628,7 +705,15 @@ export async function getUserTeamInfo(
       const nextTeam = rankingResult.data.find((t) => t.position === (teamPosition?.position || 1) - 1)
 
       position = teamPosition?.position || 0
-      goalsToNext = nextTeam ? Math.max(0, Math.ceil((nextTeam.total_points - totalPoints) / puntosParaGol)) : 0
+      const myPointsForRanking = teamPosition?.total_points ?? pointsForGoals
+      const nextPoints = nextTeam?.total_points ?? 0
+      goalsToNext = nextTeam ? Math.max(0, Math.ceil((nextPoints - myPointsForRanking) / puntosParaGol)) : 0
+    }
+
+    let freeKicksPosition = 0
+    if (fkRankingResult.success && fkRankingResult.data) {
+      const row = fkRankingResult.data.find((t) => t.team_id === team.id)
+      freeKicksPosition = row?.position ?? 0
     }
 
     const userTeamInfo: UserTeamInfo = {
@@ -636,10 +721,12 @@ export async function getUserTeamInfo(
       team_name: team.name,
       zone_id: team.zone_id,
       zone_name: team.zones?.name || "Sin zona",
-      position: position,
-      goals: goals,
-      total_points: totalPoints,
+      position,
+      goals,
+      total_points: pointsForGoals,
       goals_to_next_position: goalsToNext,
+      free_kick_points: totalPointsFromFreeKicks,
+      free_kicks_position: freeKicksPosition,
     }
 
     return { success: true, data: userTeamInfo }

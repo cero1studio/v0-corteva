@@ -146,7 +146,9 @@ export default function TirosLibresPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">Tiros Libres</h1>
-          <p className="text-muted-foreground">Adjudica goles adicionales a los equipos por tiros libres</p>
+          <p className="text-muted-foreground">
+            Adjudica puntos de premio por tiros libres. No suman al ranking oficial de goles; se premian aparte.
+          </p>
         </div>
         <div className="flex gap-2">
           <Button onClick={() => setModalOpen(true)} variant="default">

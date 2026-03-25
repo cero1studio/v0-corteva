@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from "react"
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis, LabelList } from "recharts"
 import { supabase } from "@/lib/supabase/client"
 import { Skeleton } from "@/components/ui/skeleton"
-import { AlertCircle, MapPin, RefreshCw } from "lucide-react"
+import { AlertCircle, MapPin, RefreshCw, Trophy } from "lucide-react"
 import { EmptyState } from "./empty-state"
 import { Button } from "./ui/button"
 import { Card, CardContent, CardFooter } from "./ui/card"
@@ -176,6 +176,39 @@ export function AdminZonesChart({ zonesData: propZonesData }: AdminZonesChartPro
         actionHref="/admin/zonas/nuevo"
         className="h-[400px]"
       />
+    )
+  }
+
+  const allZonesOfficialZero =
+    data.length > 0 && data.every((z) => (Number(z.goles) || 0) === 0 && (Number(z.puntos) || 0) === 0)
+
+  if (allZonesOfficialZero) {
+    return (
+      <Card>
+        <CardContent className="pt-6 pb-10">
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="text-lg font-medium">Rendimiento por zona geográfica</h3>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={fetchData}
+              disabled={loading}
+              className="flex items-center gap-1"
+            >
+              <RefreshCw className="h-4 w-4" />
+              Actualizar
+            </Button>
+          </div>
+          <div className="text-center py-16 px-4">
+            <Trophy className="mx-auto h-12 w-12 text-muted-foreground" />
+            <h3 className="mt-4 text-lg font-semibold">Aún no hay actividad oficial por zona</h3>
+            <p className="text-muted-foreground max-w-lg mx-auto text-sm mt-2">
+              Todas las zonas tienen 0 goles y 0 puntos oficiales (ventas y clientes competencia). Cuando haya
+              registros, el gráfico mostrará el rendimiento en lugar de una vista vacía de datos.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
     )
   }
 

@@ -337,17 +337,16 @@ function CapitanDashboardContent() {
       setSalesData(allSales)
       setClientsData(allClients)
       setFreeKickData(allFreeKicks)
-      setZoneRanking(rankingResult.success ? rankingResult.data || [] : [])
-
-      // Calcular posición en el ranking
-      const position = zoneRanking.findIndex((t: any) => t.team_id === teamId) + 1
-      setRankingPosition(position > 0 ? position : null)
+      const rankingRows = rankingResult.success ? rankingResult.data || [] : []
+      setZoneRanking(rankingRows)
+      const rankIdx = rankingRows.findIndex((t: { team_id: string }) => t.team_id === teamId)
+      setRankingPosition(rankIdx >= 0 ? rankIdx + 1 : null)
 
       console.log("CAPITAN DASHBOARD: Final data loaded:")
       console.log("- Sales:", allSales.length)
       console.log("- Clients:", allClients.length)
       console.log("- Free kicks:", allFreeKicks.length)
-      console.log("- Zone ranking position:", position)
+      console.log("- Zone ranking position:", rankIdx >= 0 ? rankIdx + 1 : null)
     } catch (error) {
       console.error("CAPITAN DASHBOARD: Error loading team data:", error)
       toast({
@@ -387,13 +386,13 @@ function CapitanDashboardContent() {
     )
   }
 
-  // Calcular estadísticas usando datos reales de ventas, clientes y tiros libres
+  // Goles y progreso: solo ventas + clientes (oficial). Tiros libres aparte.
   const puntosVentas = salesData.reduce((sum, sale) => sum + (sale.points || 0), 0)
-  const puntosClientes = clientsData.length * 200 // 200 puntos por cliente
+  const puntosClientes = clientsData.reduce((sum, c) => sum + (c.points ?? 200), 0)
   const puntosTirosLibres = freeKickData.reduce((sum, goal) => sum + (goal.points || 0), 0)
-  const totalPuntos = puntosVentas + puntosClientes + puntosTirosLibres
-  const totalGoles = Math.floor(totalPuntos / puntosParaGol)
-  const puntosSobrantes = totalPuntos % puntosParaGol
+  const puntosOficiales = puntosVentas + puntosClientes
+  const totalGoles = Math.floor(puntosOficiales / puntosParaGol)
+  const puntosSobrantes = puntosOficiales % puntosParaGol
   const puntosParaSiguienteGol = puntosParaGol - puntosSobrantes
   const porcentajeCompletado = (puntosSobrantes / puntosParaGol) * 100
   const totalSales = salesData.length
@@ -448,14 +447,14 @@ function CapitanDashboardContent() {
               </div>
               <div>
                 <div className="text-2xl font-bold">
-                  {rankingPosition ? `#${rankingPosition}` : zoneRanking.length > 0 ? "#1" : "Líder"}
+                  {rankingPosition != null ? `#${rankingPosition}` : zoneRanking.length === 0 ? "—" : "—"}
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  {rankingPosition && rankingPosition <= 3
-                    ? `¡Felicidades! Estás en el top ${rankingPosition}`
-                    : zoneRanking.length > 0
-                      ? "¡Sube posiciones para ganar una medalla!"
-                      : "¡Eres el primer equipo en tu zona!"}
+                  {rankingPosition != null && rankingPosition <= 3
+                    ? `¡Felicidades! Top ${rankingPosition} en ranking oficial`
+                    : rankingPosition != null
+                      ? "Ranking oficial (ventas + clientes)"
+                      : "Sin posición aún en la zona"}
                 </p>
               </div>
             </div>
@@ -469,7 +468,7 @@ function CapitanDashboardContent() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Goles Acumulados</CardTitle>
+            <CardTitle className="text-sm font-medium">Goles oficiales</CardTitle>
             <img src="/soccer-ball.png" alt="Balón" className="h-5 w-5" />
           </CardHeader>
           <CardContent>
@@ -489,16 +488,16 @@ function CapitanDashboardContent() {
                   <span>Puntos por clientes:</span>
                   <span>{puntosClientes.toLocaleString()}</span>
                 </div>
-                {puntosTirosLibres > 0 && (
-                  <div className="flex justify-between text-xs text-muted-foreground">
-                    <span>Puntos por tiros libres:</span>
-                    <span>{puntosTirosLibres.toLocaleString()}</span>
-                  </div>
-                )}
                 <div className="border-t pt-1 flex justify-between text-xs font-medium">
-                  <span>Total puntos:</span>
-                  <span>{totalPuntos.toLocaleString()}</span>
+                  <span>Total puntos oficiales:</span>
+                  <span>{puntosOficiales.toLocaleString()}</span>
                 </div>
+                {puntosTirosLibres > 0 && (
+                  <p className="text-xs text-amber-800 mt-2">
+                    Premio tiros libres: {puntosTirosLibres.toLocaleString()} pts (no suman a estos goles ni al ranking
+                    oficial).
+                  </p>
+                )}
               </div>
               <p className="text-xs text-muted-foreground mt-1">
                 {puntosSobrantes > 0
@@ -542,21 +541,16 @@ function CapitanDashboardContent() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Clientes + Tiros Libres</CardTitle>
+            <CardTitle className="text-sm font-medium">Clientes captados</CardTitle>
             <User className="h-4 w-4 text-corteva-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{totalClients + totalFreeKicks}</div>
+            <div className="text-2xl font-bold">{totalClients}</div>
             <div className="mt-2 space-y-1">
-              <div className="flex justify-between text-xs text-muted-foreground">
-                <span>Clientes:</span>
-                <span>{totalClients}</span>
-              </div>
               {totalFreeKicks > 0 && (
-                <div className="flex justify-between text-xs text-muted-foreground">
-                  <span>Tiros libres:</span>
-                  <span>{totalFreeKicks}</span>
-                </div>
+                <p className="text-xs text-muted-foreground">
+                  Tiros libres otorgados: {totalFreeKicks} (premio aparte, no suman al ranking de goles).
+                </p>
               )}
             </div>
           </CardContent>

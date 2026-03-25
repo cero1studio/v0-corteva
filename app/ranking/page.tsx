@@ -1,161 +1,226 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import Link from "next/link"
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
-
-interface UserTeamInfo {
-  team_name: string
-  total_points: number
-  user_id: string
-  username: string
-  goals: number
-  position?: number
-}
-
-const puntosParaGol = 10
+import {
+  getFreeKicksRankingByZone,
+  getTeamRankingByZone,
+  getUserTeamInfo,
+  type FreeKicksRankingItem,
+  type TeamRanking,
+  type UserTeamInfo,
+} from "@/app/actions/ranking"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Target, Trophy } from "lucide-react"
 
 export default function RankingPage() {
-  const [userTeamInfo, setUserTeamInfo] = useState<UserTeamInfo | null>(null)
-  const [ranking, setRanking] = useState<UserTeamInfo[]>([])
-  const [loading, setLoading] = useState(true)
   const supabase = createClientComponentClient()
+  const [loading, setLoading] = useState(true)
+  const [userId, setUserId] = useState<string | null>(null)
+  const [userTeamInfo, setUserTeamInfo] = useState<UserTeamInfo | null>(null)
+  const [official, setOfficial] = useState<TeamRanking[]>([])
+  const [freeKicks, setFreeKicks] = useState<FreeKicksRankingItem[]>([])
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    loadUserTeamInfo()
-    loadRanking()
-  }, [])
+    let cancelled = false
+    ;(async () => {
+      setLoading(true)
+      setError(null)
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+      if (cancelled) return
+      if (!user) {
+        setUserId(null)
+        setLoading(false)
+        return
+      }
+      setUserId(user.id)
 
-  const loadUserTeamInfo = async () => {
-    setLoading(true)
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-
-    if (user) {
-      const { data: user_team_info, error } = await supabase
-        .from("user_team_info")
-        .select("*")
-        .eq("user_id", user.id)
-        .single()
-
-      if (error) {
-        console.error("Error fetching user team info:", error)
+      const info = await getUserTeamInfo(user.id)
+      if (!info.success || !info.data) {
+        setError(info.error || "No se pudo cargar tu equipo")
         setLoading(false)
         return
       }
 
-      if (user_team_info) {
-        // Calculate goals only from sales points, not total points
-        const { data: salesData } = await supabase
-          .from("sales")
-          .select("points")
-          .or(`representative_id.eq.${user.id},team_id.eq.${user_team_info.team_id}`)
-
-        const totalSalesPoints = salesData?.reduce((sum, sale) => sum + (sale.points || 0), 0) || 0
-        const realGoals = Math.floor(totalSalesPoints / puntosParaGol)
-
-        // Actualizar el objeto userTeamInfo
-        setUserTeamInfo({
-          ...user_team_info,
-          goals: realGoals,
-        })
-      }
-    }
-    setLoading(false)
-  }
-
-  const loadRanking = async () => {
-    setLoading(true)
-    const { data: ranking_data, error } = await supabase
-      .from("user_team_info")
-      .select("*")
-      .order("total_points", { ascending: false })
-
-    if (error) {
-      console.error("Error fetching ranking:", error)
+      const zoneId = info.data.zone_id
+      const [o, f] = await Promise.all([getTeamRankingByZone(zoneId), getFreeKicksRankingByZone(zoneId)])
+      if (cancelled) return
+      setUserTeamInfo(info.data)
+      if (o.success) setOfficial(o.data || [])
+      if (f.success) setFreeKicks(f.data || [])
       setLoading(false)
-      return
+    })()
+    return () => {
+      cancelled = true
     }
-
-    if (ranking_data) {
-      // Add position to each user
-      const rankingWithPositions = ranking_data.map((user, index) => ({
-        ...user,
-        position: index + 1,
-        goals: Math.floor(user.total_points / puntosParaGol), // Keep total points for ranking, but goals should be sales-only
-      }))
-
-      // Calculate sales-only goals for each user
-      for (let i = 0; i < rankingWithPositions.length; i++) {
-        const user = rankingWithPositions[i]
-        const { data: userSalesData } = await supabase
-          .from("sales")
-          .select("points")
-          .or(`representative_id.eq.${user.user_id},team_id.eq.${user.team_id}`)
-
-        const userSalesPoints = userSalesData?.reduce((sum, sale) => sum + (sale.points || 0), 0) || 0
-        rankingWithPositions[i].goals = Math.floor(userSalesPoints / puntosParaGol)
-      }
-
-      setRanking(rankingWithPositions)
-    }
-    setLoading(false)
-  }
+  }, [supabase])
 
   if (loading) {
-    return <div>Loading...</div>
+    return (
+      <div className="container mx-auto p-4">
+        <p>Cargando ranking…</p>
+      </div>
+    )
   }
 
-  return (
-    <div className="container mx-auto p-4">
-      <h1 className="text-3xl font-bold mb-4">Ranking</h1>
-
-      {userTeamInfo && (
-        <div className="mb-4 p-4 border rounded shadow-md">
-          <h2 className="text-xl font-semibold mb-2">Your Team</h2>
-          <p>
-            Team Name: <span className="font-medium">{userTeamInfo.team_name}</span>
-          </p>
-          <p>
-            Total Points: <span className="font-medium">{userTeamInfo.total_points}</span>
-          </p>
-          <p>
-            Position:{" "}
-            <span className="font-medium">
-              {ranking.find((team) => team.user_id === userTeamInfo.user_id)?.position || "N/A"}
-            </span>
-          </p>
-          <p>
-            Goals:
-            <div className="text-2xl font-bold">{Math.floor(userTeamInfo.total_points / puntosParaGol)}</div>
-          </p>
-        </div>
-      )}
-
-      <div className="overflow-x-auto">
-        <table className="min-w-full bg-white border border-gray-200">
-          <thead>
-            <tr className="bg-gray-100">
-              <th className="py-2 px-4 border-b">Position</th>
-              <th className="py-2 px-4 border-b">Username</th>
-              <th className="py-2 px-4 border-b">Team Name</th>
-              <th className="py-2 px-4 border-b">Total Points</th>
-              <th className="py-2 px-4 border-b">Goals</th>
-            </tr>
-          </thead>
-          <tbody>
-            {ranking.map((team) => (
-              <tr key={team.user_id} className="hover:bg-gray-50">
-                <td className="py-2 px-4 border-b text-center">{team.position}</td>
-                <td className="py-2 px-4 border-b">{team.username}</td>
-                <td className="py-2 px-4 border-b">{team.team_name}</td>
-                <td className="py-2 px-4 border-b text-center">{team.total_points}</td>
-                <td className="py-2 px-4 border-b text-center">{team.goals}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+  if (!userId) {
+    return (
+      <div className="container mx-auto p-4 space-y-4">
+        <h1 className="text-2xl font-bold">Ranking</h1>
+        <p className="text-muted-foreground">Inicia sesión para ver el ranking de tu zona, o consulta el ranking público.</p>
+        <Link href="/ranking-publico" className="text-primary underline">
+          Ver ranking público
+        </Link>
       </div>
+    )
+  }
+
+  if (error || !userTeamInfo) {
+    return (
+      <div className="container mx-auto p-4 space-y-2">
+        <h1 className="text-2xl font-bold">Ranking</h1>
+        <p className="text-destructive">{error || "Sin datos de equipo"}</p>
+        <Link href="/ranking-publico" className="text-primary underline block">
+          Ver ranking público
+        </Link>
+      </div>
+    )
+  }
+
+  const officialAllZero = official.length > 0 && official.every((t) => (Number(t.total_points) || 0) === 0)
+  const freeKickAllZero = freeKicks.length > 0 && freeKicks.every((t) => (Number(t.free_kick_points) || 0) === 0)
+
+  return (
+    <div className="container mx-auto p-4 space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold">Ranking — {userTeamInfo.zone_name}</h1>
+        <p className="text-sm text-muted-foreground mt-1">
+          El ranking oficial usa solo ventas y clientes competencia. El premio paralelo (tiros libres) va aparte.
+        </p>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Tu equipo</CardTitle>
+          <CardDescription>{userTeamInfo.team_name}</CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-2 text-sm sm:grid-cols-2">
+          <div>
+            <span className="text-muted-foreground">Posición oficial:</span>{" "}
+            <span className="font-semibold">{officialAllZero ? "—" : `#${userTeamInfo.position}`}</span>
+          </div>
+          <div>
+            <span className="text-muted-foreground">Goles oficiales:</span>{" "}
+            <span className="font-semibold text-green-700">{userTeamInfo.goals}</span>
+          </div>
+          <div>
+            <span className="text-muted-foreground">Puntos oficiales:</span>{" "}
+            <span className="font-semibold">{userTeamInfo.total_points}</span>
+          </div>
+          <div>
+            <span className="text-muted-foreground">Premio paralelo:</span>{" "}
+            <span className="font-semibold text-amber-800">
+              {(userTeamInfo.free_kick_points ?? 0) > 0
+                ? `#${userTeamInfo.free_kicks_position} · ${userTeamInfo.free_kick_points} pts`
+                : "— · 0 pts"}{" "}
+              <span className="text-xs font-normal text-muted-foreground">(en paralelo al oficial)</span>
+            </span>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Tabs defaultValue="oficial">
+        <TabsList>
+          <TabsTrigger value="oficial" className="gap-1">
+            <Trophy className="h-4 w-4" />
+            Ranking oficial
+          </TabsTrigger>
+          <TabsTrigger value="fk" className="gap-1">
+            <Target className="h-4 w-4" />
+            Premio paralelo
+          </TabsTrigger>
+        </TabsList>
+        <TabsContent value="oficial" className="mt-4">
+          {official.length === 0 ? (
+            <p className="text-center py-10 text-muted-foreground text-sm">No hay equipos en tu zona.</p>
+          ) : officialAllZero ? (
+            <div className="text-center py-10">
+              <Trophy className="mx-auto h-10 w-10 text-muted-foreground" />
+              <p className="mt-3 font-medium">Aún no hay actividad oficial</p>
+              <p className="text-sm text-muted-foreground mt-1 max-w-sm mx-auto">
+                Cuando haya puntos por ventas o clientes competencia, verás el ranking aquí.
+              </p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto rounded border">
+              <table className="min-w-full text-sm">
+                <thead>
+                  <tr className="border-b bg-muted/50">
+                    <th className="px-3 py-2 text-left">Pos.</th>
+                    <th className="px-3 py-2 text-left">Equipo</th>
+                    <th className="px-3 py-2 text-right">Goles</th>
+                    <th className="px-3 py-2 text-right">Pts oficiales</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {official.map((team) => (
+                    <tr
+                      key={team.team_id}
+                      className={team.team_id === userTeamInfo.team_id ? "bg-blue-50" : ""}
+                    >
+                      <td className="px-3 py-2">{team.position}</td>
+                      <td className="px-3 py-2 font-medium">{team.team_name}</td>
+                      <td className="px-3 py-2 text-right">{team.goals}</td>
+                      <td className="px-3 py-2 text-right">{team.total_points}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </TabsContent>
+        <TabsContent value="fk" className="mt-4">
+          <p className="text-xs text-muted-foreground mb-2">Premio paralelo: no afecta posición ni goles oficiales.</p>
+          {freeKicks.length === 0 ? (
+            <p className="text-center py-10 text-muted-foreground text-sm">Sin datos de premio paralelo.</p>
+          ) : freeKickAllZero ? (
+            <div className="text-center py-10">
+              <Target className="mx-auto h-10 w-10 text-muted-foreground" />
+              <p className="mt-3 font-medium">Sin premio paralelo aún</p>
+              <p className="text-sm text-muted-foreground mt-1">Nadie tiene puntos por tiros libres adjudicados.</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto rounded border">
+              <table className="min-w-full text-sm">
+                <thead>
+                  <tr className="border-b bg-muted/50">
+                    <th className="px-3 py-2 text-left">Pos.</th>
+                    <th className="px-3 py-2 text-left">Equipo</th>
+                    <th className="px-3 py-2 text-right">Premio paralelo (pts)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {freeKicks.map((team) => (
+                    <tr
+                      key={team.team_id}
+                      className={team.team_id === userTeamInfo.team_id ? "bg-amber-50" : ""}
+                    >
+                      <td className="px-3 py-2">{team.position}</td>
+                      <td className="px-3 py-2 font-medium">{team.team_name}</td>
+                      <td className="px-3 py-2 text-right font-medium text-amber-800">{team.free_kick_points}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }

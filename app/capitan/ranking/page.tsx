@@ -5,17 +5,19 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Trophy, Medal, ShoppingCart, Users } from "lucide-react"
+import { Trophy, Medal, ShoppingCart, Users, Target } from "lucide-react"
 import { useAuth } from "@/hooks/useAuth"
 import {
   getTeamRankingByZone,
   getSalesRankingByZone,
   getClientsRankingByZone,
+  getFreeKicksRankingByZone,
   getUserTeamInfo,
   getProducts,
   type TeamRanking,
   type SalesRanking,
   type ClientsRanking,
+  type FreeKicksRankingItem,
   type UserTeamInfo,
 } from "@/app/actions/ranking"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -27,6 +29,7 @@ export default function CapitanRankingPage() {
   const [teamRanking, setTeamRanking] = useState<TeamRanking[]>([])
   const [salesRanking, setSalesRanking] = useState<SalesRanking[]>([])
   const [clientsRanking, setClientsRanking] = useState<ClientsRanking[]>([])
+  const [freeKicksRanking, setFreeKicksRanking] = useState<FreeKicksRankingItem[]>([])
   const [userTeamInfo, setUserTeamInfo] = useState<UserTeamInfo | null>(null)
   const [products, setProducts] = useState<Array<{ id: string; name: string }>>([])
   const [loading, setLoading] = useState(true)
@@ -63,12 +66,14 @@ export default function CapitanRankingPage() {
         const userZoneId = userInfoResult.data!.zone_id
 
         // Cargar todos los rankings de la zona del usuario
-        const [teamRankingResult, salesRankingResult, clientsRankingResult, productsResult] = await Promise.all([
-          getTeamRankingByZone(userZoneId),
-          getSalesRankingByZone(userZoneId),
-          getClientsRankingByZone(userZoneId),
-          getProducts(),
-        ])
+        const [teamRankingResult, salesRankingResult, clientsRankingResult, freeKicksRankingResult, productsResult] =
+          await Promise.all([
+            getTeamRankingByZone(userZoneId),
+            getSalesRankingByZone(userZoneId),
+            getClientsRankingByZone(userZoneId),
+            getFreeKicksRankingByZone(userZoneId),
+            getProducts(),
+          ])
 
         if (mounted) {
           if (teamRankingResult.success) {
@@ -81,6 +86,10 @@ export default function CapitanRankingPage() {
 
           if (clientsRankingResult.success) {
             setClientsRanking(clientsRankingResult.data || [])
+          }
+
+          if (freeKicksRankingResult.success) {
+            setFreeKicksRanking(freeKicksRankingResult.data || [])
           }
 
           if (productsResult.success) {
@@ -146,6 +155,11 @@ export default function CapitanRankingPage() {
     )
   }
 
+  const officialAllZero =
+    teamRanking.length > 0 && teamRanking.every((t) => (Number(t.total_points) || 0) === 0)
+  const freeKickAllZero =
+    freeKicksRanking.length > 0 && freeKicksRanking.every((t) => (Number(t.free_kick_points) || 0) === 0)
+
   if (error) {
     return (
       <div className="p-6 flex items-center justify-center min-h-[400px]">
@@ -188,13 +202,16 @@ export default function CapitanRankingPage() {
       <Tabs defaultValue="equipos" className="space-y-6">
         <TabsList className="h-10">
           <TabsTrigger value="equipos" className="text-sm">
-            Ranking General
+            Ranking oficial
           </TabsTrigger>
           <TabsTrigger value="ventas" className="text-sm">
             Ranking de Ventas
           </TabsTrigger>
           <TabsTrigger value="clientes" className="text-sm">
             Ranking de Clientes
+          </TabsTrigger>
+          <TabsTrigger value="tiros-libres" className="text-sm">
+            Premio paralelo
           </TabsTrigger>
         </TabsList>
 
@@ -203,49 +220,67 @@ export default function CapitanRankingPage() {
             <CardHeader className="pb-2">
               <CardTitle className="flex items-center gap-2">
                 <Trophy className="h-5 w-5 text-yellow-500" />
-                TOP Equipos - {userTeamInfo?.zone_name}
+                TOP equipos — {userTeamInfo?.zone_name}
               </CardTitle>
-              <CardDescription>Los mejores equipos de tu zona por puntos totales</CardDescription>
+              <CardDescription>
+                Puntos oficiales (ventas + clientes competencia). El premio paralelo (tiros libres) está en su pestaña.
+              </CardDescription>
             </CardHeader>
             <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-16">Pos.</TableHead>
-                    <TableHead>Equipo</TableHead>
-                    <TableHead>Capitán</TableHead>
-                    <TableHead className="text-right">Goles</TableHead>
-                    <TableHead className="text-right">Puntos</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {teamRanking.map((team) => (
-                    <TableRow key={team.team_id} className={team.team_id === userTeamInfo?.team_id ? "bg-blue-50" : ""}>
-                      <TableCell className="font-medium">
-                        <div className="flex items-center gap-2">
-                          {team.position}
-                          {getPositionIcon(team.position) && (
-                            <span className="text-lg">{getPositionIcon(team.position)}</span>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell className="font-medium">
-                        {team.team_name}
-                        {team.team_id === userTeamInfo?.team_id && (
-                          <span className="ml-2 text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">Tu equipo</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className="bg-gray-50">
-                          {team.captain_name || "Sin capitán"}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right font-bold text-green-600">{team.goals}</TableCell>
-                      <TableCell className="text-right font-bold text-blue-600">{team.total_points}</TableCell>
+              {teamRanking.length === 0 ? (
+                <div className="text-center py-12 text-muted-foreground">
+                  <Trophy className="mx-auto h-12 w-12 opacity-50" />
+                  <p className="mt-4 font-medium text-foreground">No hay equipos en tu zona</p>
+                </div>
+              ) : officialAllZero ? (
+                <div className="text-center py-12">
+                  <Trophy className="mx-auto h-12 w-12 text-muted-foreground" />
+                  <h3 className="mt-4 text-lg font-semibold">Aún no hay actividad oficial</h3>
+                  <p className="text-muted-foreground max-w-md mx-auto text-sm">
+                    Ningún equipo tiene puntos oficiales aún. Cuando registres ventas o clientes competencia, aquí verás
+                    el ranking en lugar de una tabla en ceros.
+                  </p>
+                </div>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-16">Pos.</TableHead>
+                      <TableHead>Equipo</TableHead>
+                      <TableHead>Capitán</TableHead>
+                      <TableHead className="text-right">Goles</TableHead>
+                      <TableHead className="text-right">Puntos oficiales</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {teamRanking.map((team) => (
+                      <TableRow key={team.team_id} className={team.team_id === userTeamInfo?.team_id ? "bg-blue-50" : ""}>
+                        <TableCell className="font-medium">
+                          <div className="flex items-center gap-2">
+                            {team.position}
+                            {getPositionIcon(team.position) && (
+                              <span className="text-lg">{getPositionIcon(team.position)}</span>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="font-medium">
+                          {team.team_name}
+                          {team.team_id === userTeamInfo?.team_id && (
+                            <span className="ml-2 text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">Tu equipo</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className="bg-gray-50">
+                            {team.captain_name || "Sin capitán"}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right font-bold text-green-600">{team.goals}</TableCell>
+                        <TableCell className="text-right font-bold text-blue-600">{team.total_points}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
             </CardContent>
           </Card>
 
@@ -256,31 +291,41 @@ export default function CapitanRankingPage() {
                   <Medal className="h-5 w-5 text-yellow-500" />
                   Tu Posición
                 </CardTitle>
-                <CardDescription>Tu posición actual en el ranking</CardDescription>
+                <CardDescription>
+                  {officialAllZero
+                    ? "Cuando haya puntos oficiales en la zona, aquí verás tu posición y goles del concurso."
+                    : "Posición y métricas oficiales del concurso (sin premio paralelo)"}
+                </CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="flex items-center justify-center gap-8 py-4">
-                  <div className="text-center">
-                    <div className="text-4xl font-bold">{userTeamInfo?.position || 0}</div>
-                    <p className="text-sm text-muted-foreground">Posición</p>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-4xl font-bold text-green-600">{userTeamInfo?.goals || 0}</div>
-                    <p className="text-sm text-muted-foreground">Goles</p>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-4xl font-bold text-blue-600">{userTeamInfo?.total_points || 0}</div>
-                    <p className="text-sm text-muted-foreground">Puntos</p>
-                  </div>
-                  {getPositionIcon(userTeamInfo?.position || 0) && (
+                {officialAllZero ? (
+                  <p className="text-sm text-muted-foreground py-6 text-center">
+                    Sin puntos oficiales todavía: registra ventas o clientes para entrar en el ranking.
+                  </p>
+                ) : (
+                  <div className="flex items-center justify-center gap-8 py-4">
                     <div className="text-center">
-                      <div className="text-4xl font-bold text-yellow-500">
-                        {getPositionIcon(userTeamInfo?.position || 0)}
-                      </div>
-                      <p className="text-sm text-muted-foreground">Medalla</p>
+                      <div className="text-4xl font-bold">{userTeamInfo?.position || 0}</div>
+                      <p className="text-sm text-muted-foreground">Posición</p>
                     </div>
-                  )}
-                </div>
+                    <div className="text-center">
+                      <div className="text-4xl font-bold text-green-600">{userTeamInfo?.goals || 0}</div>
+                      <p className="text-sm text-muted-foreground">Goles oficiales</p>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-4xl font-bold text-blue-600">{userTeamInfo?.total_points || 0}</div>
+                      <p className="text-sm text-muted-foreground">Puntos oficiales</p>
+                    </div>
+                    {getPositionIcon(userTeamInfo?.position || 0) && (
+                      <div className="text-center">
+                        <div className="text-4xl font-bold text-yellow-500">
+                          {getPositionIcon(userTeamInfo?.position || 0)}
+                        </div>
+                        <p className="text-sm text-muted-foreground">Medalla</p>
+                      </div>
+                    )}
+                  </div>
+                )}
               </CardContent>
             </Card>
 
@@ -290,7 +335,7 @@ export default function CapitanRankingPage() {
                   <Trophy className="h-5 w-5 text-yellow-500" />
                   Tu Equipo
                 </CardTitle>
-                <CardDescription>Información de tu equipo</CardDescription>
+                <CardDescription>Premio paralelo (tiros libres) al margen del ranking oficial</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="space-y-2">
@@ -303,9 +348,22 @@ export default function CapitanRankingPage() {
                     <span className="font-medium">{userTeamInfo?.zone_name}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-sm text-muted-foreground">Posición:</span>
-                    <span className="font-bold text-blue-600">#{userTeamInfo?.position}</span>
+                    <span className="text-sm text-muted-foreground">Posición oficial:</span>
+                    <span className="font-bold text-blue-600">
+                      {officialAllZero ? "—" : `#${userTeamInfo?.position}`}
+                    </span>
                   </div>
+                  <div className="flex justify-between border-t pt-2 mt-2">
+                    <span className="text-sm text-muted-foreground">Premio paralelo:</span>
+                    <span className="font-medium text-amber-800">
+                      {(userTeamInfo?.free_kick_points ?? 0) > 0
+                        ? `#${userTeamInfo?.free_kicks_position} · ${userTeamInfo?.free_kick_points} pts`
+                        : "— · 0 pts"}
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground pt-1">
+                    Esos puntos van en paralelo al concurso: no suman a goles ni a la posición oficial.
+                  </p>
                 </div>
               </CardContent>
             </Card>
@@ -410,6 +468,76 @@ export default function CapitanRankingPage() {
                   ))}
                 </TableBody>
               </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="tiros-libres" className="space-y-6">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="flex items-center gap-2">
+                <Target className="h-5 w-5 text-amber-500" />
+                Premio paralelo — {userTeamInfo?.zone_name}
+              </CardTitle>
+              <CardDescription>
+                Premio paralelo: clasificación por tiros libres, sin afectar goles ni posición oficial.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {freeKicksRanking.length === 0 ? (
+                <div className="text-center py-12 text-muted-foreground">
+                  <Target className="mx-auto h-12 w-12 opacity-50" />
+                  <p className="mt-4">No hay datos de premio paralelo en tu zona.</p>
+                </div>
+              ) : freeKickAllZero ? (
+                <div className="text-center py-12">
+                  <Target className="mx-auto h-12 w-12 text-muted-foreground" />
+                  <h3 className="mt-4 text-lg font-semibold">Sin premio paralelo aún</h3>
+                  <p className="text-muted-foreground text-sm max-w-md mx-auto">
+                    Ningún equipo tiene puntos adjudicados por tiros libres. Cuando los haya, verás la tabla aquí.
+                  </p>
+                </div>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-16">Pos.</TableHead>
+                      <TableHead>Equipo</TableHead>
+                      <TableHead>Capitán</TableHead>
+                      <TableHead className="text-right">Premio paralelo (pts)</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {freeKicksRanking.map((team) => (
+                      <TableRow
+                        key={team.team_id}
+                        className={team.team_id === userTeamInfo?.team_id ? "bg-amber-50" : ""}
+                      >
+                        <TableCell className="font-medium">
+                          <div className="flex items-center gap-2">
+                            {team.position}
+                            {getPositionIcon(team.position) && (
+                              <span className="text-lg">{getPositionIcon(team.position)}</span>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="font-medium">
+                          {team.team_name}
+                          {team.team_id === userTeamInfo?.team_id && (
+                            <span className="ml-2 text-xs bg-amber-100 text-amber-800 px-2 py-1 rounded">Tu equipo</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className="bg-gray-50">
+                            {team.captain_name || "Sin capitán"}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right font-bold text-amber-600">{team.free_kick_points}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
             </CardContent>
           </Card>
         </TabsContent>

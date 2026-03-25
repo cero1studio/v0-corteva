@@ -18,6 +18,8 @@ import { es } from "date-fns/locale"
 import { CalendarIcon, Save, Trophy, Zap, Upload } from "lucide-react"
 import { getSystemConfig, updateSystemConfig } from "@/app/actions/system-config"
 import { useToast } from "@/components/ui/use-toast"
+import { ContestResetSection } from "@/components/admin/contest-reset-section"
+import { BulkPasswordResetSection } from "@/components/admin/bulk-password-reset-section"
 
 export default function ConfiguracionPage() {
   const [startDate, setStartDate] = useState<Date | undefined>(new Date())
@@ -31,10 +33,6 @@ export default function ConfiguracionPage() {
   const [penaltisMetaGoles, setPenaltisMetaGoles] = useState<number>(1)
   const [penaltisMetaVentas, setPenaltisMetaVentas] = useState<number>(1)
 
-  // Estados para medallas
-  const [medalsEnabled, setMedalsEnabled] = useState<boolean>(true)
-  const [medalMessage, setMedalMessage] = useState<string>("¡Sube 1 posición más para ganar una medalla!")
-
   // Estados para notificaciones
   const [emailNotifications, setEmailNotifications] = useState<boolean>(true)
   const [pushNotifications, setPushNotifications] = useState<boolean>(true)
@@ -47,7 +45,6 @@ export default function ConfiguracionPage() {
   const [notifyNewChallenge, setNotifyNewChallenge] = useState<boolean>(true)
   const [notifyPenaltiEarned, setNotifyPenaltiEarned] = useState<boolean>(true)
   const [notifyPenaltiUsed, setNotifyPenaltiUsed] = useState<boolean>(true)
-  const [notifyMedalEarned, setNotifyMedalEarned] = useState<boolean>(true)
 
   // Estados para plantillas de correo
   const [emailWelcome, setEmailWelcome] = useState<string>(
@@ -73,6 +70,7 @@ export default function ConfiguracionPage() {
   const [enableSystemTheme, setEnableSystemTheme] = useState<boolean>(true)
 
   const { toast } = useToast()
+  const [configTab, setConfigTab] = useState("general")
 
   useEffect(() => {
     loadAllConfig()
@@ -96,14 +94,6 @@ export default function ConfiguracionPage() {
         setPenaltisMetaVentas(config.penaltis_meta_ventas || 1)
       }
 
-      // Cargar configuración de medallas
-      const medalsConfig = await getSystemConfig("medals_config")
-      if (medalsConfig.success && medalsConfig.data) {
-        const config = medalsConfig.data
-        setMedalsEnabled(config.enabled !== false)
-        setMedalMessage(config.message || "¡Sube 1 posición más para ganar una medalla!")
-      }
-
       // Cargar configuración de notificaciones
       const notificationsConfig = await getSystemConfig("notifications_config")
       if (notificationsConfig.success && notificationsConfig.data) {
@@ -119,7 +109,6 @@ export default function ConfiguracionPage() {
         setNotifyNewChallenge(config.notify_new_challenge !== false)
         setNotifyPenaltiEarned(config.notify_penalti_earned !== false)
         setNotifyPenaltiUsed(config.notify_penalti_used !== false)
-        setNotifyMedalEarned(config.notify_medal_earned !== false)
       }
 
       // Cargar plantillas de correo
@@ -176,13 +165,6 @@ export default function ConfiguracionPage() {
       }
       await updateSystemConfig("desafios_config", desafiosConfig)
 
-      // Guardar configuración de medallas
-      const medalsConfig = {
-        enabled: medalsEnabled,
-        message: medalMessage,
-      }
-      await updateSystemConfig("medals_config", medalsConfig)
-
       // Guardar configuración de notificaciones
       const notificationsConfig = {
         email_notifications: emailNotifications,
@@ -196,7 +178,6 @@ export default function ConfiguracionPage() {
         notify_new_challenge: notifyNewChallenge,
         notify_penalti_earned: notifyPenaltiEarned,
         notify_penalti_used: notifyPenaltiUsed,
-        notify_medal_earned: notifyMedalEarned,
       }
       await updateSystemConfig("notifications_config", notificationsConfig)
 
@@ -255,14 +236,18 @@ export default function ConfiguracionPage() {
         </div>
       </div>
 
-      <Tabs defaultValue="general" className="space-y-4">
-        <TabsList>
+      <Tabs value={configTab} onValueChange={setConfigTab} className="space-y-4">
+        <TabsList className="flex flex-wrap h-auto gap-1">
           <TabsTrigger value="general">General</TabsTrigger>
           <TabsTrigger value="concurso">Concurso</TabsTrigger>
           <TabsTrigger value="penaltis">Penaltis</TabsTrigger>
           <TabsTrigger value="notificaciones">Notificaciones</TabsTrigger>
           <TabsTrigger value="marca">Marca</TabsTrigger>
           <TabsTrigger value="apariencia">Apariencia</TabsTrigger>
+          <TabsTrigger value="usuarios-pwd">Usuarios / contraseñas</TabsTrigger>
+          <TabsTrigger value="reseteo" className="text-destructive data-[state=active]:text-destructive">
+            Reseteo
+          </TabsTrigger>
         </TabsList>
 
         <form onSubmit={handleSubmit}>
@@ -412,6 +397,16 @@ export default function ConfiguracionPage() {
                     Número de puntos que se deben acumular para anotar un gol
                   </p>
                 </div>
+
+                <Separator />
+
+                <div className="rounded-md border border-muted bg-muted/30 p-4 space-y-1">
+                  <p className="text-sm font-medium">Tiros libres (fijo)</p>
+                  <p className="text-xs text-muted-foreground">
+                    El ranking oficial y los goles del concurso usan solo ventas y clientes competencia. Los tiros libres
+                    tienen su propia clasificación y premio; no suman puntos ni goles al ranking principal.
+                  </p>
+                </div>
               </CardContent>
             </Card>
           </TabsContent>
@@ -535,76 +530,6 @@ export default function ConfiguracionPage() {
                 </div>
               </CardContent>
             </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Configuración de Medallas</CardTitle>
-                <CardDescription>Configura las medallas para los mejores equipos</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="medalsEnabled">Activar Sistema de Medallas</Label>
-                  <div className="flex items-center space-x-2">
-                    <Switch id="medalsEnabled" checked={medalsEnabled} onCheckedChange={setMedalsEnabled} />
-                    <Label htmlFor="medalsEnabled">Mostrar medallas para los tres primeros puestos</Label>
-                  </div>
-                </div>
-
-                <Separator />
-
-                <div className="space-y-2">
-                  <Label>Configuración de Medallas</Label>
-                  <div className="rounded-md border p-4 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <div className="rounded-full p-2 bg-yellow-500 text-white">
-                          <Trophy className="h-4 w-4" />
-                        </div>
-                        <div className="font-medium">Primer Puesto</div>
-                      </div>
-                      <div className="text-sm text-muted-foreground">🥇 Medalla de Oro</div>
-                    </div>
-                  </div>
-
-                  <div className="rounded-md border p-4 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <div className="rounded-full p-2 bg-gray-400 text-white">
-                          <Trophy className="h-4 w-4" />
-                        </div>
-                        <div className="font-medium">Segundo Puesto</div>
-                      </div>
-                      <div className="text-sm text-muted-foreground">🥈 Medalla de Plata</div>
-                    </div>
-                  </div>
-
-                  <div className="rounded-md border p-4 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <div className="rounded-full p-2 bg-amber-600 text-white">
-                          <Trophy className="h-4 w-4" />
-                        </div>
-                        <div className="font-medium">Tercer Puesto</div>
-                      </div>
-                      <div className="text-sm text-muted-foreground">🥉 Medalla de Bronce</div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="medalMessage">Mensaje Motivacional</Label>
-                  <Textarea
-                    id="medalMessage"
-                    value={medalMessage}
-                    onChange={(e) => setMedalMessage(e.target.value)}
-                    rows={2}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Mensaje que se mostrará a los equipos que no están en los tres primeros puestos
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
           </TabsContent>
 
           <TabsContent value="notificaciones" className="space-y-4">
@@ -704,14 +629,6 @@ export default function ConfiguracionPage() {
                         onCheckedChange={setNotifyPenaltiUsed}
                       />
                       <Label htmlFor="notifyPenaltiUsed">Penalti reclamado</Label>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <Switch
-                        id="notifyMedalEarned"
-                        checked={notifyMedalEarned}
-                        onCheckedChange={setNotifyMedalEarned}
-                      />
-                      <Label htmlFor="notifyMedalEarned">Medalla ganada</Label>
                     </div>
                   </div>
                 </div>
@@ -1017,19 +934,29 @@ export default function ConfiguracionPage() {
             </Card>
           </TabsContent>
 
-          <div className="mt-6 flex justify-end">
-            <Button type="submit" disabled={isSubmitting} className="gap-2">
-              {isSubmitting ? (
-                "Guardando..."
-              ) : (
-                <>
-                  <Save className="h-4 w-4" />
-                  Guardar Configuración
-                </>
-              )}
-            </Button>
-          </div>
+          {configTab !== "reseteo" && configTab !== "usuarios-pwd" && (
+            <div className="mt-6 flex justify-end">
+              <Button type="submit" disabled={isSubmitting} className="gap-2">
+                {isSubmitting ? (
+                  "Guardando..."
+                ) : (
+                  <>
+                    <Save className="h-4 w-4" />
+                    Guardar Configuración
+                  </>
+                )}
+              </Button>
+            </div>
+          )}
         </form>
+
+        <TabsContent value="usuarios-pwd" className="space-y-4">
+          <BulkPasswordResetSection />
+        </TabsContent>
+
+        <TabsContent value="reseteo" className="space-y-4">
+          <ContestResetSection />
+        </TabsContent>
       </Tabs>
     </div>
   )

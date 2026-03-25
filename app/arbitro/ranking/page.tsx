@@ -1,97 +1,141 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { Trophy, Medal, Award, Crown } from "lucide-react"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Trophy, Target } from "lucide-react"
 import { ProtectedLayout } from "@/components/ProtectedLayout"
+import {
+  getFreeKicksRankingByZone,
+  getTeamRankingByZone,
+  type FreeKicksRankingItem,
+  type TeamRanking,
+} from "@/app/actions/ranking"
 
 export default function ArbitroRanking() {
+  const [loading, setLoading] = useState(true)
+  const [official, setOfficial] = useState<TeamRanking[]>([])
+  const [freeKicks, setFreeKicks] = useState<FreeKicksRankingItem[]>([])
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      setLoading(true)
+      const [o, f] = await Promise.all([getTeamRankingByZone(), getFreeKicksRankingByZone()])
+      if (!cancelled) {
+        if (o.success) setOfficial(o.data || [])
+        if (f.success) setFreeKicks(f.data || [])
+        setLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   return (
     <ProtectedLayout allowedRoles={["arbitro"]}>
       <div className="space-y-6">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Ranking General</h1>
-          <p className="text-muted-foreground">Clasificación actual de todos los equipos</p>
+          <h1 className="text-3xl font-bold tracking-tight">Ranking</h1>
+          <p className="text-muted-foreground">
+            Vista nacional: ranking oficial (ventas + clientes) y premio tiros libres por separado.
+          </p>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-3">
-          <Card className="border-yellow-200 bg-yellow-50">
-            <CardHeader className="text-center">
-              <Crown className="h-8 w-8 text-yellow-600 mx-auto" />
-              <CardTitle className="text-yellow-800">1er Lugar</CardTitle>
-              <CardDescription>Equipo Alpha</CardDescription>
-            </CardHeader>
-            <CardContent className="text-center">
-              <div className="text-3xl font-bold text-yellow-800">1,250</div>
-              <p className="text-sm text-yellow-600">puntos</p>
-            </CardContent>
-          </Card>
+        <Tabs defaultValue="oficial" className="w-full">
+          <TabsList>
+            <TabsTrigger value="oficial" className="gap-1">
+              <Trophy className="h-4 w-4" />
+              Ranking oficial
+            </TabsTrigger>
+            <TabsTrigger value="tiros-libres" className="gap-1">
+              <Target className="h-4 w-4" />
+              Premio tiros libres
+            </TabsTrigger>
+          </TabsList>
 
-          <Card className="border-gray-200 bg-gray-50">
-            <CardHeader className="text-center">
-              <Medal className="h-8 w-8 text-gray-600 mx-auto" />
-              <CardTitle className="text-gray-800">2do Lugar</CardTitle>
-              <CardDescription>Equipo Beta</CardDescription>
-            </CardHeader>
-            <CardContent className="text-center">
-              <div className="text-3xl font-bold text-gray-800">1,180</div>
-              <p className="text-sm text-gray-600">puntos</p>
-            </CardContent>
-          </Card>
-
-          <Card className="border-orange-200 bg-orange-50">
-            <CardHeader className="text-center">
-              <Award className="h-8 w-8 text-orange-600 mx-auto" />
-              <CardTitle className="text-orange-800">3er Lugar</CardTitle>
-              <CardDescription>Equipo Gamma</CardDescription>
-            </CardHeader>
-            <CardContent className="text-center">
-              <div className="text-3xl font-bold text-orange-800">1,120</div>
-              <p className="text-sm text-orange-600">puntos</p>
-            </CardContent>
-          </Card>
-        </div>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Ranking Completo</CardTitle>
-            <CardDescription>Posición de todos los equipos participantes</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {[
-                { pos: 1, name: "Equipo Alpha", points: 1250, badge: "Oro" },
-                { pos: 2, name: "Equipo Beta", points: 1180, badge: "Plata" },
-                { pos: 3, name: "Equipo Gamma", points: 1120, badge: "Bronce" },
-                { pos: 4, name: "Equipo Delta", points: 980, badge: null },
-                { pos: 5, name: "Equipo Epsilon", points: 920, badge: null },
-                { pos: 6, name: "Equipo Zeta", points: 850, badge: null },
-              ].map((team) => (
-                <div key={team.pos} className="flex items-center justify-between p-3 border rounded-lg">
-                  <div className="flex items-center space-x-3">
-                    <div className="flex items-center justify-center w-8 h-8 rounded-full bg-muted text-sm font-medium">
-                      {team.pos}
-                    </div>
-                    <div>
-                      <div className="font-medium">{team.name}</div>
-                      <div className="text-sm text-muted-foreground">{team.points} puntos</div>
-                    </div>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    {team.badge && (
-                      <Badge
-                        variant={team.badge === "Oro" ? "default" : team.badge === "Plata" ? "secondary" : "outline"}
+          <TabsContent value="oficial">
+            <Card>
+              <CardHeader>
+                <CardTitle>Clasificación oficial</CardTitle>
+                <CardDescription>
+                  Posiciones y goles según puntos de ventas y clientes competencia únicamente.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {loading ? (
+                  <p className="text-sm text-muted-foreground py-8 text-center">Cargando…</p>
+                ) : official.length === 0 ? (
+                  <p className="text-sm text-muted-foreground py-8 text-center">No hay equipos en el ranking.</p>
+                ) : (
+                  <div className="space-y-3 max-h-[70vh] overflow-y-auto pr-1">
+                    {official.map((team) => (
+                      <div
+                        key={team.team_id}
+                        className="flex items-center justify-between gap-4 rounded-lg border p-3 text-sm"
                       >
-                        {team.badge}
-                      </Badge>
-                    )}
-                    <Trophy className="h-4 w-4 text-muted-foreground" />
+                        <div className="flex items-center gap-3 min-w-0">
+                          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted font-semibold">
+                            {team.position}
+                          </span>
+                          <div className="min-w-0">
+                            <div className="font-medium truncate">{team.team_name}</div>
+                            <div className="text-muted-foreground truncate">
+                              {team.zone_name} · {team.distributor_name}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <div className="font-bold text-green-600">{team.goals} goles</div>
+                          <div className="text-xs text-muted-foreground">{team.total_points} pts oficiales</div>
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="tiros-libres">
+            <Card>
+              <CardHeader>
+                <CardTitle>Premio tiros libres</CardTitle>
+                <CardDescription>
+                  No suma goles ni posición al ranking oficial; es un reconocimiento aparte.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {loading ? (
+                  <p className="text-sm text-muted-foreground py-8 text-center">Cargando…</p>
+                ) : freeKicks.length === 0 ? (
+                  <p className="text-sm text-muted-foreground py-8 text-center">No hay datos de tiros libres.</p>
+                ) : (
+                  <div className="space-y-3 max-h-[70vh] overflow-y-auto pr-1">
+                    {freeKicks.map((team) => (
+                      <div
+                        key={team.team_id}
+                        className="flex items-center justify-between gap-4 rounded-lg border p-3 text-sm"
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted font-semibold">
+                            {team.position}
+                          </span>
+                          <div className="min-w-0">
+                            <div className="font-medium truncate">{team.team_name}</div>
+                            <div className="text-muted-foreground truncate">{team.zone_name}</div>
+                          </div>
+                        </div>
+                        <div className="font-bold text-amber-600 shrink-0">{team.free_kick_points} pts premio</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
       </div>
     </ProtectedLayout>
   )

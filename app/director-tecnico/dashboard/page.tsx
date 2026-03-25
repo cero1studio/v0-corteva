@@ -316,19 +316,17 @@ function DirectorTecnicoDashboardContent() {
         )
         const clientsPoints = teamClients.length * 200 // 200 puntos por cliente
 
-        // Tiros libres del equipo
-        const teamFreeKicks = freeKickData.filter((fk) => fk.team_id === team.id)
+        const teamFreeKicks = freeKicksData.filter((fk) => fk.team_id === team.id)
         const freeKickPoints = teamFreeKicks.reduce((sum, fk) => sum + (fk.points || 0), 0)
 
-        // Total
-        const totalPoints = salesPoints + clientsPoints + freeKickPoints
-        const goals = Math.floor(totalPoints / puntosParaGol)
+        const officialPoints = salesPoints + clientsPoints
+        const goals = Math.floor(officialPoints / puntosParaGol)
 
         console.log(`Director Técnico - Estadísticas ${team.name}:`)
         console.log(`  - Ventas: ${teamSales.length} (${salesPoints} pts)`)
         console.log(`  - Clientes: ${teamClients.length} (${clientsPoints} pts)`)
         console.log(`  - Tiros libres: ${teamFreeKicks.length} (${freeKickPoints} pts)`)
-        console.log(`  - Total: ${totalPoints} pts, ${goals} goles`)
+        console.log(`  - Oficial: ${officialPoints} pts, ${goals} goles`)
 
         return {
           ...team,
@@ -336,12 +334,12 @@ function DirectorTecnicoDashboardContent() {
           sales_count: teamSales.length,
           clients_count: teamClients.length,
           free_kick_count: teamFreeKicks.length,
-          calculated_total_points: totalPoints,
+          free_kick_points_sum: freeKickPoints,
+          calculated_total_points: officialPoints,
           calculated_total_goals: goals,
         }
       })
 
-      // Crear ranking ordenado por puntos
       const ranking = teamsWithStats
         .sort((a, b) => b.calculated_total_points - a.calculated_total_points)
         .map((team, index) => ({
@@ -395,10 +393,10 @@ function DirectorTecnicoDashboardContent() {
 
   // Calcular estadísticas de la zona
   const puntosVentas = salesData.reduce((sum, sale) => sum + (sale.points || 0), 0)
-  const puntosClientes = clientsData.length * 200 // 200 puntos por cliente
+  const puntosClientes = clientsData.length * 200
   const puntosTirosLibres = freeKickData.reduce((sum, freeKick) => sum + (freeKick.points || 0), 0)
-  const totalPuntos = puntosVentas + puntosClientes + puntosTirosLibres
-  const totalGoles = Math.floor(totalPuntos / puntosParaGol)
+  const puntosOficialesZona = puntosVentas + puntosClientes
+  const totalGoles = Math.floor(puntosOficialesZona / puntosParaGol)
   const totalSales = salesData.length
   const totalClients = clientsData.length
   const totalFreeKicks = freeKickData.length
@@ -477,7 +475,7 @@ function DirectorTecnicoDashboardContent() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Goles de la Zona</CardTitle>
+            <CardTitle className="text-sm font-medium">Goles oficiales (zona)</CardTitle>
             <img src="/soccer-ball.png" alt="Balón" className="h-5 w-5" />
           </CardHeader>
           <CardContent>
@@ -491,14 +489,15 @@ function DirectorTecnicoDashboardContent() {
                 <span>Puntos por clientes:</span>
                 <span>{puntosClientes.toLocaleString()}</span>
               </div>
-              <div className="flex justify-between text-xs text-muted-foreground">
-                <span>Puntos por tiros libres:</span>
-                <span>{puntosTirosLibres.toLocaleString()}</span>
-              </div>
               <div className="border-t pt-1 flex justify-between text-xs font-medium">
-                <span>Total puntos:</span>
-                <span>{totalPuntos.toLocaleString()}</span>
+                <span>Total puntos oficiales:</span>
+                <span>{puntosOficialesZona.toLocaleString()}</span>
               </div>
+              {puntosTirosLibres > 0 && (
+                <p className="text-xs text-amber-800 mt-2">
+                  Premio tiros libres en la zona: {puntosTirosLibres.toLocaleString()} pts (no suman a estos goles).
+                </p>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -572,7 +571,9 @@ function DirectorTecnicoDashboardContent() {
                   <Trophy className="h-5 w-5 text-yellow-500" />
                   Ranking de {zoneData?.name || "tu zona"}
                 </CardTitle>
-                <CardDescription>Posiciones de los equipos en tu zona</CardDescription>
+                <CardDescription>
+                  Por puntos oficiales (ventas + clientes). Los tiros libres no cambian esta clasificación.
+                </CardDescription>
               </CardHeader>
               <CardContent>
                 {zoneRanking.length > 0 ? (
@@ -593,7 +594,7 @@ function DirectorTecnicoDashboardContent() {
                         </div>
                         <div className="text-right">
                           <div className="font-medium text-green-600 text-sm">{team.goals} goles</div>
-                          <div className="text-xs text-muted-foreground">{team.total_points.toLocaleString()} pts</div>
+                          <div className="text-xs text-muted-foreground">{team.total_points.toLocaleString()} pts oficiales</div>
                         </div>
                       </div>
                     ))}
@@ -649,13 +650,16 @@ function DirectorTecnicoDashboardContent() {
                       </div>
                       <div>
                         <div className="text-lg font-bold text-yellow-600">{team.free_kick_count || 0}</div>
-                        <div className="text-xs text-muted-foreground">T. Libres</div>
+                        <div className="text-xs text-muted-foreground">T. libres</div>
+                        {team.free_kick_points_sum > 0 ? (
+                          <div className="text-[10px] text-amber-800">{team.free_kick_points_sum} pts premio</div>
+                        ) : null}
                       </div>
                       <div>
                         <div className="text-lg font-bold text-orange-600">
                           {(team.calculated_total_points || 0).toLocaleString()}
                         </div>
-                        <div className="text-xs text-muted-foreground">Puntos</div>
+                        <div className="text-xs text-muted-foreground">Pts oficiales</div>
                       </div>
                     </div>
                   </CardContent>
@@ -795,7 +799,9 @@ function DirectorTecnicoDashboardContent() {
                 <Zap className="h-5 w-5 text-yellow-500" />
                 Tiros Libres de la Zona
               </CardTitle>
-              <CardDescription>Goles adjudicados por tiro libre en tu zona</CardDescription>
+              <CardDescription>
+                Puntos de premio otorgados (no son goles del ranking oficial del concurso).
+              </CardDescription>
             </CardHeader>
             <CardContent>
               {freeKickData.length > 0 ? (
@@ -810,8 +816,8 @@ function DirectorTecnicoDashboardContent() {
                         </div>
                       </div>
                       <div className="text-right">
-                        <div className="font-medium text-yellow-600">+{Math.floor(freeKick.points / 100)} goles</div>
-                        <div className="text-sm text-muted-foreground">{freeKick.points} puntos</div>
+                        <div className="font-medium text-yellow-600">{freeKick.points} pts premio</div>
+                        <div className="text-xs text-muted-foreground">No suma al ranking oficial</div>
                       </div>
                     </div>
                   ))}
