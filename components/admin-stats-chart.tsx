@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis, Cell } from "recharts"
 import { supabase } from "@/lib/supabase/client"
 import { Skeleton } from "@/components/ui/skeleton"
-import { AlertCircle, BarChart3Icon } from "lucide-react"
+import { RefreshCw, Trophy } from "lucide-react"
 import { EmptyState } from "./empty-state"
 import { Button } from "@/components/ui/button"
 import { getTeamRankingByZone } from "@/app/actions/ranking"
@@ -23,6 +23,8 @@ export function AdminStatsChart() {
   const [data, setData] = useState<TeamData[]>([])
   const [error, setError] = useState<string | null>(null)
   const [retryCount, setRetryCount] = useState(0)
+  /** Sin equipos en ranking vs equipos con todo en cero oficial */
+  const [emptyKind, setEmptyKind] = useState<"none" | "no_teams" | "all_zero">("none")
 
   useEffect(() => {
     setIsMounted(true)
@@ -38,6 +40,14 @@ export function AdminStatsChart() {
       const rankingResult = await getTeamRankingByZone()
 
       if (!rankingResult.success || !rankingResult.data) {
+        setEmptyKind("no_teams")
+        setData([])
+        setLoading(false)
+        return
+      }
+
+      if (rankingResult.data.length === 0) {
+        setEmptyKind("no_teams")
         setData([])
         setLoading(false)
         return
@@ -73,12 +83,24 @@ export function AdminStatsChart() {
         }
       })
 
-      // Filtrar equipos con al menos 1 gol para el gráfico
+      const allOfficialZero = chartData.every(
+        (team) => (team.goles || 0) === 0 && (team.puntos || 0) === 0,
+      )
+
+      if (allOfficialZero) {
+        setEmptyKind("all_zero")
+        setData([])
+        setLoading(false)
+        return
+      }
+
+      setEmptyKind("none")
       const filteredData = chartData.filter((team) => team.goles > 0)
       setData(filteredData.length > 0 ? filteredData : chartData.slice(0, 10))
       setLoading(false)
     } catch (err: any) {
       console.error("Error al cargar datos del gráfico:", err)
+      setEmptyKind("none")
       setError(`Error al cargar datos: ${err.message || "Desconocido"}`)
       setLoading(false)
     }
@@ -99,26 +121,44 @@ export function AdminStatsChart() {
   if (error) {
     return (
       <EmptyState
-        icon={AlertCircle}
+        icon="chart"
         title="Error al cargar datos"
         description={error}
         actionLabel="Reintentar"
-        onClick={handleRetry}
-        className="h-[400px]"
-        iconClassName="bg-red-50"
+        onAction={handleRetry}
       />
+    )
+  }
+
+  if (emptyKind === "all_zero") {
+    return (
+      <div className="pb-6">
+        <div className="flex justify-end mb-2">
+          <Button variant="outline" size="sm" onClick={handleRetry} className="gap-1">
+            <RefreshCw className="h-4 w-4" />
+            Actualizar gráfico
+          </Button>
+        </div>
+        <div className="text-center py-16 px-4">
+          <Trophy className="mx-auto h-12 w-12 text-muted-foreground" />
+          <h3 className="mt-4 text-lg font-semibold">Aún no hay actividad oficial en el concurso</h3>
+          <p className="text-muted-foreground max-w-lg mx-auto text-sm mt-2">
+            Todos los equipos tienen 0 goles y 0 puntos oficiales. Cuando haya ventas o clientes de competencia
+            registrados, el gráfico mostrará la evolución en lugar de una vista vacía.
+          </p>
+        </div>
+      </div>
     )
   }
 
   if (data.length === 0) {
     return (
       <EmptyState
-        icon={BarChart3Icon}
+        icon="users"
         title="No hay equipos registrados"
         description="Crea equipos y registra ventas para ver el comparativo de goles."
         actionLabel="Reintentar"
-        onClick={handleRetry}
-        className="h-[400px]"
+        onAction={handleRetry}
       />
     )
   }
@@ -180,7 +220,8 @@ export function AdminStatsChart() {
       </div>
 
       <div className="mt-2 flex justify-end">
-        <Button variant="outline" size="sm" onClick={handleRetry}>
+        <Button variant="outline" size="sm" onClick={handleRetry} className="gap-1">
+          <RefreshCw className="h-4 w-4" />
           Actualizar gráfico
         </Button>
       </div>

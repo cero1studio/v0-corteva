@@ -197,11 +197,10 @@ export default function AdminDashboardPage() {
   }, [cache])
 
   // Función para cargar estadísticas de productos
-  const fetchProductStats = useCallback(async () => {
-    if (!mountedRef.current || cache.hasProductStats()) {
-      if (cache.hasProductStats()) {
-        setProductStats(cache.getProductStats())
-      }
+  const fetchProductStats = useCallback(async (force = false) => {
+    if (!mountedRef.current) return
+    if (!force && cache.hasProductStats()) {
+      setProductStats(cache.getProductStats())
       return
     }
 
@@ -510,14 +509,36 @@ export default function AdminDashboardPage() {
                 </>
               ) : productStats.length === 0 ? (
                 <EmptyState
-                  icon={ShoppingBag}
                   title="No hay productos registrados"
                   description="Crea productos para que los equipos puedan registrar sus ventas."
                   actionLabel="Crear Producto"
                   actionHref="/admin/productos/nuevo"
-                  className="py-10"
-                  iconClassName="bg-green-50"
+                  icon="package"
                 />
+              ) : productStats.every(
+                  (p) => (Number(p.sales) || 0) === 0 && (Number(p.totalPoints) || 0) === 0,
+                ) ? (
+                <div className="py-10">
+                  <div className="flex justify-end mb-4">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-1 bg-transparent"
+                      onClick={() => fetchProductStats(true)}
+                    >
+                      <RefreshCw className="h-4 w-4" />
+                      Actualizar
+                    </Button>
+                  </div>
+                  <div className="text-center py-8 px-4">
+                    <ShoppingBag className="mx-auto h-12 w-12 text-muted-foreground" />
+                    <h3 className="mt-4 text-lg font-semibold">Aún no hay ventas por producto</h3>
+                    <p className="text-muted-foreground max-w-lg mx-auto text-sm mt-2">
+                      Los productos están creados, pero no hay unidades vendidas ni puntos asociados. Cuando los
+                      equipos registren ventas, verás la distribución aquí.
+                    </p>
+                  </div>
+                </div>
               ) : (
                 <div className="space-y-4">
                   {productStats.map((product) => (
