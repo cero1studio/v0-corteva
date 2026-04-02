@@ -72,31 +72,30 @@ export default function RankingPublico() {
   return (
     <div className="container mx-auto p-4 space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Ranking público</h1>
+        <h1 className="text-2xl font-bold">Goles y tiros libres</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          El ranking oficial ordena por ventas y clientes competencia. El premio paralelo (tiros libres) va en su
-          pestaña y no suma goles ni posición aquí.
+          Goles: ventas y clientes de competencia. Tiros libres: pestaña aparte; no suman a goles ni posición aquí.
         </p>
       </div>
 
-      <Tabs defaultValue="oficial" className="w-full">
+      <Tabs defaultValue="goles" className="w-full">
         <TabsList>
-          <TabsTrigger value="oficial" className="gap-1">
+          <TabsTrigger value="goles" className="gap-1">
             <Trophy className="h-4 w-4" />
-            Ranking oficial
+            Goles
           </TabsTrigger>
           <TabsTrigger value="tiros-libres" className="gap-1">
             <Target className="h-4 w-4" />
-            Premio paralelo
+            Tiros libres
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="oficial">
+        <TabsContent value="goles">
           <Card>
             <CardHeader>
-              <CardTitle>Clasificación oficial</CardTitle>
+              <CardTitle>Goles</CardTitle>
               <CardDescription>
-                Goles y posición según puntos oficiales (ventas + clientes). Una fila por equipo.
+                Posición y goles según puntos por ventas y clientes de competencia. Una fila por equipo.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -108,10 +107,9 @@ export default function RankingPublico() {
               ) : officialAllZero ? (
                 <div className="text-center py-12">
                   <Trophy className="mx-auto h-12 w-12 text-muted-foreground" />
-                  <h3 className="mt-4 text-lg font-semibold">Aún no hay actividad oficial</h3>
+                  <h3 className="mt-4 text-lg font-semibold">Aún no hay goles registrados</h3>
                   <p className="text-muted-foreground text-sm max-w-md mx-auto">
-                    Ningún equipo tiene puntos oficiales registrados. Cuando haya ventas o clientes competencia, verás
-                    la tabla aquí.
+                    Ningún equipo tiene puntos por ventas o clientes competencia. Cuando los haya, verás la tabla aquí.
                   </p>
                 </div>
               ) : (
@@ -122,7 +120,7 @@ export default function RankingPublico() {
                         <th className="px-4 py-2 text-left">Posición</th>
                         <th className="px-4 py-2 text-left">Equipo</th>
                         <th className="px-4 py-2 text-left">Zona</th>
-                        <th className="px-4 py-2 text-right">Puntos oficiales</th>
+                        <th className="px-4 py-2 text-right">Puntos</th>
                         <th className="px-4 py-2 text-right">Goles</th>
                       </tr>
                     </thead>
@@ -149,21 +147,21 @@ export default function RankingPublico() {
         <TabsContent value="tiros-libres">
           <Card>
             <CardHeader>
-              <CardTitle>Premio paralelo</CardTitle>
+              <CardTitle>Tiros libres</CardTitle>
               <CardDescription>
-                Clasificación por tiros libres en paralelo al concurso; no cambia el ranking oficial.
+                Clasificación por tiros libres; no cambia goles ni posición del concurso.
               </CardDescription>
             </CardHeader>
             <CardContent>
               {freeKicks.length === 0 ? (
                 <div className="text-center py-12 text-muted-foreground">
                   <Target className="mx-auto h-12 w-12 opacity-50" />
-                  <p className="mt-4">No hay datos de premio paralelo.</p>
+                  <p className="mt-4">No hay datos de tiros libres.</p>
                 </div>
               ) : freeKickAllZero ? (
                 <div className="text-center py-12">
                   <Target className="mx-auto h-12 w-12 text-muted-foreground" />
-                  <h3 className="mt-4 text-lg font-semibold">Sin premio paralelo aún</h3>
+                  <h3 className="mt-4 text-lg font-semibold">Aún no hay tiros libres</h3>
                   <p className="text-muted-foreground text-sm max-w-md mx-auto">
                     Ningún equipo tiene puntos por tiros libres adjudicados.
                   </p>
@@ -176,7 +174,7 @@ export default function RankingPublico() {
                         <th className="px-4 py-2 text-left">Posición</th>
                         <th className="px-4 py-2 text-left">Equipo</th>
                         <th className="px-4 py-2 text-left">Zona</th>
-                        <th className="px-4 py-2 text-right">Premio paralelo (pts)</th>
+                        <th className="px-4 py-2 text-right">Puntos (tiros libres)</th>
                       </tr>
                     </thead>
                     <tbody>

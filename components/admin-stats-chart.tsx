@@ -141,9 +141,9 @@ export function AdminStatsChart() {
         </div>
         <div className="text-center py-16 px-4">
           <Trophy className="mx-auto h-12 w-12 text-muted-foreground" />
-          <h3 className="mt-4 text-lg font-semibold">Aún no hay actividad oficial en el concurso</h3>
+          <h3 className="mt-4 text-lg font-semibold">Aún no hay goles en el concurso</h3>
           <p className="text-muted-foreground max-w-lg mx-auto text-sm mt-2">
-            Todos los equipos tienen 0 goles y 0 puntos oficiales. Cuando haya ventas o clientes de competencia
+            Todos los equipos tienen 0 goles y 0 puntos. Cuando haya ventas o clientes de competencia
             registrados, el gráfico mostrará la evolución en lugar de una vista vacía.
           </p>
         </div>

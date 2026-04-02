@@ -451,9 +451,9 @@ function CapitanDashboardContent() {
                 </div>
                 <p className="text-xs text-muted-foreground">
                   {rankingPosition != null && rankingPosition <= 3
-                    ? `¡Felicidades! Top ${rankingPosition} en ranking oficial`
+                    ? `¡Felicidades! Top ${rankingPosition} en goles`
                     : rankingPosition != null
-                      ? "Ranking oficial (ventas + clientes)"
+                      ? "Goles (ventas + clientes)"
                       : "Sin posición aún en la zona"}
                 </p>
               </div>
@@ -468,7 +468,7 @@ function CapitanDashboardContent() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Goles oficiales</CardTitle>
+            <CardTitle className="text-sm font-medium">Goles</CardTitle>
             <img src="/soccer-ball.png" alt="Balón" className="h-5 w-5" />
           </CardHeader>
           <CardContent>
@@ -489,13 +489,12 @@ function CapitanDashboardContent() {
                   <span>{puntosClientes.toLocaleString()}</span>
                 </div>
                 <div className="border-t pt-1 flex justify-between text-xs font-medium">
-                  <span>Total puntos oficiales:</span>
+                  <span>Total puntos:</span>
                   <span>{puntosOficiales.toLocaleString()}</span>
                 </div>
                 {puntosTirosLibres > 0 && (
                   <p className="text-xs text-amber-800 mt-2">
-                    Premio tiros libres: {puntosTirosLibres.toLocaleString()} pts (no suman a estos goles ni al ranking
-                    oficial).
+                    Tiros libres: {puntosTirosLibres.toLocaleString()} pts (no suman a estos goles).
                   </p>
                 )}
               </div>
@@ -549,7 +548,7 @@ function CapitanDashboardContent() {
             <div className="mt-2 space-y-1">
               {totalFreeKicks > 0 && (
                 <p className="text-xs text-muted-foreground">
-                  Tiros libres otorgados: {totalFreeKicks} (premio aparte, no suman al ranking de goles).
+                  Tiros libres otorgados: {totalFreeKicks} (no suman a goles del concurso).
                 </p>
               )}
             </div>

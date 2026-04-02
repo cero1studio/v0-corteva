@@ -37,28 +37,28 @@ export default function ArbitroRanking() {
     <ProtectedLayout allowedRoles={["arbitro"]}>
       <div className="space-y-6">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Ranking</h1>
+          <h1 className="text-3xl font-bold tracking-tight">Goles y tiros libres</h1>
           <p className="text-muted-foreground">
-            Vista nacional: ranking oficial (ventas + clientes) y premio tiros libres por separado.
+            Vista nacional: goles (ventas + clientes) y tiros libres por separado.
           </p>
         </div>
 
-        <Tabs defaultValue="oficial" className="w-full">
+        <Tabs defaultValue="goles" className="w-full">
           <TabsList>
-            <TabsTrigger value="oficial" className="gap-1">
+            <TabsTrigger value="goles" className="gap-1">
               <Trophy className="h-4 w-4" />
-              Ranking oficial
+              Goles
             </TabsTrigger>
             <TabsTrigger value="tiros-libres" className="gap-1">
               <Target className="h-4 w-4" />
-              Premio tiros libres
+              Tiros libres
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="oficial">
+          <TabsContent value="goles">
             <Card>
               <CardHeader>
-                <CardTitle>Clasificación oficial</CardTitle>
+                <CardTitle>Goles</CardTitle>
                 <CardDescription>
                   Posiciones y goles según puntos de ventas y clientes competencia únicamente.
                 </CardDescription>
@@ -88,7 +88,7 @@ export default function ArbitroRanking() {
                         </div>
                         <div className="text-right shrink-0">
                           <div className="font-bold text-green-600">{team.goals} goles</div>
-                          <div className="text-xs text-muted-foreground">{team.total_points} pts oficiales</div>
+                          <div className="text-xs text-muted-foreground">{team.total_points} pts</div>
                         </div>
                       </div>
                     ))}
@@ -101,9 +101,9 @@ export default function ArbitroRanking() {
           <TabsContent value="tiros-libres">
             <Card>
               <CardHeader>
-                <CardTitle>Premio tiros libres</CardTitle>
+                <CardTitle>Tiros libres</CardTitle>
                 <CardDescription>
-                  No suma goles ni posición al ranking oficial; es un reconocimiento aparte.
+                  No suman goles ni posición del concurso.
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -127,7 +127,7 @@ export default function ArbitroRanking() {
                             <div className="text-muted-foreground truncate">{team.zone_name}</div>
                           </div>
                         </div>
-                        <div className="font-bold text-amber-600 shrink-0">{team.free_kick_points} pts premio</div>
+                        <div className="font-bold text-amber-600 shrink-0">{team.free_kick_points} pts</div>
                       </div>
                     ))}
                   </div>

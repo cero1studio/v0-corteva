@@ -475,7 +475,7 @@ function DirectorTecnicoDashboardContent() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Goles oficiales (zona)</CardTitle>
+            <CardTitle className="text-sm font-medium">Goles (zona)</CardTitle>
             <img src="/soccer-ball.png" alt="Balón" className="h-5 w-5" />
           </CardHeader>
           <CardContent>
@@ -490,12 +490,12 @@ function DirectorTecnicoDashboardContent() {
                 <span>{puntosClientes.toLocaleString()}</span>
               </div>
               <div className="border-t pt-1 flex justify-between text-xs font-medium">
-                <span>Total puntos oficiales:</span>
+                <span>Total puntos:</span>
                 <span>{puntosOficialesZona.toLocaleString()}</span>
               </div>
               {puntosTirosLibres > 0 && (
                 <p className="text-xs text-amber-800 mt-2">
-                  Premio tiros libres en la zona: {puntosTirosLibres.toLocaleString()} pts (no suman a estos goles).
+                  Tiros libres en la zona: {puntosTirosLibres.toLocaleString()} pts (no suman a estos goles).
                 </p>
               )}
             </div>
@@ -572,7 +572,7 @@ function DirectorTecnicoDashboardContent() {
                   Ranking de {zoneData?.name || "tu zona"}
                 </CardTitle>
                 <CardDescription>
-                  Por puntos oficiales (ventas + clientes). Los tiros libres no cambian esta clasificación.
+                  Por puntos de ventas y clientes competencia. Los tiros libres no cambian esta clasificación.
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -594,7 +594,7 @@ function DirectorTecnicoDashboardContent() {
                         </div>
                         <div className="text-right">
                           <div className="font-medium text-green-600 text-sm">{team.goals} goles</div>
-                          <div className="text-xs text-muted-foreground">{team.total_points.toLocaleString()} pts oficiales</div>
+                          <div className="text-xs text-muted-foreground">{team.total_points.toLocaleString()} pts</div>
                         </div>
                       </div>
                     ))}
@@ -652,14 +652,14 @@ function DirectorTecnicoDashboardContent() {
                         <div className="text-lg font-bold text-yellow-600">{team.free_kick_count || 0}</div>
                         <div className="text-xs text-muted-foreground">T. libres</div>
                         {team.free_kick_points_sum > 0 ? (
-                          <div className="text-[10px] text-amber-800">{team.free_kick_points_sum} pts premio</div>
+                          <div className="text-[10px] text-amber-800">{team.free_kick_points_sum} pts tiros libres</div>
                         ) : null}
                       </div>
                       <div>
                         <div className="text-lg font-bold text-orange-600">
                           {(team.calculated_total_points || 0).toLocaleString()}
                         </div>
-                        <div className="text-xs text-muted-foreground">Pts oficiales</div>
+                        <div className="text-xs text-muted-foreground">Pts</div>
                       </div>
                     </div>
                   </CardContent>
@@ -800,7 +800,7 @@ function DirectorTecnicoDashboardContent() {
                 Tiros Libres de la Zona
               </CardTitle>
               <CardDescription>
-                Puntos de premio otorgados (no son goles del ranking oficial del concurso).
+                Puntos por tiros libres (no suman a goles del concurso).
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -816,8 +816,8 @@ function DirectorTecnicoDashboardContent() {
                         </div>
                       </div>
                       <div className="text-right">
-                        <div className="font-medium text-yellow-600">{freeKick.points} pts premio</div>
-                        <div className="text-xs text-muted-foreground">No suma al ranking oficial</div>
+                        <div className="font-medium text-yellow-600">{freeKick.points} pts</div>
+                        <div className="text-xs text-muted-foreground">No suma a goles</div>
                       </div>
                     </div>
                   ))}

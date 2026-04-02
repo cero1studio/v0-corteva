@@ -115,7 +115,7 @@ export function AdminRankingChart({ teams: propTeams }: AdminRankingChartProps) 
             <Trophy className="mx-auto h-12 w-12 text-muted-foreground" />
             <h3 className="mt-4 text-lg font-semibold">No hay equipos</h3>
             <p className="text-muted-foreground max-w-lg mx-auto text-sm mt-2">
-              Registra equipos para ver la evolución del ranking por goles oficiales.
+              Registra equipos para ver la evolución por goles.
             </p>
           </div>
         </CardContent>
@@ -140,9 +140,9 @@ export function AdminRankingChart({ teams: propTeams }: AdminRankingChartProps) 
           </div>
           <div className="text-center py-16 px-4">
             <Trophy className="mx-auto h-12 w-12 text-muted-foreground" />
-            <h3 className="mt-4 text-lg font-semibold">Aún no hay actividad oficial</h3>
+            <h3 className="mt-4 text-lg font-semibold">Aún no hay goles registrados</h3>
             <p className="text-muted-foreground max-w-lg mx-auto text-sm mt-2">
-              Todos los equipos tienen 0 goles y 0 puntos oficiales. Cuando haya ventas o clientes competencia, aquí
+              Todos los equipos tienen 0 goles y 0 puntos. Cuando haya ventas o clientes competencia, aquí
               verás el top por goles en lugar de un gráfico en ceros.
             </p>
           </div>
@@ -175,7 +175,7 @@ export function AdminRankingChart({ teams: propTeams }: AdminRankingChartProps) 
           <div className="text-center py-16 px-4">
             <Trophy className="mx-auto h-12 w-12 text-muted-foreground" />
             <h3 className="mt-4 text-lg font-semibold">Sin datos para el gráfico</h3>
-            <p className="text-muted-foreground text-sm mt-2">No hay equipos con goles oficiales para mostrar.</p>
+            <p className="text-muted-foreground text-sm mt-2">No hay equipos con goles para mostrar.</p>
           </div>
         </CardContent>
       </Card>

@@ -83,7 +83,7 @@ export default function RankingAdminPage() {
           description:
             filteredTeams.length === 0
               ? "No hay equipos con el filtro actual."
-              : "Aún no hay puntos oficiales (ventas o clientes competencia).",
+              : "Aún no hay puntos para goles (ventas o clientes competencia).",
           variant: "destructive",
         })
         return
@@ -95,7 +95,7 @@ export default function RankingAdminPage() {
         Equipo: team.team_name,
         Capitán: team.captain_name,
         Zona: team.zone_name,
-        "Puntos oficiales": Number(team.total_points),
+        Puntos: Number(team.total_points),
         Goles: Number(team.goals ?? Math.floor(team.total_points / 100)),
       }))
 
@@ -168,7 +168,7 @@ export default function RankingAdminPage() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Rankings</h1>
           <p className="text-muted-foreground">
-            Ranking oficial por ventas y clientes competencia. El premio paralelo (tiros libres) va en su propia pestaña.
+            Goles por ventas y clientes competencia. Tiros libres en su propia pestaña.
           </p>
         </div>
         <Button variant="outline" onClick={downloadExcel} disabled={filteredTeams.length === 0 || allOfficialScoresZero}>
@@ -177,15 +177,15 @@ export default function RankingAdminPage() {
         </Button>
       </div>
 
-      <Tabs defaultValue="general" className="space-y-4">
+      <Tabs defaultValue="goles" className="space-y-4">
         <TabsList>
-          <TabsTrigger value="general">Ranking oficial</TabsTrigger>
-          <TabsTrigger value="tiros-libres">Premio paralelo</TabsTrigger>
+          <TabsTrigger value="goles">Goles</TabsTrigger>
+          <TabsTrigger value="tiros-libres">Tiros libres</TabsTrigger>
           <TabsTrigger value="zona">Rendimiento por Zonas</TabsTrigger>
           <TabsTrigger value="grafico">Evolución del Concurso</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="general" className="space-y-4">
+        <TabsContent value="goles" className="space-y-4">
           <div className="flex items-center gap-4 mb-4">
             <Select value={selectedZone} onValueChange={setSelectedZone}>
               <SelectTrigger className="w-48">
@@ -206,11 +206,10 @@ export default function RankingAdminPage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Trophy className="h-5 w-5 text-yellow-500" />
-                Ranking oficial
+                Goles
               </CardTitle>
               <CardDescription>
-                Solo ventas y clientes competencia definen posición y goles. El premio paralelo (tiros libres) está en
-                su pestaña.
+                Ventas y clientes competencia definen posición y goles. Los tiros libres están en su pestaña.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -227,9 +226,9 @@ export default function RankingAdminPage() {
               ) : allOfficialScoresZero ? (
                 <div className="text-center py-12">
                   <Trophy className="mx-auto h-12 w-12 text-muted-foreground" />
-                  <h3 className="mt-4 text-lg font-semibold">Aún no hay actividad oficial</h3>
+                  <h3 className="mt-4 text-lg font-semibold">Aún no hay goles registrados</h3>
                   <p className="text-muted-foreground max-w-md mx-auto">
-                    Ningún equipo tiene puntos oficiales (ventas ni clientes competencia) con el filtro actual. Cuando se
+                    Ningún equipo tiene puntos por ventas ni clientes competencia con el filtro actual. Cuando se
                     registren, aquí verás el ranking en lugar de una tabla llena de ceros.
                   </p>
                 </div>
@@ -241,7 +240,7 @@ export default function RankingAdminPage() {
                       <TableHead>Equipo</TableHead>
                       <TableHead>Capitán</TableHead>
                       <TableHead>Zona</TableHead>
-                      <TableHead className="text-right">Puntos oficiales</TableHead>
+                      <TableHead className="text-right">Puntos</TableHead>
                       <TableHead className="text-right">Goles</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -293,10 +292,10 @@ export default function RankingAdminPage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Target className="h-5 w-5 text-amber-500" />
-                Premio paralelo
+                Tiros libres
               </CardTitle>
               <CardDescription>
-                Premio paralelo al concurso: puntos por tiros libres, sin cambiar posición ni goles oficiales.
+                Puntos por tiros libres, sin cambiar posición ni goles del concurso.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -313,10 +312,10 @@ export default function RankingAdminPage() {
               ) : allFreeKickScoresZero ? (
                 <div className="text-center py-12">
                   <Target className="mx-auto h-12 w-12 text-muted-foreground" />
-                  <h3 className="mt-4 text-lg font-semibold">Sin premio paralelo aún</h3>
+                  <h3 className="mt-4 text-lg font-semibold">Aún no hay tiros libres</h3>
                   <p className="text-muted-foreground max-w-md mx-auto">
-                    Hay equipos en el filtro, pero ninguno tiene puntos de premio por tiros libres. Cuando se adjudiquen,
-                    verás la clasificación aquí.
+                    Hay equipos en el filtro, pero ninguno tiene puntos por tiros libres. Cuando se adjudiquen, verás la
+                    clasificación aquí.
                   </p>
                 </div>
               ) : (

@@ -3,7 +3,7 @@ import { getSystemConfig } from "@/app/actions/system-config"
 import { type NextRequest, NextResponse } from "next/server"
 
 /**
- * Ranking oficial (ventas + clientes) y ranking de premio tiros libres.
+ * Goles (ventas + clientes) y tiros libres (clasificación aparte).
  * `data` mantiene el array principal por compatibilidad; `freeKicks` es la clasificación aparte.
  */
 export async function GET(req: NextRequest) {

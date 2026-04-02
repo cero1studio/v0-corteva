@@ -101,7 +101,7 @@ function DirectorTecnicoRankingContent() {
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Equipo</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Distribuidor</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Goles</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Puntos oficiales</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Puntos</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Nivel</th>
             </tr>
           </thead>
@@ -150,7 +150,7 @@ function DirectorTecnicoRankingContent() {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Zona</th>
               ) : null}
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Distribuidor</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Puntos premio</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Puntos tiros libres</th>
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
@@ -177,9 +177,9 @@ function DirectorTecnicoRankingContent() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight">Rankings</h2>
+          <h2 className="text-3xl font-bold tracking-tight">Goles y tiros libres</h2>
           <p className="text-muted-foreground">
-            Ranking oficial (ventas + clientes) y premio tiros libres, que no suma goles ni posición oficial.
+            Goles (ventas + clientes) y tiros libres aparte; estos últimos no suman goles ni posición.
           </p>
         </div>
         <Button onClick={() => loadData()} variant="outline" size="sm" disabled={loading} className="flex items-center gap-2">
@@ -195,18 +195,18 @@ function DirectorTecnicoRankingContent() {
         </TabsList>
 
         <TabsContent value="zona" className="space-y-4">
-          <Tabs defaultValue="oficial">
+          <Tabs defaultValue="goles">
             <TabsList>
-              <TabsTrigger value="oficial" className="gap-1">
+              <TabsTrigger value="goles" className="gap-1">
                 <Trophy className="h-4 w-4" />
-                Ranking oficial
+                Goles
               </TabsTrigger>
-              <TabsTrigger value="fk" className="gap-1">
+              <TabsTrigger value="tiros-libres" className="gap-1">
                 <Target className="h-4 w-4" />
                 Tiros libres
               </TabsTrigger>
             </TabsList>
-            <TabsContent value="oficial" className="mt-4">
+            <TabsContent value="goles" className="mt-4">
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
@@ -214,7 +214,7 @@ function DirectorTecnicoRankingContent() {
                     Ranking de {userData?.zones?.name || "mi zona"}
                   </CardTitle>
                   <CardDescription>
-                    Solo puntos oficiales definen posición y goles. Los tiros libres están en la pestaña aparte.
+                    Ventas y clientes competencia definen posición y goles. Los tiros libres están en su pestaña.
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -222,14 +222,14 @@ function DirectorTecnicoRankingContent() {
                 </CardContent>
               </Card>
             </TabsContent>
-            <TabsContent value="fk" className="mt-4">
+            <TabsContent value="tiros-libres" className="mt-4">
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <Target className="h-5 w-5 text-amber-500" />
-                    Premio tiros libres — {userData?.zones?.name || "zona"}
+                    Tiros libres — {userData?.zones?.name || "zona"}
                   </CardTitle>
-                  <CardDescription>No suma al ranking oficial ni a los goles del concurso.</CardDescription>
+                  <CardDescription>No suman a goles ni a la posición del concurso.</CardDescription>
                 </CardHeader>
                 <CardContent>{renderFkTable(zoneFk, false, "No hay datos de tiros libres en la zona")}</CardContent>
               </Card>
@@ -238,37 +238,37 @@ function DirectorTecnicoRankingContent() {
         </TabsContent>
 
         <TabsContent value="nacional" className="space-y-4">
-          <Tabs defaultValue="oficial">
+          <Tabs defaultValue="goles">
             <TabsList>
-              <TabsTrigger value="oficial" className="gap-1">
+              <TabsTrigger value="goles" className="gap-1">
                 <TrendingUp className="h-4 w-4" />
-                Ranking oficial
+                Goles
               </TabsTrigger>
-              <TabsTrigger value="fk" className="gap-1">
+              <TabsTrigger value="tiros-libres" className="gap-1">
                 <Target className="h-4 w-4" />
                 Tiros libres
               </TabsTrigger>
             </TabsList>
-            <TabsContent value="oficial" className="mt-4">
+            <TabsContent value="goles" className="mt-4">
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <TrendingUp className="h-5 w-5 text-blue-500" />
-                    Ranking nacional oficial
+                    Goles — ranking nacional
                   </CardTitle>
-                  <CardDescription>Clasificación por puntos oficiales a nivel nacional.</CardDescription>
+                  <CardDescription>Clasificación por ventas y clientes competencia a nivel nacional.</CardDescription>
                 </CardHeader>
                 <CardContent>{renderOfficialTable(nationalOfficial, "No hay equipos registrados")}</CardContent>
               </Card>
             </TabsContent>
-            <TabsContent value="fk" className="mt-4">
+            <TabsContent value="tiros-libres" className="mt-4">
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <Target className="h-5 w-5 text-amber-500" />
-                    Premio tiros libres — nacional
+                    Tiros libres — nacional
                   </CardTitle>
-                  <CardDescription>Clasificación aparte; no altera posición en el ranking oficial.</CardDescription>
+                  <CardDescription>Clasificación aparte; no altera goles ni posición del concurso.</CardDescription>
                 </CardHeader>
                 <CardContent>
                   {renderFkTable(nationalFk, true, "No hay datos de tiros libres")}

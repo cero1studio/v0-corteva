@@ -176,8 +176,8 @@ export function SupervisorTeamsChart() {
         <Tooltip />
         <Legend />
         <Bar yAxisId="left" dataKey="sales" name="Ventas" fill="#4ade80" radius={[4, 4, 0, 0]} />
-        <Bar yAxisId="right" dataKey="goals" name="Goles (oficial)" fill="#f59e0b" radius={[4, 4, 0, 0]} />
-        <Bar yAxisId="right" dataKey="freeKickPoints" name="Premio tiros libres (pts)" fill="#d97706" radius={[4, 4, 0, 0]} />
+        <Bar yAxisId="right" dataKey="goals" name="Goles" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+        <Bar yAxisId="right" dataKey="freeKickPoints" name="Tiros libres (pts)" fill="#d97706" radius={[4, 4, 0, 0]} />
       </BarChart>
     </ResponsiveContainer>
   )

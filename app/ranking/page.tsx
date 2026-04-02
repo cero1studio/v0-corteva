@@ -98,9 +98,9 @@ export default function RankingPage() {
   return (
     <div className="container mx-auto p-4 space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Ranking — {userTeamInfo.zone_name}</h1>
+        <h1 className="text-2xl font-bold">Goles y tiros libres — {userTeamInfo.zone_name}</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          El ranking oficial usa solo ventas y clientes competencia. El premio paralelo (tiros libres) va aparte.
+          Goles: solo ventas y clientes de competencia. Tiros libres: clasificación aparte.
         </p>
       </div>
 
@@ -111,47 +111,47 @@ export default function RankingPage() {
         </CardHeader>
         <CardContent className="grid gap-2 text-sm sm:grid-cols-2">
           <div>
-            <span className="text-muted-foreground">Posición oficial:</span>{" "}
+            <span className="text-muted-foreground">Posición (goles):</span>{" "}
             <span className="font-semibold">{officialAllZero ? "—" : `#${userTeamInfo.position}`}</span>
           </div>
           <div>
-            <span className="text-muted-foreground">Goles oficiales:</span>{" "}
+            <span className="text-muted-foreground">Goles:</span>{" "}
             <span className="font-semibold text-green-700">{userTeamInfo.goals}</span>
           </div>
           <div>
-            <span className="text-muted-foreground">Puntos oficiales:</span>{" "}
+            <span className="text-muted-foreground">Puntos:</span>{" "}
             <span className="font-semibold">{userTeamInfo.total_points}</span>
           </div>
           <div>
-            <span className="text-muted-foreground">Premio paralelo:</span>{" "}
+            <span className="text-muted-foreground">Tiros libres:</span>{" "}
             <span className="font-semibold text-amber-800">
               {(userTeamInfo.free_kick_points ?? 0) > 0
                 ? `#${userTeamInfo.free_kicks_position} · ${userTeamInfo.free_kick_points} pts`
                 : "— · 0 pts"}{" "}
-              <span className="text-xs font-normal text-muted-foreground">(en paralelo al oficial)</span>
+              <span className="text-xs font-normal text-muted-foreground">(no suman a goles)</span>
             </span>
           </div>
         </CardContent>
       </Card>
 
-      <Tabs defaultValue="oficial">
+      <Tabs defaultValue="goles">
         <TabsList>
-          <TabsTrigger value="oficial" className="gap-1">
+          <TabsTrigger value="goles" className="gap-1">
             <Trophy className="h-4 w-4" />
-            Ranking oficial
+            Goles
           </TabsTrigger>
-          <TabsTrigger value="fk" className="gap-1">
+          <TabsTrigger value="tiros-libres" className="gap-1">
             <Target className="h-4 w-4" />
-            Premio paralelo
+            Tiros libres
           </TabsTrigger>
         </TabsList>
-        <TabsContent value="oficial" className="mt-4">
+        <TabsContent value="goles" className="mt-4">
           {official.length === 0 ? (
             <p className="text-center py-10 text-muted-foreground text-sm">No hay equipos en tu zona.</p>
           ) : officialAllZero ? (
             <div className="text-center py-10">
               <Trophy className="mx-auto h-10 w-10 text-muted-foreground" />
-              <p className="mt-3 font-medium">Aún no hay actividad oficial</p>
+              <p className="mt-3 font-medium">Aún no hay goles registrados</p>
               <p className="text-sm text-muted-foreground mt-1 max-w-sm mx-auto">
                 Cuando haya puntos por ventas o clientes competencia, verás el ranking aquí.
               </p>
@@ -164,7 +164,7 @@ export default function RankingPage() {
                     <th className="px-3 py-2 text-left">Pos.</th>
                     <th className="px-3 py-2 text-left">Equipo</th>
                     <th className="px-3 py-2 text-right">Goles</th>
-                    <th className="px-3 py-2 text-right">Pts oficiales</th>
+                    <th className="px-3 py-2 text-right">Puntos</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -184,14 +184,14 @@ export default function RankingPage() {
             </div>
           )}
         </TabsContent>
-        <TabsContent value="fk" className="mt-4">
-          <p className="text-xs text-muted-foreground mb-2">Premio paralelo: no afecta posición ni goles oficiales.</p>
+        <TabsContent value="tiros-libres" className="mt-4">
+          <p className="text-xs text-muted-foreground mb-2">Tiros libres: no cambian posición ni goles del concurso.</p>
           {freeKicks.length === 0 ? (
-            <p className="text-center py-10 text-muted-foreground text-sm">Sin datos de premio paralelo.</p>
+            <p className="text-center py-10 text-muted-foreground text-sm">Sin datos de tiros libres.</p>
           ) : freeKickAllZero ? (
             <div className="text-center py-10">
               <Target className="mx-auto h-10 w-10 text-muted-foreground" />
-              <p className="mt-3 font-medium">Sin premio paralelo aún</p>
+              <p className="mt-3 font-medium">Aún no hay tiros libres</p>
               <p className="text-sm text-muted-foreground mt-1">Nadie tiene puntos por tiros libres adjudicados.</p>
             </div>
           ) : (
@@ -201,7 +201,7 @@ export default function RankingPage() {
                   <tr className="border-b bg-muted/50">
                     <th className="px-3 py-2 text-left">Pos.</th>
                     <th className="px-3 py-2 text-left">Equipo</th>
-                    <th className="px-3 py-2 text-right">Premio paralelo (pts)</th>
+                    <th className="px-3 py-2 text-right">Puntos (tiros libres)</th>
                   </tr>
                 </thead>
                 <tbody>

@@ -403,8 +403,8 @@ export default function ConfiguracionPage() {
                 <div className="rounded-md border border-muted bg-muted/30 p-4 space-y-1">
                   <p className="text-sm font-medium">Tiros libres (fijo)</p>
                   <p className="text-xs text-muted-foreground">
-                    El ranking oficial y los goles del concurso usan solo ventas y clientes competencia. Los tiros libres
-                    tienen su propia clasificación y premio; no suman puntos ni goles al ranking principal.
+                    Los goles del concurso usan solo ventas y clientes competencia. Los tiros libres tienen su propia
+                    clasificación y no suman a puntos ni goles del concurso.
                   </p>
                 </div>
               </CardContent>

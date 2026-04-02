@@ -147,7 +147,7 @@ export default function TirosLibresPage() {
         <div>
           <h1 className="text-3xl font-bold">Tiros Libres</h1>
           <p className="text-muted-foreground">
-            Adjudica puntos de premio por tiros libres. No suman al ranking oficial de goles; se premian aparte.
+            Adjudica puntos por tiros libres. No suman a goles del concurso.
           </p>
         </div>
         <div className="flex gap-2">

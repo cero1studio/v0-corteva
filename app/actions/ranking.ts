@@ -18,7 +18,7 @@ export interface TeamRanking {
   total_sales_points?: number
   /** Puntos de clientes competencia. */
   total_clients_points?: number
-  /** Puntos de tiros libres (premio aparte; no suman al ranking oficial). */
+  /** Puntos de tiros libres (no suman a goles del concurso). */
   free_kick_points?: number
 }
 
@@ -59,12 +59,12 @@ export interface UserTeamInfo {
   zone_name: string
   position: number
   goals: number
-  /** Puntos oficiales (ventas + clientes); definen posición y goles del concurso. */
+  /** Puntos para goles (ventas + clientes); definen posición y goles del concurso. */
   total_points: number
   goals_to_next_position: number
-  /** Puntos de tiros libres; no cuentan para total_points ni goles oficiales. */
+  /** Puntos de tiros libres; no cuentan para total_points ni goles. */
   free_kick_points: number
-  /** Posición en el ranking de premio tiros libres de la zona (1 = primero). */
+  /** Posición en tiros libres de la zona (1 = primero). */
   free_kicks_position: number
 }
 
@@ -297,7 +297,7 @@ export async function getTeamRankingByZone(zoneId?: string) {
       const totalFreeKickPoints = freeKicksByTeamMap.get(team.id) || 0
       console.log(`DEBUG: Team ${team.name} - Total Free Kick Points:`, totalFreeKickPoints)
 
-      // 4. Ranking oficial: solo ventas + clientes (tiros libres aparte)
+      // 4. Goles: solo ventas + clientes (tiros libres aparte)
       const pointsForGoals = totalSalesPoints + totalClientsPoints
       const finalTotalPoints = pointsForGoals
       const goals = Math.floor(pointsForGoals / puntosParaGol)

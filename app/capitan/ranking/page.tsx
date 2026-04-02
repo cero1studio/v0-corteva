@@ -180,7 +180,7 @@ export default function CapitanRankingPage() {
   return (
     <div className="p-6 space-y-6">
       <div className="flex flex-col items-center justify-between gap-4 md:flex-row">
-        <h2 className="text-3xl font-bold tracking-tight">Ranking {userTeamInfo?.zone_name || "General"}</h2>
+        <h2 className="text-3xl font-bold tracking-tight">Goles — {userTeamInfo?.zone_name || "…"}</h2>
 
         <div className="flex items-center gap-4">
           <Select defaultValue="all" value={productFilter} onValueChange={setProductFilter}>
@@ -199,10 +199,10 @@ export default function CapitanRankingPage() {
         </div>
       </div>
 
-      <Tabs defaultValue="equipos" className="space-y-6">
+      <Tabs defaultValue="goles" className="space-y-6">
         <TabsList className="h-10">
-          <TabsTrigger value="equipos" className="text-sm">
-            Ranking oficial
+          <TabsTrigger value="goles" className="text-sm">
+            Goles
           </TabsTrigger>
           <TabsTrigger value="ventas" className="text-sm">
             Ranking de Ventas
@@ -211,11 +211,11 @@ export default function CapitanRankingPage() {
             Ranking de Clientes
           </TabsTrigger>
           <TabsTrigger value="tiros-libres" className="text-sm">
-            Premio paralelo
+            Tiros libres
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="equipos" className="space-y-6">
+        <TabsContent value="goles" className="space-y-6">
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="flex items-center gap-2">
@@ -223,7 +223,7 @@ export default function CapitanRankingPage() {
                 TOP equipos — {userTeamInfo?.zone_name}
               </CardTitle>
               <CardDescription>
-                Puntos oficiales (ventas + clientes competencia). El premio paralelo (tiros libres) está en su pestaña.
+                Puntos por ventas y clientes competencia. Los tiros libres están en su pestaña.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -235,10 +235,10 @@ export default function CapitanRankingPage() {
               ) : officialAllZero ? (
                 <div className="text-center py-12">
                   <Trophy className="mx-auto h-12 w-12 text-muted-foreground" />
-                  <h3 className="mt-4 text-lg font-semibold">Aún no hay actividad oficial</h3>
+                  <h3 className="mt-4 text-lg font-semibold">Aún no hay goles registrados</h3>
                   <p className="text-muted-foreground max-w-md mx-auto text-sm">
-                    Ningún equipo tiene puntos oficiales aún. Cuando registres ventas o clientes competencia, aquí verás
-                    el ranking en lugar de una tabla en ceros.
+                    Ningún equipo tiene puntos por ventas o clientes competencia aún. Cuando los registres, aquí verás el
+                    ranking en lugar de una tabla en ceros.
                   </p>
                 </div>
               ) : (
@@ -249,7 +249,7 @@ export default function CapitanRankingPage() {
                       <TableHead>Equipo</TableHead>
                       <TableHead>Capitán</TableHead>
                       <TableHead className="text-right">Goles</TableHead>
-                      <TableHead className="text-right">Puntos oficiales</TableHead>
+                      <TableHead className="text-right">Puntos</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -293,14 +293,14 @@ export default function CapitanRankingPage() {
                 </CardTitle>
                 <CardDescription>
                   {officialAllZero
-                    ? "Cuando haya puntos oficiales en la zona, aquí verás tu posición y goles del concurso."
-                    : "Posición y métricas oficiales del concurso (sin premio paralelo)"}
+                    ? "Cuando haya puntos en la zona, aquí verás tu posición y goles del concurso."
+                    : "Posición y goles del concurso (tiros libres en su pestaña)"}
                 </CardDescription>
               </CardHeader>
               <CardContent>
                 {officialAllZero ? (
                   <p className="text-sm text-muted-foreground py-6 text-center">
-                    Sin puntos oficiales todavía: registra ventas o clientes para entrar en el ranking.
+                    Sin puntos para goles todavía: registra ventas o clientes para entrar en el ranking.
                   </p>
                 ) : (
                   <div className="flex items-center justify-center gap-8 py-4">
@@ -310,11 +310,11 @@ export default function CapitanRankingPage() {
                     </div>
                     <div className="text-center">
                       <div className="text-4xl font-bold text-green-600">{userTeamInfo?.goals || 0}</div>
-                      <p className="text-sm text-muted-foreground">Goles oficiales</p>
+                      <p className="text-sm text-muted-foreground">Goles</p>
                     </div>
                     <div className="text-center">
                       <div className="text-4xl font-bold text-blue-600">{userTeamInfo?.total_points || 0}</div>
-                      <p className="text-sm text-muted-foreground">Puntos oficiales</p>
+                      <p className="text-sm text-muted-foreground">Puntos</p>
                     </div>
                     {getPositionIcon(userTeamInfo?.position || 0) && (
                       <div className="text-center">
@@ -335,7 +335,7 @@ export default function CapitanRankingPage() {
                   <Trophy className="h-5 w-5 text-yellow-500" />
                   Tu Equipo
                 </CardTitle>
-                <CardDescription>Premio paralelo (tiros libres) al margen del ranking oficial</CardDescription>
+                <CardDescription>Tiros libres: no suman a goles ni a la posición del concurso</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="space-y-2">
@@ -348,13 +348,13 @@ export default function CapitanRankingPage() {
                     <span className="font-medium">{userTeamInfo?.zone_name}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-sm text-muted-foreground">Posición oficial:</span>
+                    <span className="text-sm text-muted-foreground">Posición (goles):</span>
                     <span className="font-bold text-blue-600">
                       {officialAllZero ? "—" : `#${userTeamInfo?.position}`}
                     </span>
                   </div>
                   <div className="flex justify-between border-t pt-2 mt-2">
-                    <span className="text-sm text-muted-foreground">Premio paralelo:</span>
+                    <span className="text-sm text-muted-foreground">Tiros libres:</span>
                     <span className="font-medium text-amber-800">
                       {(userTeamInfo?.free_kick_points ?? 0) > 0
                         ? `#${userTeamInfo?.free_kicks_position} · ${userTeamInfo?.free_kick_points} pts`
@@ -362,7 +362,7 @@ export default function CapitanRankingPage() {
                     </span>
                   </div>
                   <p className="text-xs text-muted-foreground pt-1">
-                    Esos puntos van en paralelo al concurso: no suman a goles ni a la posición oficial.
+                    Esos puntos no suman a goles ni a la posición del concurso.
                   </p>
                 </div>
               </CardContent>
@@ -477,22 +477,22 @@ export default function CapitanRankingPage() {
             <CardHeader className="pb-2">
               <CardTitle className="flex items-center gap-2">
                 <Target className="h-5 w-5 text-amber-500" />
-                Premio paralelo — {userTeamInfo?.zone_name}
+                Tiros libres — {userTeamInfo?.zone_name}
               </CardTitle>
               <CardDescription>
-                Premio paralelo: clasificación por tiros libres, sin afectar goles ni posición oficial.
+                Clasificación por tiros libres; no afecta goles ni posición del concurso.
               </CardDescription>
             </CardHeader>
             <CardContent>
               {freeKicksRanking.length === 0 ? (
                 <div className="text-center py-12 text-muted-foreground">
                   <Target className="mx-auto h-12 w-12 opacity-50" />
-                  <p className="mt-4">No hay datos de premio paralelo en tu zona.</p>
+                  <p className="mt-4">No hay datos de tiros libres en tu zona.</p>
                 </div>
               ) : freeKickAllZero ? (
                 <div className="text-center py-12">
                   <Target className="mx-auto h-12 w-12 text-muted-foreground" />
-                  <h3 className="mt-4 text-lg font-semibold">Sin premio paralelo aún</h3>
+                  <h3 className="mt-4 text-lg font-semibold">Aún no hay tiros libres</h3>
                   <p className="text-muted-foreground text-sm max-w-md mx-auto">
                     Ningún equipo tiene puntos adjudicados por tiros libres. Cuando los haya, verás la tabla aquí.
                   </p>
@@ -504,7 +504,7 @@ export default function CapitanRankingPage() {
                       <TableHead className="w-16">Pos.</TableHead>
                       <TableHead>Equipo</TableHead>
                       <TableHead>Capitán</TableHead>
-                      <TableHead className="text-right">Premio paralelo (pts)</TableHead>
+                      <TableHead className="text-right">Puntos (tiros libres)</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>

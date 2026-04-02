@@ -366,23 +366,23 @@ function DirectorTecnicoReportesContent() {
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600">Premio tiros libres</CardTitle>
+            <CardTitle className="text-sm font-medium text-gray-600">Tiros libres</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-purple-600">{totalFreeKicks}</div>
-            <p className="text-xs text-gray-500">{totalFreeKickPoints.toLocaleString()} pts (no suman al ranking oficial)</p>
+            <p className="text-xs text-gray-500">{totalFreeKickPoints.toLocaleString()} pts (no suman a goles)</p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600">Puntos oficiales</CardTitle>
+            <CardTitle className="text-sm font-medium text-gray-600">Puntos (goles)</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-orange-600">
               {(totalSalesPoints + totalClientsPoints).toLocaleString()}
             </div>
             <p className="text-xs text-gray-500">
-              {Math.floor((totalSalesPoints + totalClientsPoints) / 100)} goles oficiales (aprox. si 100 pts/gol)
+              {Math.floor((totalSalesPoints + totalClientsPoints) / 100)} goles (aprox. si 100 pts/gol)
             </p>
           </CardContent>
         </Card>
@@ -535,11 +535,11 @@ function DirectorTecnicoReportesContent() {
         <TabsContent value="free-kicks" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>Premio tiros libres</CardTitle>
+              <CardTitle>Tiros libres</CardTitle>
               <CardDescription>
                 {selectedTeam
-                  ? `Reconocimientos del equipo ${selectedTeam.name} (no suman al ranking de goles)`
-                  : "Registro de premios por tiros libres; clasificación aparte del concurso oficial"}
+                  ? `Registro del equipo ${selectedTeam.name} (no suman a goles del concurso)`
+                  : "Registro por tiros libres; clasificación aparte de goles del concurso"}
               </CardDescription>
             </CardHeader>
             <CardContent>

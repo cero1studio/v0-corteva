@@ -201,9 +201,9 @@ export function AdminZonesChart({ zonesData: propZonesData }: AdminZonesChartPro
           </div>
           <div className="text-center py-16 px-4">
             <Trophy className="mx-auto h-12 w-12 text-muted-foreground" />
-            <h3 className="mt-4 text-lg font-semibold">Aún no hay actividad oficial por zona</h3>
+            <h3 className="mt-4 text-lg font-semibold">Aún no hay goles por zona</h3>
             <p className="text-muted-foreground max-w-lg mx-auto text-sm mt-2">
-              Todas las zonas tienen 0 goles y 0 puntos oficiales (ventas y clientes competencia). Cuando haya
+              Todas las zonas tienen 0 goles y 0 puntos (ventas y clientes competencia). Cuando haya
               registros, el gráfico mostrará el rendimiento en lugar de una vista vacía de datos.
             </p>
           </div>
