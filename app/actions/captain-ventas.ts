@@ -194,24 +194,6 @@ export async function getProductosParaFiltroVentas(): Promise<
   }
 }
 
-// #region agent log
-function agentLogVenta(location: string, message: string, data: Record<string, unknown>, hypothesisId: string) {
-  void fetch("http://127.0.0.1:7839/ingest/47fd48bf-3efc-4b02-8644-be7f7f472876", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "cf94f3" },
-    body: JSON.stringify({
-      sessionId: "cf94f3",
-      location,
-      message,
-      data,
-      timestamp: Date.now(),
-      hypothesisId,
-      runId: "capitan-venta",
-    }),
-  }).catch(() => {})
-}
-// #endregion
-
 export type CapitanProductoRegistro = {
   id: string
   name: string
@@ -224,10 +206,6 @@ export async function getCapitanRegistroVentaData(): Promise<
   | { success: true; products: CapitanProductoRegistro[]; puntosParaGol: number }
   | { success: false; error: string; products: []; puntosParaGol: number }
 > {
-  // #region agent log
-  agentLogVenta("captain-ventas.ts:getCapitanRegistroVentaData", "entry", {}, "H1")
-  // #endregion
-
   try {
     const session = await getServerSession(authOptions)
     if (!session?.user?.id) {
@@ -244,23 +222,11 @@ export async function getCapitanRegistroVentaData(): Promise<
     ])
 
     if (productsRes.error) {
-      // #region agent log
-      agentLogVenta(
-        "captain-ventas.ts:getCapitanRegistroVentaData",
-        "products_err",
-        { msg: productsRes.error.message.slice(0, 120) },
-        "H4",
-      )
-      // #endregion
       return { success: false, error: productsRes.error.message, products: [], puntosParaGol: 100 }
     }
 
     const cfgRow = configRes.data as { value?: string } | null
     const puntosParaGol = cfgRow?.value ? Number(cfgRow.value) : 100
-
-    // #region agent log
-    agentLogVenta("captain-ventas.ts:getCapitanRegistroVentaData", "ok", { n: productsRes.data?.length ?? 0 }, "H1")
-    // #endregion
 
     return {
       success: true,
@@ -269,7 +235,6 @@ export async function getCapitanRegistroVentaData(): Promise<
     }
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : "Error"
-    agentLogVenta("captain-ventas.ts:getCapitanRegistroVentaData", "catch", { msg: msg.slice(0, 120) }, "H1")
     return { success: false, error: msg, products: [], puntosParaGol: 100 }
   }
 }
@@ -279,10 +244,6 @@ export async function registerCapitanVenta(input: {
   quantity: number
   saleDate: string
 }): Promise<{ success: true } | { success: false; error: string }> {
-  // #region agent log
-  agentLogVenta("captain-ventas.ts:registerCapitanVenta", "entry", { qty: input.quantity }, "H1")
-  // #endregion
-
   try {
     const session = await getServerSession(authOptions)
     if (!session?.user?.id) {
@@ -324,15 +285,8 @@ export async function registerCapitanVenta(input: {
     } as never)
 
     if (insertError) {
-      // #region agent log
-      agentLogVenta("captain-ventas.ts:registerCapitanVenta", "insert_err", { msg: insertError.message.slice(0, 120) }, "H3")
-      // #endregion
       return { success: false, error: insertError.message }
     }
-
-    // #region agent log
-    agentLogVenta("captain-ventas.ts:registerCapitanVenta", "ok", {}, "H1")
-    // #endregion
 
     revalidatePath("/capitan/dashboard")
     revalidatePath("/capitan/ventas")
@@ -341,7 +295,6 @@ export async function registerCapitanVenta(input: {
     return { success: true }
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : "Error al registrar venta"
-    agentLogVenta("captain-ventas.ts:registerCapitanVenta", "catch", { msg: msg.slice(0, 120) }, "H1")
     return { success: false, error: msg }
   }
 }

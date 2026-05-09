@@ -1,3 +1,7 @@
+"use client"
+
+import { useMemo } from "react"
+
 // Cache global persistente para el dashboard que sobrevive remounts
 class DashboardCache {
   private static instance: DashboardCache
@@ -56,59 +60,30 @@ class DashboardCache {
 
 export const dashboardCache = DashboardCache.getInstance()
 
-// Hook para usar el cache persistente
+// Hook para usar el cache persistente (referencia estable para no recrear callbacks del dashboard en cada render)
 export function usePersistentDashboardCache() {
-  const setStats = (stats: any) => {
-    dashboardCache.set("basicStats", stats)
-  }
-
-  const getStats = () => {
-    return dashboardCache.get("basicStats")
-  }
-
-  const hasStats = () => {
-    return dashboardCache.has("basicStats")
-  }
-
-  const setZoneStats = (stats: any) => {
-    dashboardCache.set("zoneStats", stats)
-  }
-
-  const getZoneStats = () => {
-    return dashboardCache.get("zoneStats")
-  }
-
-  const hasZoneStats = () => {
-    return dashboardCache.has("zoneStats")
-  }
-
-  const setProductStats = (stats: any) => {
-    dashboardCache.set("productStats", stats)
-  }
-
-  const getProductStats = () => {
-    return dashboardCache.get("productStats")
-  }
-
-  const hasProductStats = () => {
-    return dashboardCache.has("productStats")
-  }
-
-  const clearAll = () => {
-    dashboardCache.clear()
-  }
-
-  return {
-    setStats,
-    getStats,
-    hasStats,
-    setZoneStats,
-    getZoneStats,
-    hasZoneStats,
-    setProductStats,
-    getProductStats,
-    hasProductStats,
-    clearAll,
-    getCacheStats: () => dashboardCache.getStats(),
-  }
+  return useMemo(
+    () => ({
+      setStats: (stats: any) => {
+        dashboardCache.set("basicStats", stats)
+      },
+      getStats: () => dashboardCache.get("basicStats"),
+      hasStats: () => dashboardCache.has("basicStats"),
+      setZoneStats: (stats: any) => {
+        dashboardCache.set("zoneStats", stats)
+      },
+      getZoneStats: () => dashboardCache.get("zoneStats"),
+      hasZoneStats: () => dashboardCache.has("zoneStats"),
+      setProductStats: (stats: any) => {
+        dashboardCache.set("productStats", stats)
+      },
+      getProductStats: () => dashboardCache.get("productStats"),
+      hasProductStats: () => dashboardCache.has("productStats"),
+      clearAll: () => {
+        dashboardCache.clear()
+      },
+      getCacheStats: () => dashboardCache.getStats(),
+    }),
+    [],
+  )
 }

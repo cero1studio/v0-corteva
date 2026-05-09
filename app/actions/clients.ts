@@ -6,24 +6,6 @@ import { createServerSupabaseClient, adminSupabase } from "@/lib/supabase/server
 import { formatColombianMobile, getPhoneValidationError } from "@/lib/phone-validation"
 import { revalidatePath } from "next/cache"
 
-// #region agent log
-function agentLogCap(location: string, message: string, data: Record<string, unknown>, hypothesisId: string) {
-  void fetch("http://127.0.0.1:7839/ingest/47fd48bf-3efc-4b02-8644-be7f7f472876", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "cf94f3" },
-    body: JSON.stringify({
-      sessionId: "cf94f3",
-      location,
-      message,
-      data,
-      timestamp: Date.now(),
-      hypothesisId,
-      runId: "capitan-clients",
-    }),
-  }).catch(() => {})
-}
-// #endregion
-
 export type RegisterCapitanClientePayload = {
   farmerName: string
   businessName: string
@@ -42,16 +24,9 @@ export type RegisterCapitanClientePayload = {
 export async function getCapitanClientsForSession(): Promise<
   { success: true; data: { id: string; client_name: string; created_at: string }[] } | { success: false; error: string }
 > {
-  // #region agent log
-  agentLogCap("clients.ts:getCapitanClientsForSession", "entry", {}, "H2")
-  // #endregion
-
   try {
     const session = await getServerSession(authOptions)
     if (!session?.user?.id) {
-      // #region agent log
-      agentLogCap("clients.ts:getCapitanClientsForSession", "no_session", {}, "H2")
-      // #endregion
       return { success: false, error: "No hay sesión activa" }
     }
 
@@ -66,18 +41,12 @@ export async function getCapitanClientsForSession(): Promise<
         .eq("id", userId)
         .maybeSingle()
       if (pErr) {
-        // #region agent log
-        agentLogCap("clients.ts:getCapitanClientsForSession", "profile_err", { msg: pErr.message.slice(0, 120) }, "H2")
-        // #endregion
         return { success: false, error: pErr.message }
       }
       teamId = (row as { team_id: string | null } | null)?.team_id ?? null
     }
 
     if (!teamId) {
-      // #region agent log
-      agentLogCap("clients.ts:getCapitanClientsForSession", "no_team", { role }, "H2")
-      // #endregion
       return { success: true, data: [] }
     }
 
@@ -88,22 +57,12 @@ export async function getCapitanClientsForSession(): Promise<
       .order("created_at", { ascending: false })
 
     if (error) {
-      // #region agent log
-      agentLogCap("clients.ts:getCapitanClientsForSession", "query_err", { msg: error.message.slice(0, 120) }, "H2")
-      // #endregion
       return { success: false, error: error.message }
     }
-
-    // #region agent log
-    agentLogCap("clients.ts:getCapitanClientsForSession", "ok", { count: data?.length ?? 0, teamIdLen: teamId.length }, "H2")
-    // #endregion
 
     return { success: true, data: data ?? [] }
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : "Error"
-    // #region agent log
-    agentLogCap("clients.ts:getCapitanClientsForSession", "catch", { msg: msg.slice(0, 120) }, "H1")
-    // #endregion
     return { success: false, error: msg }
   }
 }
@@ -111,10 +70,6 @@ export async function getCapitanClientsForSession(): Promise<
 export async function registerCapitanCompetitorClient(
   payload: RegisterCapitanClientePayload,
 ): Promise<{ success: true } | { success: false; error: string }> {
-  // #region agent log
-  agentLogCap("clients.ts:registerCapitanCompetitorClient", "entry", {}, "H1")
-  // #endregion
-
   try {
     const session = await getServerSession(authOptions)
     if (!session?.user?.id) {
@@ -179,14 +134,6 @@ export async function registerCapitanCompetitorClient(
     const profile = profileRow as { team_id: string | null } | null
 
     if (profileError || !profile?.team_id) {
-      // #region agent log
-      agentLogCap(
-        "clients.ts:registerCapitanCompetitorClient",
-        "no_team_profile",
-        { hasProfile: !!profile, err: profileError?.message?.slice(0, 80) },
-        "H1",
-      )
-      // #endregion
       return { success: false, error: "Usuario sin equipo asignado" }
     }
 
@@ -214,9 +161,6 @@ export async function registerCapitanCompetitorClient(
       } as never)
 
     if (insertError) {
-      // #region agent log
-      agentLogCap("clients.ts:registerCapitanCompetitorClient", "insert_err", { msg: insertError.message.slice(0, 120) }, "H3")
-      // #endregion
       return { success: false, error: insertError.message }
     }
 
@@ -258,10 +202,6 @@ export async function registerCapitanCompetitorClient(
       return { success: false, error: updateError.message }
     }
 
-    // #region agent log
-    agentLogCap("clients.ts:registerCapitanCompetitorClient", "ok", { teamIdLen: teamId.length }, "H1")
-    // #endregion
-
     revalidatePath("/capitan/dashboard")
     revalidatePath("/capitan/clientes")
     revalidatePath("/admin/dashboard")
@@ -271,9 +211,6 @@ export async function registerCapitanCompetitorClient(
     return { success: true }
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : "Error al registrar"
-    // #region agent log
-    agentLogCap("clients.ts:registerCapitanCompetitorClient", "catch", { msg: msg.slice(0, 120) }, "H1")
-    // #endregion
     return { success: false, error: msg }
   }
 }

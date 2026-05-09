@@ -94,41 +94,7 @@ export default function AdminDashboardPage() {
         }
       }, 15000)
 
-      // #region agent log
-      void fetch("http://127.0.0.1:7839/ingest/47fd48bf-3efc-4b02-8644-be7f7f472876", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "cf94f3" },
-        body: JSON.stringify({
-          sessionId: "cf94f3",
-          location: "admin/dashboard/page.tsx:fetchBasicStats",
-          message: "before getAdminDashboardBasicStats",
-          data: {},
-          timestamp: Date.now(),
-          hypothesisId: "S",
-          runId: "admin-dash",
-        }),
-      }).catch(() => {})
-      // #endregion
-
       const result = await getAdminDashboardBasicStats()
-
-      // #region agent log
-      void fetch("http://127.0.0.1:7839/ingest/47fd48bf-3efc-4b02-8644-be7f7f472876", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "cf94f3" },
-        body: JSON.stringify({
-          sessionId: "cf94f3",
-          location: "admin/dashboard/page.tsx:fetchBasicStats",
-          message: "after getAdminDashboardBasicStats",
-          data: result.success
-            ? { success: true, totalTeams: result.stats.totalTeams, totalZones: result.stats.totalZones }
-            : { success: false, errorPreview: result.error.slice(0, 160) },
-          timestamp: Date.now(),
-          hypothesisId: "S",
-          runId: "admin-dash",
-        }),
-      }).catch(() => {})
-      // #endregion
 
       if (!mountedRef.current) return false
 
@@ -155,21 +121,6 @@ export default function AdminDashboardPage() {
       if (mountedRef.current) {
         console.error("Error al cargar estadísticas básicas:", error)
         setError("Error al cargar datos")
-        // #region agent log
-        void fetch("http://127.0.0.1:7839/ingest/47fd48bf-3efc-4b02-8644-be7f7f472876", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "cf94f3" },
-          body: JSON.stringify({
-            sessionId: "cf94f3",
-            location: "admin/dashboard/page.tsx:fetchBasicStats",
-            message: "catch",
-            data: { msg: String(error?.message ?? error).slice(0, 160) },
-            timestamp: Date.now(),
-            hypothesisId: "A",
-            runId: "admin-dash",
-          }),
-        }).catch(() => {})
-        // #endregion
       }
       return false
     } finally {

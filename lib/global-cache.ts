@@ -70,8 +70,9 @@ export function useCachedList<T>(cacheKey: string, fetchFunction: () => Promise<
       setLoading(true)
       setError(null)
 
-      // Marcar como loading en cache
-      setCacheData(cacheKey, data, true)
+      // Marcar como loading en cache (no incluir `data` del estado en deps de refresh para evitar ciclos)
+      const prevEntry = getCacheData(cacheKey)
+      setCacheData(cacheKey, prevEntry?.data ?? null, true)
 
       try {
         const result = await fetchFunction()
@@ -91,7 +92,7 @@ export function useCachedList<T>(cacheKey: string, fetchFunction: () => Promise<
         }
       }
     },
-    [cacheKey, fetchFunction, getCacheData, setCacheData, data],
+    [cacheKey, fetchFunction, getCacheData, setCacheData],
   )
 
   useEffect(() => {
