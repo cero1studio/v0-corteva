@@ -4,14 +4,12 @@ import type React from "react"
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { LogOut } from "lucide-react"
-import { useRouter } from "next/navigation"
 import { useEffect, useState } from "react"
 import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Menu, X } from "lucide-react"
 import { DashboardNav } from "@/components/dashboard-nav"
 import { useAuth } from "@/hooks/useAuth"
-import { usePathname } from "next/navigation"
 
 export default function CapitanLayout({
   children,
@@ -21,8 +19,6 @@ export default function CapitanLayout({
   const [loading, setLoading] = useState(true)
   const { user, signOut, isLoading: authLoading } = useAuth()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
-  const router = useRouter()
-  const pathname = usePathname()
 
   useEffect(() => {
     if (user) {
@@ -55,18 +51,6 @@ export default function CapitanLayout({
 
   if (loading) {
     return <div>Cargando...</div>
-  }
-
-  // Misma lógica que middleware: si el JWT aún no tiene team_id tras crear equipo, no bloquear estas rutas
-  const capitanAllowedIfTokenTeamPending =
-    pathname?.includes("/crear-equipo") ||
-    pathname?.includes("/dashboard") ||
-    pathname?.includes("/registrar-venta") ||
-    pathname?.includes("/registrar-cliente")
-
-  if (user?.role === "capitan" && user?.team_id === null && !capitanAllowedIfTokenTeamPending) {
-    router.push("/capitan/crear-equipo")
-    return null
   }
 
   if (!user) {

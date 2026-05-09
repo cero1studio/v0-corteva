@@ -55,19 +55,25 @@ interface Product {
 export default function VentasPage() {
   const [ventas, setVentas] = useState<Sale[]>([])
   const [products, setProducts] = useState<Product[]>([])
-  const [loading, setLoading] = useState(true)
+  /** Solo el fetch de ventas; en false al inicio para no quedar en spinner mientras carga NextAuth */
+  const [ventasLoading, setVentasLoading] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedProduct, setSelectedProduct] = useState<string>("all")
   const [sortBy, setSortBy] = useState("date-desc")
   const { toast } = useToast()
-  const { session, user } = useAuth()
+  const { session, user, profile, isLoading: authLoading } = useAuth()
 
   useEffect(() => {
-    if (session?.user && user) {
-      loadVentas()
-      loadProducts()
+    if (authLoading) return
+
+    if (!session?.user || !user) {
+      setVentas([])
+      return
     }
-  }, [session, user])
+
+    void loadVentas()
+    void loadProducts()
+  }, [session, user, profile?.team_id, profile?.role, authLoading])
 
   const loadProducts = async () => {
     try {
@@ -85,12 +91,17 @@ export default function VentasPage() {
 
   const loadVentas = async () => {
     if (!session?.user || !user) {
-      console.log("Usuario o perfil no disponible")
       return
     }
 
     try {
-      setLoading(true)
+      setVentasLoading(true)
+
+      let captainTeamId = profile?.team_id ?? null
+      if (!captainTeamId && profile?.role === "capitan" && profile?.id) {
+        const { data } = await supabase.from("profiles").select("team_id").eq("id", profile.id).maybeSingle()
+        captainTeamId = data?.team_id ?? null
+      }
 
       // Primero, obtenemos las ventas básicas
       let query = supabase.from("sales").select(`
@@ -103,13 +114,13 @@ export default function VentasPage() {
           product_id
         `)
 
-      // Si es capitán, obtener ventas de todo el equipo
-      if (user.role === "capitan" && user.team_id) {
+      // Si es capitán, obtener ventas de todo el equipo (usar profile/BD, no user de useAuth)
+      if (profile?.role === "capitan" && captainTeamId) {
         // Obtener todos los miembros del equipo
         const { data: teamMembers, error: teamError } = await supabase
           .from("profiles")
           .select("id")
-          .eq("team_id", user.team_id)
+          .eq("team_id", captainTeamId)
 
         if (teamError) {
           throw new Error(`Error al obtener miembros del equipo: ${teamError.message}`)
@@ -118,6 +129,10 @@ export default function VentasPage() {
         if (teamMembers && teamMembers.length > 0) {
           const memberIds = teamMembers.map((member) => member.id)
           query = query.in("representative_id", memberIds)
+        } else {
+          // Sin miembros: evita consulta sin filtro (toda la tabla / cuelgue percibido)
+          setVentas([])
+          return
         }
       } else {
         // Si no es capitán, solo sus propias ventas
@@ -135,7 +150,6 @@ export default function VentasPage() {
 
       if (!salesData || salesData.length === 0) {
         setVentas([])
-        setLoading(false)
         return
       }
 
@@ -182,7 +196,7 @@ export default function VentasPage() {
         variant: "destructive",
       })
     } finally {
-      setLoading(false)
+      setVentasLoading(false)
     }
   }
 
@@ -221,14 +235,28 @@ export default function VentasPage() {
   const totalPuntos = filteredVentas.reduce((sum, venta) => sum + venta.points, 0)
   const totalCantidad = filteredVentas.reduce((sum, venta) => sum + venta.quantity, 0)
 
-  // Mostrar loading si no hay usuario o perfil
-  if (!session?.user || !user) {
+  if (authLoading) {
     return (
-      <div className="flex justify-center items-center h-40">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-corteva-600"></div>
+      <div className="flex flex-1 flex-col items-center justify-center gap-3 p-12 text-muted-foreground">
+        <div className="animate-spin rounded-full h-10 w-10 border-2 border-corteva-600 border-t-transparent" />
+        <p className="text-sm">Cargando sesión…</p>
       </div>
     )
   }
+
+  if (!session?.user || !user) {
+    return (
+      <div className="flex-1 p-6">
+        <EmptyState
+          icon="package"
+          title="No hay sesión activa"
+          description="Inicia sesión para ver tus ventas."
+        />
+      </div>
+    )
+  }
+
+  const isCapitan = profile?.role === "capitan"
 
   return (
     <div className="flex-1 space-y-4 p-6">
@@ -236,7 +264,9 @@ export default function VentasPage() {
         <div>
           <h2 className="text-3xl font-bold tracking-tight">Ventas</h2>
           <p className="text-muted-foreground">
-            {user.role === "capitan" ? `Ventas del equipo ${user.team_name || ""}` : "Tus ventas registradas"}
+            {isCapitan
+              ? `Ventas del equipo${profile?.team_name ? ` ${profile.team_name}` : ""}`
+              : "Tus ventas registradas"}
           </p>
         </div>
         <Button asChild>
@@ -286,7 +316,7 @@ export default function VentasPage() {
         <CardHeader>
           <CardTitle>Historial de Ventas</CardTitle>
           <CardDescription>
-            {user.role === "capitan"
+            {isCapitan
               ? "Visualiza todas las ventas registradas por tu equipo"
               : "Visualiza todas tus ventas registradas"}
           </CardDescription>
@@ -333,9 +363,10 @@ export default function VentasPage() {
             </div>
           </div>
 
-          {loading ? (
-            <div className="flex justify-center items-center h-40">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-corteva-600"></div>
+          {ventasLoading ? (
+            <div className="flex flex-col justify-center items-center min-h-[220px] gap-3 py-8 text-muted-foreground">
+              <div className="animate-spin rounded-full h-10 w-10 border-2 border-corteva-600 border-t-transparent" />
+              <p className="text-sm">Cargando ventas…</p>
             </div>
           ) : sortedVentas.length > 0 ? (
             <div className="rounded-md border">
@@ -359,7 +390,7 @@ export default function VentasPage() {
                       <TableCell>
                         <div>
                           <div className="font-medium">{venta.user_profile?.full_name || "Usuario"}</div>
-                          {user.role === "capitan" && (
+                          {isCapitan && (
                             <div className="text-sm text-muted-foreground">{venta.user_profile?.team?.name}</div>
                           )}
                         </div>
@@ -399,11 +430,17 @@ export default function VentasPage() {
           ) : (
             <EmptyState
               icon="package"
-              title="No hay ventas registradas"
+              title={
+                searchTerm || selectedProduct !== "all"
+                  ? "Sin resultados"
+                  : "No hay ventas registradas"
+              }
               description={
                 searchTerm || selectedProduct !== "all"
-                  ? "No se encontraron ventas que coincidan con los filtros aplicados."
-                  : "Aún no se han registrado ventas."
+                  ? "Prueba con otros términos o quita los filtros."
+                  : isCapitan
+                    ? "Cuando tu equipo registre ventas, aparecerán aquí. Puedes registrar la primera desde el botón de arriba."
+                    : "Registra tu primera venta para empezar a sumar puntos."
               }
             >
               {searchTerm || selectedProduct !== "all" ? (

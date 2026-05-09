@@ -95,24 +95,9 @@ export async function middleware(req: NextRequest) {
       return NextResponse.redirect(new URL(dashboardUrl, req.url))
     }
 
-    // Caso especial: capitán sin team_id en token intentando acceder a dashboard
-    // Permitir acceso para que el dashboard verifique en BD si realmente no hay equipo
-    if (role === "capitan" && !token.team_id && pathname === "/capitan/dashboard") {
-      console.log("[MIDDLEWARE] Capitán sin team_id en token accediendo a dashboard, permitiendo para verificación en BD")
-      return NextResponse.next()
-    }
-
-    // Capitán sin team_id en token: permitir rutas donde la BD puede tener equipo ya (sesión desfasada) o flujo inicial
-    const capitanAllowedWithoutTeamInToken =
-      pathname.includes("/crear-equipo") ||
-      pathname.includes("/dashboard") ||
-      pathname.includes("/registrar-venta") ||
-      pathname.includes("/registrar-cliente")
-
-    if (role === "capitan" && !token.team_id && !capitanAllowedWithoutTeamInToken) {
-      console.log("[MIDDLEWARE] Capitán sin team_id en token intentando acceder a:", pathname, "redirigiendo a crear-equipo")
-      return NextResponse.redirect(new URL("/capitan/crear-equipo", req.url))
-    }
+    // Capitán con JWT desfasado (sin team_id): permitir toda el área /capitan.
+    // El menú usa /capitan/ventas, /capitan/clientes, etc.; antes solo se exceptuaba registrar-* y acababan en crear-equipo → dashboard.
+    // La BD y cada página validan permisos; login sigue mandando sin equipo a crear-equipo.
   }
 
   return NextResponse.next()

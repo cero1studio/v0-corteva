@@ -11,6 +11,7 @@ import { getCompetitorClientsByTeam } from "@/app/actions/clients"
 import { toast } from "@/hooks/use-toast"
 import { EmptyState } from "@/components/empty-state"
 import Link from "next/link"
+import { supabase } from "@/lib/supabase/client"
 
 interface Client {
   id: string
@@ -25,16 +26,36 @@ export default function ClientesPage() {
   const [searchTerm, setSearchTerm] = useState("")
 
   useEffect(() => {
-    // Solo ejecutar cuando auth no esté cargando y tengamos el profile con team_id
-    if (!authLoading && profile?.team_id) {
-      console.log("Loading clients for team:", profile.team_id)
-      loadClients(profile.team_id)
-    } else if (!authLoading && !profile?.team_id) {
-      // Si no hay team_id, detener el loading
-      console.log("No team_id available, stopping loading")
-      setLoading(false)
+    let cancelled = false
+
+    async function resolveTeamAndLoad() {
+      if (authLoading || !profile?.id) return
+
+      let teamId = profile.team_id ?? null
+
+      // JWT a veces llega sin team_id aunque la BD ya lo tenga
+      if (!teamId && profile.role === "capitan") {
+        const { data, error } = await supabase.from("profiles").select("team_id").eq("id", profile.id).maybeSingle()
+        if (!error && data?.team_id) {
+          teamId = data.team_id
+        }
+      }
+
+      if (cancelled) return
+
+      if (teamId) {
+        loadClients(teamId)
+      } else {
+        console.log("No team_id available, stopping loading")
+        setLoading(false)
+      }
     }
-  }, [authLoading, profile?.team_id])
+
+    resolveTeamAndLoad()
+    return () => {
+      cancelled = true
+    }
+  }, [authLoading, profile?.id, profile?.team_id, profile?.role])
 
   const loadClients = async (teamId: string) => {
     try {
