@@ -7,12 +7,10 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Search, Users, Plus, Calendar, User, Building2 } from "lucide-react"
-import { getCompetitorClientsByTeam } from "@/app/actions/clients"
+import { getCapitanClientsForSession } from "@/app/actions/clients"
 import { toast } from "@/hooks/use-toast"
 import { EmptyState } from "@/components/empty-state"
 import Link from "next/link"
-import { supabase } from "@/lib/supabase/client"
-
 interface Client {
   id: string
   client_name: string
@@ -26,54 +24,24 @@ export default function ClientesPage() {
   const [searchTerm, setSearchTerm] = useState("")
 
   useEffect(() => {
-    let cancelled = false
+    if (authLoading || !profile?.id) return
 
-    async function resolveTeamAndLoad() {
-      if (authLoading || !profile?.id) return
+    void loadClients()
+  }, [authLoading, profile?.id])
 
-      let teamId = profile.team_id ?? null
-
-      // JWT a veces llega sin team_id aunque la BD ya lo tenga
-      if (!teamId && profile.role === "capitan") {
-        const { data, error } = await supabase.from("profiles").select("team_id").eq("id", profile.id).maybeSingle()
-        if (!error && data?.team_id) {
-          teamId = data.team_id
-        }
-      }
-
-      if (cancelled) return
-
-      if (teamId) {
-        loadClients(teamId)
-      } else {
-        console.log("No team_id available, stopping loading")
-        setLoading(false)
-      }
-    }
-
-    resolveTeamAndLoad()
-    return () => {
-      cancelled = true
-    }
-  }, [authLoading, profile?.id, profile?.team_id, profile?.role])
-
-  const loadClients = async (teamId: string) => {
+  const loadClients = async () => {
     try {
       setLoading(true)
-      console.log("Calling getCompetitorClientsByTeam with:", teamId)
 
-      const result = await getCompetitorClientsByTeam(teamId)
-
-      console.log("Result from getCompetitorClientsByTeam:", result)
+      const result = await getCapitanClientsForSession()
 
       if (result.success) {
         setClients(result.data || [])
-        console.log("Clients loaded successfully:", result.data?.length || 0)
       } else {
         console.error("Error loading clients:", result.error)
         toast({
           title: "Error",
-          description: "No se pudieron cargar los clientes",
+          description: result.error || "No se pudieron cargar los clientes",
           variant: "destructive",
         })
         setClients([])
@@ -96,7 +64,7 @@ export default function ClientesPage() {
   )
 
   // Mostrar loading solo si auth está cargando O si estamos cargando clientes
-  if (authLoading || (loading && profile?.team_id)) {
+  if (authLoading || loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-6">
         <div className="max-w-7xl mx-auto">
@@ -126,15 +94,9 @@ export default function ClientesPage() {
                 {user?.id || "No disponible"} | Profile Team ID: {profile?.team_id || "No disponible"} | Clientes:{" "}
                 {clients.length}
               </p>
-              {profile?.team_id && (
-                <Button
-                  onClick={() => loadClients(profile.team_id!)}
-                  size="sm"
-                  className="mt-2 bg-yellow-600 hover:bg-yellow-700"
-                >
-                  Recargar Clientes
-                </Button>
-              )}
+              <Button onClick={() => void loadClients()} size="sm" className="mt-2 bg-yellow-600 hover:bg-yellow-700">
+                Recargar Clientes
+              </Button>
             </CardContent>
           </Card>
         )}

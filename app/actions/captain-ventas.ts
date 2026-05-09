@@ -3,6 +3,7 @@
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/app/api/auth/[...nextauth]/route"
 import { adminSupabase } from "@/lib/supabase/server"
+import { revalidatePath } from "next/cache"
 
 export type CapitanVentaItem = {
   id: string
@@ -190,5 +191,157 @@ export async function getProductosParaFiltroVentas(): Promise<
     return { success: true, data: data ?? [] }
   } catch (e: unknown) {
     return { success: false, error: e instanceof Error ? e.message : "Error", data: [] }
+  }
+}
+
+// #region agent log
+function agentLogVenta(location: string, message: string, data: Record<string, unknown>, hypothesisId: string) {
+  void fetch("http://127.0.0.1:7839/ingest/47fd48bf-3efc-4b02-8644-be7f7f472876", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "cf94f3" },
+    body: JSON.stringify({
+      sessionId: "cf94f3",
+      location,
+      message,
+      data,
+      timestamp: Date.now(),
+      hypothesisId,
+      runId: "capitan-venta",
+    }),
+  }).catch(() => {})
+}
+// #endregion
+
+export type CapitanProductoRegistro = {
+  id: string
+  name: string
+  points: number
+  image_url: string | null
+  description: string | null
+}
+
+export async function getCapitanRegistroVentaData(): Promise<
+  | { success: true; products: CapitanProductoRegistro[]; puntosParaGol: number }
+  | { success: false; error: string; products: []; puntosParaGol: number }
+> {
+  // #region agent log
+  agentLogVenta("captain-ventas.ts:getCapitanRegistroVentaData", "entry", {}, "H1")
+  // #endregion
+
+  try {
+    const session = await getServerSession(authOptions)
+    if (!session?.user?.id) {
+      return { success: false, error: "No hay sesión", products: [], puntosParaGol: 100 }
+    }
+
+    const [productsRes, configRes] = await Promise.all([
+      adminSupabase
+        .from("products")
+        .select("id, name, points, image_url, description")
+        .eq("active", true)
+        .order("name"),
+      adminSupabase.from("system_config").select("value").eq("key", "puntos_para_gol").maybeSingle(),
+    ])
+
+    if (productsRes.error) {
+      // #region agent log
+      agentLogVenta(
+        "captain-ventas.ts:getCapitanRegistroVentaData",
+        "products_err",
+        { msg: productsRes.error.message.slice(0, 120) },
+        "H4",
+      )
+      // #endregion
+      return { success: false, error: productsRes.error.message, products: [], puntosParaGol: 100 }
+    }
+
+    const cfgRow = configRes.data as { value?: string } | null
+    const puntosParaGol = cfgRow?.value ? Number(cfgRow.value) : 100
+
+    // #region agent log
+    agentLogVenta("captain-ventas.ts:getCapitanRegistroVentaData", "ok", { n: productsRes.data?.length ?? 0 }, "H1")
+    // #endregion
+
+    return {
+      success: true,
+      products: (productsRes.data ?? []) as CapitanProductoRegistro[],
+      puntosParaGol,
+    }
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : "Error"
+    agentLogVenta("captain-ventas.ts:getCapitanRegistroVentaData", "catch", { msg: msg.slice(0, 120) }, "H1")
+    return { success: false, error: msg, products: [], puntosParaGol: 100 }
+  }
+}
+
+export async function registerCapitanVenta(input: {
+  productId: string
+  quantity: number
+  saleDate: string
+}): Promise<{ success: true } | { success: false; error: string }> {
+  // #region agent log
+  agentLogVenta("captain-ventas.ts:registerCapitanVenta", "entry", { qty: input.quantity }, "H1")
+  // #endregion
+
+  try {
+    const session = await getServerSession(authOptions)
+    if (!session?.user?.id) {
+      return { success: false, error: "No hay sesión activa" }
+    }
+
+    const userId = session.user.id
+    if (session.user.role !== "capitan") {
+      return { success: false, error: "Solo los capitanes pueden registrar ventas" }
+    }
+
+    const { productId, quantity, saleDate } = input
+    if (!productId || quantity < 1) {
+      return { success: false, error: "Producto o cantidad inválidos" }
+    }
+
+    const { data: product, error: productError } = await adminSupabase
+      .from("products")
+      .select("points, name")
+      .eq("id", productId)
+      .single()
+
+    if (productError || !product) {
+      return { success: false, error: productError?.message || "Producto no encontrado" }
+    }
+
+    const prod = product as { points: number; name: string }
+    const calculatedTotalPoints = prod.points * quantity
+    if (!calculatedTotalPoints || calculatedTotalPoints <= 0) {
+      return { success: false, error: "Los puntos calculados no son válidos" }
+    }
+
+    const { error: insertError } = await adminSupabase.from("sales").insert({
+      representative_id: userId,
+      product_id: productId,
+      quantity,
+      points: calculatedTotalPoints,
+      sale_date: saleDate,
+    } as never)
+
+    if (insertError) {
+      // #region agent log
+      agentLogVenta("captain-ventas.ts:registerCapitanVenta", "insert_err", { msg: insertError.message.slice(0, 120) }, "H3")
+      // #endregion
+      return { success: false, error: insertError.message }
+    }
+
+    // #region agent log
+    agentLogVenta("captain-ventas.ts:registerCapitanVenta", "ok", {}, "H1")
+    // #endregion
+
+    revalidatePath("/capitan/dashboard")
+    revalidatePath("/capitan/ventas")
+    revalidatePath("/admin/dashboard")
+
+    return { success: true }
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : "Error al registrar venta"
+    agentLogVenta("captain-ventas.ts:registerCapitanVenta", "catch", { msg: msg.slice(0, 120) }, "H1")
+    return { success: false, error: msg }
   }
 }

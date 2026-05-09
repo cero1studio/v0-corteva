@@ -6,7 +6,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
 import { AdminStatsChart } from "@/components/admin-stats-chart"
 import { AdminZonesChart } from "@/components/admin-zones-chart"
-import { supabase } from "@/lib/supabase/client"
+import {
+  getAdminDashboardBasicStats,
+  getAdminProductStatsForDashboard,
+  getAdminZonesListForDashboard,
+} from "@/app/actions/admin-dashboard-stats"
 import Link from "next/link"
 import {
   Users,
@@ -26,7 +30,6 @@ import { EmptyState } from "@/components/empty-state"
 import { useRouter } from "next/navigation"
 import { useDiagnostics } from "@/lib/diagnostics"
 import { usePersistentDashboardCache } from "@/lib/dashboard-cache"
-import { chartsCache } from "@/lib/charts-cache"
 
 export default function AdminDashboardPage() {
   const router = useRouter()
@@ -81,84 +84,92 @@ export default function AdminDashboardPage() {
     }
 
     loadingRef.current = true
-    abortControllerRef.current = new AbortController()
-    const signal = abortControllerRef.current.signal
 
     try {
-      // Timeout más largo y manejo más robusto
       timeoutRef.current = setTimeout(() => {
         if (mountedRef.current) {
           cleanup()
           setError("Timeout - los datos tardan en cargar")
           setLoading(false)
         }
-      }, 15000) // Aumentado a 15 segundos
+      }, 15000)
 
-      const [capitanes, directores, teams, zones, clients, sales, freeKicks] = await Promise.all([
-        chartsCache.wrapChartQuery("admin_capitanes", () =>
-          supabase
-            .from("profiles")
-            .select("*", { count: "exact", head: true })
-            .eq("role", "capitan")
-            .abortSignal(signal),
-        ),
-        chartsCache.wrapChartQuery("admin_directores", () =>
-          supabase
-            .from("profiles")
-            .select("*", { count: "exact", head: true })
-            .eq("role", "director_tecnico")
-            .abortSignal(signal),
-        ),
-        chartsCache.wrapChartQuery("admin_teams", () =>
-          supabase.from("teams").select("*", { count: "exact", head: true }).abortSignal(signal),
-        ),
-        chartsCache.wrapChartQuery("admin_zones", () =>
-          supabase.from("zones").select("*", { count: "exact", head: true }).abortSignal(signal),
-        ),
-        chartsCache.wrapChartQuery("admin_clients", () =>
-          supabase.from("competitor_clients").select("points").abortSignal(signal),
-        ),
-        chartsCache.wrapChartQuery("admin_sales", () => supabase.from("sales").select("points").abortSignal(signal)),
-        chartsCache.wrapChartQuery("admin_freekicks", () =>
-          supabase.from("free_kick_goals").select("points").abortSignal(signal),
-        ),
-      ])
+      // #region agent log
+      void fetch("http://127.0.0.1:7839/ingest/47fd48bf-3efc-4b02-8644-be7f7f472876", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "cf94f3" },
+        body: JSON.stringify({
+          sessionId: "cf94f3",
+          location: "admin/dashboard/page.tsx:fetchBasicStats",
+          message: "before getAdminDashboardBasicStats",
+          data: {},
+          timestamp: Date.now(),
+          hypothesisId: "S",
+          runId: "admin-dash",
+        }),
+      }).catch(() => {})
+      // #endregion
 
-      if (signal.aborted || !mountedRef.current) return false
+      const result = await getAdminDashboardBasicStats()
 
-      const totalSalesPoints = sales.data?.reduce((sum, sale) => sum + (sale.points || 0), 0) || 0
-      const totalFreeKickPoints = freeKicks.data?.reduce((sum, fk) => sum + (fk.points || 0), 0) || 0
-      const totalClientPoints = clients.data?.reduce((sum, client) => sum + (client.points || 0), 0) || 0
+      // #region agent log
+      void fetch("http://127.0.0.1:7839/ingest/47fd48bf-3efc-4b02-8644-be7f7f472876", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "cf94f3" },
+        body: JSON.stringify({
+          sessionId: "cf94f3",
+          location: "admin/dashboard/page.tsx:fetchBasicStats",
+          message: "after getAdminDashboardBasicStats",
+          data: result.success
+            ? { success: true, totalTeams: result.stats.totalTeams, totalZones: result.stats.totalZones }
+            : { success: false, errorPreview: result.error.slice(0, 160) },
+          timestamp: Date.now(),
+          hypothesisId: "S",
+          runId: "admin-dash",
+        }),
+      }).catch(() => {})
+      // #endregion
 
-      const newStats = {
-        totalCapitanes: capitanes.count || 0,
-        totalDirectores: directores.count || 0,
-        totalTeams: teams.count || 0,
-        totalZones: zones.count || 0,
-        totalClients: clients.data?.length || 0,
-        totalSales: sales.data?.length || 0,
-        totalSalesPoints: totalSalesPoints,
-        totalFreeKicks: freeKicks.data?.length || 0,
-        totalFreeKickPoints: totalFreeKickPoints,
-        totalClientPoints: totalClientPoints,
-      }
+      if (!mountedRef.current) return false
 
-      if (mountedRef.current) {
-        setStats(newStats)
-        cache.setStats(newStats)
-        setError(null)
-
+      if (!result.success) {
+        setError(result.error)
         if (timeoutRef.current) {
           clearTimeout(timeoutRef.current)
           timeoutRef.current = null
         }
+        return false
+      }
+
+      setStats(result.stats)
+      cache.setStats(result.stats)
+      setError(null)
+
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current)
+        timeoutRef.current = null
       }
 
       return true
     } catch (error: any) {
-      if (!signal.aborted && mountedRef.current) {
+      if (mountedRef.current) {
         console.error("Error al cargar estadísticas básicas:", error)
         setError("Error al cargar datos")
+        // #region agent log
+        void fetch("http://127.0.0.1:7839/ingest/47fd48bf-3efc-4b02-8644-be7f7f472876", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "cf94f3" },
+          body: JSON.stringify({
+            sessionId: "cf94f3",
+            location: "admin/dashboard/page.tsx:fetchBasicStats",
+            message: "catch",
+            data: { msg: String(error?.message ?? error).slice(0, 160) },
+            timestamp: Date.now(),
+            hypothesisId: "A",
+            runId: "admin-dash",
+          }),
+        }).catch(() => {})
+        // #endregion
       }
       return false
     } finally {
@@ -176,20 +187,12 @@ export default function AdminDashboardPage() {
     }
 
     try {
-      const { data: zones, error } = await supabase.from("zones").select("id, name")
-
-      if (error || !mountedRef.current) return
-
-      const basicZoneStats = zones.map((zone) => ({
-        id: zone.id,
-        name: zone.name,
-        teams: 0,
-        total_goals: 0,
-      }))
+      const result = await getAdminZonesListForDashboard()
+      if (!result.success || !mountedRef.current) return
 
       if (mountedRef.current) {
-        setZoneStats(basicZoneStats)
-        cache.setZoneStats(basicZoneStats)
+        setZoneStats(result.data)
+        cache.setZoneStats(result.data)
       }
     } catch (error) {
       console.error("Error al cargar estadísticas de zonas:", error)
@@ -205,29 +208,12 @@ export default function AdminDashboardPage() {
     }
 
     try {
-      const { data, error } = await supabase.from("products").select("id, name")
-
-      if (error || !mountedRef.current) return
-
-      const productStatsPromises = data.map(async (product) => {
-        const { data: salesData } = await supabase.from("sales").select("quantity, points").eq("product_id", product.id)
-
-        const totalSales = salesData?.reduce((sum, sale) => sum + (sale.quantity || 0), 0) || 0
-        const totalPoints = salesData?.reduce((sum, sale) => sum + (sale.points || 0), 0) || 0
-
-        return {
-          id: product.id,
-          name: product.name,
-          sales: totalSales,
-          totalPoints: totalPoints,
-        }
-      })
-
-      const productStatsResults = await Promise.all(productStatsPromises)
+      const result = await getAdminProductStatsForDashboard()
+      if (!result.success || !mountedRef.current) return
 
       if (mountedRef.current) {
-        setProductStats(productStatsResults)
-        cache.setProductStats(productStatsResults)
+        setProductStats(result.data)
+        cache.setProductStats(result.data)
       }
     } catch (error) {
       console.error("Error al cargar estadísticas de productos:", error)

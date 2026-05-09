@@ -15,7 +15,8 @@ import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import { CalendarIcon, ShoppingBag, ArrowLeft, Plus, Minus } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
-import { supabase } from "@/lib/supabase/client"
+import { useSession } from "next-auth/react"
+import { getCapitanRegistroVentaData, registerCapitanVenta } from "@/app/actions/captain-ventas"
 import { GoalCelebration } from "@/components/goal-celebration"
 import Image from "next/image"
 
@@ -28,7 +29,6 @@ export default function RegistrarVentaPage() {
   const [selectedProduct, setSelectedProduct] = useState("")
   const [quantity, setQuantity] = useState(1)
   const [date, setDate] = useState<Date>(new Date())
-  const [userId, setUserId] = useState("")
   const [showCelebration, setShowCelebration] = useState(false)
   const [goalCount, setGoalCount] = useState(0)
   const [productName, setProductName] = useState("")
@@ -38,6 +38,7 @@ export default function RegistrarVentaPage() {
 
   const router = useRouter()
   const { toast } = useToast()
+  const { data: session, status: sessionStatus } = useSession()
 
   // Función para obtener la URL de imagen del producto (igual que en admin)
   const getProductImageUrl = (product: any): string => {
@@ -68,36 +69,12 @@ export default function RegistrarVentaPage() {
   useEffect(() => {
     async function fetchData() {
       try {
-        // Obtener usuario actual
-        const {
-          data: { user },
-        } = await supabase.auth.getUser()
-        if (user) {
-          setUserId(user.id)
+        const result = await getCapitanRegistroVentaData()
+        if (!result.success) {
+          throw new Error(result.error)
         }
-
-        // Obtener configuración del sistema
-        const { data: configData, error: configError } = await supabase
-          .from("system_config")
-          .select("*")
-          .eq("key", "puntos_para_gol")
-          .single()
-
-        if (!configError && configData) {
-          setPuntosParaGol(Number(configData.value) || PUNTOS_POR_GOL)
-        }
-
-        // Obtener productos activos
-        const { data: productsData, error: productsError } = await supabase
-          .from("products")
-          .select("*")
-          .eq("active", true)
-          .order("name")
-
-        if (productsError) throw productsError
-
-        console.log("Productos cargados:", productsData)
-        setProducts(productsData || [])
+        setPuntosParaGol(result.puntosParaGol || PUNTOS_POR_GOL)
+        setProducts(result.products || [])
       } catch (error) {
         console.error("Error al cargar datos:", error)
         toast({
@@ -108,8 +85,7 @@ export default function RegistrarVentaPage() {
       }
     }
 
-    fetchData()
-    // Carga única al montar; no usar [toast] para evitar re-fetches si la ref cambia
+    void fetchData()
   }, [])
 
   // Actualizar el producto seleccionado cuando cambia la selección
@@ -126,10 +102,10 @@ export default function RegistrarVentaPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    if (!selectedProduct || quantity < 1 || !userId) {
+    if (!selectedProduct || quantity < 1 || sessionStatus !== "authenticated" || !session?.user?.id) {
       toast({
         title: "Error",
-        description: "Por favor completa todos los campos requeridos",
+        description: "Por favor completa todos los campos requeridos o inicia sesión de nuevo",
         variant: "destructive",
       })
       return
@@ -138,48 +114,31 @@ export default function RegistrarVentaPage() {
     setLoading(true)
 
     try {
-      // Obtener información del producto
-      const { data: product, error: productError } = await supabase
-        .from("products")
-        .select("points, name")
-        .eq("id", selectedProduct)
-        .single()
-
-      if (productError) throw new Error(`Error al obtener producto: ${productError.message}`)
+      const product = products.find((p) => p.id === selectedProduct)
       if (!product) throw new Error("Producto no encontrado")
 
-      // Calcular totales - usar la columna 'points' del producto, no 'price'
       const calculatedTotalPoints = product.points * quantity
-
-      // Validar que los puntos calculados son válidos
       if (!calculatedTotalPoints || calculatedTotalPoints <= 0) {
         throw new Error("Los puntos calculados no son válidos")
       }
 
-      // Registrar la venta
-      const { data, error } = await supabase
-        .from("sales")
-        .insert({
-          representative_id: userId,
-          product_id: selectedProduct,
-          quantity,
-          points: calculatedTotalPoints,
-          sale_date: format(date, "yyyy-MM-dd"),
-        })
-        .select()
+      const reg = await registerCapitanVenta({
+        productId: selectedProduct,
+        quantity,
+        saleDate: format(date, "yyyy-MM-dd"),
+      })
 
-      if (error) throw new Error(`Error al registrar venta: ${error.message}`)
+      if (!reg.success) {
+        throw new Error(reg.error)
+      }
 
-      // Calcular goles
       const golesCompletos = Math.floor(calculatedTotalPoints / puntosParaGol)
 
-      // Mostrar celebración
       setGoalCount(golesCompletos)
       setProductName(product.name)
       setTotalPoints(calculatedTotalPoints)
       setShowCelebration(true)
 
-      // Limpiar formulario
       setSelectedProduct("")
       setQuantity(1)
       setDate(new Date())

@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -11,9 +11,10 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { ArrowLeft, Users, Phone } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
-import { supabase } from "@/lib/supabase/client"
+import { useSession } from "next-auth/react"
 import { ClientGoalCelebration } from "@/components/client-goal-celebration"
-import { formatColombianMobile, getPhoneValidationError, PHONE_INPUT_PROPS } from "@/lib/phone-validation"
+import { registerCapitanCompetitorClient } from "@/app/actions/clients"
+import { getPhoneValidationError, PHONE_INPUT_PROPS } from "@/lib/phone-validation"
 
 export default function RegistrarClientePage() {
   const [loading, setLoading] = useState(false)
@@ -28,35 +29,12 @@ export default function RegistrarClientePage() {
   const [volumenFacturado, setVolumenFacturado] = useState("")
   const [contactInfo, setContactInfo] = useState("")
   const [notes, setNotes] = useState("")
-  const [userId, setUserId] = useState("")
   const [showCelebration, setShowCelebration] = useState(false)
   const [phoneError, setPhoneError] = useState<string>("")
 
   const router = useRouter()
   const { toast } = useToast()
-
-  useEffect(() => {
-    async function fetchUser() {
-      try {
-        // Obtener usuario actual
-        const {
-          data: { user },
-        } = await supabase.auth.getUser()
-        if (user) {
-          setUserId(user.id)
-        }
-      } catch (error) {
-        console.error("Error al cargar usuario:", error)
-        toast({
-          title: "Error",
-          description: "No se pudo cargar la información del usuario",
-          variant: "destructive",
-        })
-      }
-    }
-
-    fetchUser()
-  }, [])
+  const { data: session, status: sessionStatus } = useSession()
 
   const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value
@@ -94,7 +72,8 @@ export default function RegistrarClientePage() {
       !volumenFacturado ||
       !contactInfo.trim() ||
       !notes.trim() ||
-      !userId
+      sessionStatus !== "authenticated" ||
+      !session?.user?.id
     ) {
       toast({
         title: "Error",
@@ -151,83 +130,24 @@ export default function RegistrarClientePage() {
     setLoading(true)
 
     try {
-      // Obtener información del usuario y equipo
-      const { data: profile, error: profileError } = await supabase
-        .from("profiles")
-        .select("team_id")
-        .eq("id", userId)
-        .single()
+      const result = await registerCapitanCompetitorClient({
+        farmerName: farmerName.trim(),
+        businessName: businessName.trim(),
+        saleType,
+        storeName: saleType === "Venta por Almacén" ? storeName.trim() : null,
+        farmLocation: farmLocation.trim(),
+        farmAreaHectares: areaFinca,
+        previousProduct: previousProduct.trim(),
+        superGanaderiaProduct,
+        volumenFacturado: volumen,
+        contactInfo,
+        notes: notes.trim(),
+      })
 
-      if (profileError) throw new Error(`Error al obtener perfil: ${profileError.message}`)
-      if (!profile || !profile.team_id) throw new Error("Usuario sin equipo asignado")
+      if (!result.success) {
+        throw new Error(result.error)
+      }
 
-      // Format phone number before saving
-      const formattedPhone = formatColombianMobile(contactInfo)
-
-      // Registrar el cliente
-      const { data, error } = await supabase
-        .from("competitor_clients")
-        .insert({
-          client_name: farmerName,
-          competitor_name: farmerName,
-          ganadero_name: farmerName,
-          razon_social: businessName,
-          tipo_venta: saleType,
-          nombre_almacen: saleType === "Venta por Almacén" ? storeName : null,
-          ubicacion_finca: farmLocation,
-          area_finca_hectareas: areaFinca,
-          producto_anterior: previousProduct,
-          producto_super_ganaderia: superGanaderiaProduct,
-          volumen_venta_estimado: volumen,
-          contact_info: formattedPhone,
-          notes,
-          representative_id: userId,
-          team_id: profile.team_id,
-          points: 200, // Cada cliente = 200 puntos (2 goles)
-        })
-        .select()
-
-      if (error) throw new Error(`Error al registrar cliente: ${error.message}`)
-
-      // Obtener la configuración de puntos para un gol
-      const { data: puntosConfig, error: puntosError } = await supabase
-        .from("system_config")
-        .select("value")
-        .eq("key", "puntos_para_gol")
-        .maybeSingle()
-
-      // Por defecto 100 puntos = 1 gol si no hay configuración
-      const puntosParaGol = puntosConfig?.value ? Number(puntosConfig.value) : 100
-
-      // Cada cliente suma 2 goles (200 puntos)
-      const golesCliente = 2
-      const puntosCliente = golesCliente * puntosParaGol // 200 puntos
-
-      // Obtener puntos actuales del equipo
-      const { data: teamData, error: teamError } = await supabase
-        .from("teams")
-        .select("total_points, goals")
-        .eq("id", profile.team_id)
-        .single()
-
-      if (teamError) throw new Error(`Error al obtener datos del equipo: ${teamError.message}`)
-
-      // Sumar los puntos del cliente a los puntos actuales del equipo
-      const newTotalPoints = (teamData?.total_points || 0) + puntosCliente
-      const newTotalGoals = Math.floor(newTotalPoints / puntosParaGol)
-
-      // Actualizar el equipo con los nuevos puntos y goles
-      const { error: updateError } = await supabase
-        .from("teams")
-        .update({
-          total_points: newTotalPoints,
-          goals: newTotalGoals,
-        })
-        .eq("id", profile.team_id)
-
-      if (updateError) throw new Error(`Error al actualizar equipo: ${updateError.message}`)
-
-      // Mostrar celebración
       setShowCelebration(true)
     } catch (error: any) {
       console.error("Error al registrar cliente:", error)

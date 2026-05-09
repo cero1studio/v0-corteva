@@ -1,7 +1,282 @@
 "use server"
 
-import { createServerSupabaseClient } from "@/lib/supabase/server"
+import { getServerSession } from "next-auth"
+import { authOptions } from "@/app/api/auth/[...nextauth]/route"
+import { createServerSupabaseClient, adminSupabase } from "@/lib/supabase/server"
+import { formatColombianMobile, getPhoneValidationError } from "@/lib/phone-validation"
 import { revalidatePath } from "next/cache"
+
+// #region agent log
+function agentLogCap(location: string, message: string, data: Record<string, unknown>, hypothesisId: string) {
+  void fetch("http://127.0.0.1:7839/ingest/47fd48bf-3efc-4b02-8644-be7f7f472876", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "cf94f3" },
+    body: JSON.stringify({
+      sessionId: "cf94f3",
+      location,
+      message,
+      data,
+      timestamp: Date.now(),
+      hypothesisId,
+      runId: "capitan-clients",
+    }),
+  }).catch(() => {})
+}
+// #endregion
+
+export type RegisterCapitanClientePayload = {
+  farmerName: string
+  businessName: string
+  saleType: string
+  storeName: string | null
+  farmLocation: string
+  farmAreaHectares: number
+  previousProduct: string
+  superGanaderiaProduct: string
+  volumenFacturado: number
+  contactInfo: string
+  notes: string
+}
+
+/** Lista clientes del equipo del capitán vía servidor (NextAuth + service role). Evita cliente Supabase sin sesión en el navegador. */
+export async function getCapitanClientsForSession(): Promise<
+  { success: true; data: { id: string; client_name: string; created_at: string }[] } | { success: false; error: string }
+> {
+  // #region agent log
+  agentLogCap("clients.ts:getCapitanClientsForSession", "entry", {}, "H2")
+  // #endregion
+
+  try {
+    const session = await getServerSession(authOptions)
+    if (!session?.user?.id) {
+      // #region agent log
+      agentLogCap("clients.ts:getCapitanClientsForSession", "no_session", {}, "H2")
+      // #endregion
+      return { success: false, error: "No hay sesión activa" }
+    }
+
+    const userId = session.user.id
+    const role = session.user.role
+    let teamId = session.user.team_id ?? null
+
+    if (!teamId && role === "capitan") {
+      const { data: row, error: pErr } = await adminSupabase
+        .from("profiles")
+        .select("team_id")
+        .eq("id", userId)
+        .maybeSingle()
+      if (pErr) {
+        // #region agent log
+        agentLogCap("clients.ts:getCapitanClientsForSession", "profile_err", { msg: pErr.message.slice(0, 120) }, "H2")
+        // #endregion
+        return { success: false, error: pErr.message }
+      }
+      teamId = (row as { team_id: string | null } | null)?.team_id ?? null
+    }
+
+    if (!teamId) {
+      // #region agent log
+      agentLogCap("clients.ts:getCapitanClientsForSession", "no_team", { role }, "H2")
+      // #endregion
+      return { success: true, data: [] }
+    }
+
+    const { data, error } = await adminSupabase
+      .from("competitor_clients")
+      .select("id, client_name, created_at")
+      .eq("team_id", teamId)
+      .order("created_at", { ascending: false })
+
+    if (error) {
+      // #region agent log
+      agentLogCap("clients.ts:getCapitanClientsForSession", "query_err", { msg: error.message.slice(0, 120) }, "H2")
+      // #endregion
+      return { success: false, error: error.message }
+    }
+
+    // #region agent log
+    agentLogCap("clients.ts:getCapitanClientsForSession", "ok", { count: data?.length ?? 0, teamIdLen: teamId.length }, "H2")
+    // #endregion
+
+    return { success: true, data: data ?? [] }
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : "Error"
+    // #region agent log
+    agentLogCap("clients.ts:getCapitanClientsForSession", "catch", { msg: msg.slice(0, 120) }, "H1")
+    // #endregion
+    return { success: false, error: msg }
+  }
+}
+
+export async function registerCapitanCompetitorClient(
+  payload: RegisterCapitanClientePayload,
+): Promise<{ success: true } | { success: false; error: string }> {
+  // #region agent log
+  agentLogCap("clients.ts:registerCapitanCompetitorClient", "entry", {}, "H1")
+  // #endregion
+
+  try {
+    const session = await getServerSession(authOptions)
+    if (!session?.user?.id) {
+      return { success: false, error: "No hay sesión activa" }
+    }
+
+    const userId = session.user.id
+    if (session.user.role !== "capitan") {
+      return { success: false, error: "Solo los capitanes pueden registrar clientes" }
+    }
+
+    const {
+      farmerName,
+      businessName,
+      saleType,
+      storeName,
+      farmLocation,
+      farmAreaHectares,
+      previousProduct,
+      superGanaderiaProduct,
+      volumenFacturado,
+      contactInfo,
+      notes,
+    } = payload
+
+    if (
+      !farmerName?.trim() ||
+      !businessName?.trim() ||
+      !saleType ||
+      !farmLocation?.trim() ||
+      !previousProduct?.trim() ||
+      !superGanaderiaProduct ||
+      volumenFacturado < 100 ||
+      !contactInfo?.trim() ||
+      !notes?.trim()
+    ) {
+      return { success: false, error: "Datos incompletos o volumen inválido" }
+    }
+
+    if (saleType === "Venta por Almacén" && !storeName?.trim()) {
+      return { success: false, error: "Indica el nombre del almacén" }
+    }
+
+    const areaFinca = Number(farmAreaHectares)
+    if (Number.isNaN(areaFinca) || areaFinca <= 0) {
+      return { success: false, error: "Área de finca inválida" }
+    }
+
+    const phoneErr = getPhoneValidationError(contactInfo)
+    if (phoneErr) {
+      return { success: false, error: phoneErr }
+    }
+
+    const formattedPhone = formatColombianMobile(contactInfo)
+
+    const { data: profileRow, error: profileError } = await adminSupabase
+      .from("profiles")
+      .select("team_id")
+      .eq("id", userId)
+      .single()
+
+    const profile = profileRow as { team_id: string | null } | null
+
+    if (profileError || !profile?.team_id) {
+      // #region agent log
+      agentLogCap(
+        "clients.ts:registerCapitanCompetitorClient",
+        "no_team_profile",
+        { hasProfile: !!profile, err: profileError?.message?.slice(0, 80) },
+        "H1",
+      )
+      // #endregion
+      return { success: false, error: "Usuario sin equipo asignado" }
+    }
+
+    const teamId = profile.team_id
+
+    const { error: insertError } = await adminSupabase
+      .from("competitor_clients")
+      .insert({
+        client_name: farmerName.trim(),
+        competitor_name: farmerName.trim(),
+        ganadero_name: farmerName.trim(),
+        razon_social: businessName.trim(),
+        tipo_venta: saleType,
+        nombre_almacen: saleType === "Venta por Almacén" ? storeName!.trim() : null,
+        ubicacion_finca: farmLocation.trim(),
+        area_finca_hectareas: areaFinca,
+        producto_anterior: previousProduct.trim(),
+        producto_super_ganaderia: superGanaderiaProduct,
+        volumen_venta_estimado: volumenFacturado,
+        contact_info: formattedPhone,
+        notes: notes.trim(),
+        representative_id: userId,
+        team_id: teamId,
+        points: 200,
+      } as never)
+
+    if (insertError) {
+      // #region agent log
+      agentLogCap("clients.ts:registerCapitanCompetitorClient", "insert_err", { msg: insertError.message.slice(0, 120) }, "H3")
+      // #endregion
+      return { success: false, error: insertError.message }
+    }
+
+    const { data: puntosRow } = await adminSupabase
+      .from("system_config")
+      .select("value")
+      .eq("key", "puntos_para_gol")
+      .maybeSingle()
+
+    const puntosConfig = puntosRow as { value?: string } | null
+    const puntosParaGol = puntosConfig?.value ? Number(puntosConfig.value) : 100
+    const golesCliente = 2
+    const puntosCliente = golesCliente * puntosParaGol
+
+    const { data: teamRow, error: teamError } = await adminSupabase
+      .from("teams")
+      .select("total_points, goals")
+      .eq("id", teamId)
+      .single()
+
+    if (teamError) {
+      return { success: false, error: teamError.message }
+    }
+
+    const teamData = teamRow as { total_points?: number | null; goals?: number | null } | null
+
+    const newTotalPoints = (teamData?.total_points || 0) + puntosCliente
+    const newTotalGoals = Math.floor(newTotalPoints / puntosParaGol)
+
+    const { error: updateError } = await adminSupabase
+      .from("teams")
+      .update({
+        total_points: newTotalPoints,
+        goals: newTotalGoals,
+      } as never)
+      .eq("id", teamId)
+
+    if (updateError) {
+      return { success: false, error: updateError.message }
+    }
+
+    // #region agent log
+    agentLogCap("clients.ts:registerCapitanCompetitorClient", "ok", { teamIdLen: teamId.length }, "H1")
+    // #endregion
+
+    revalidatePath("/capitan/dashboard")
+    revalidatePath("/capitan/clientes")
+    revalidatePath("/admin/dashboard")
+    revalidatePath("/ranking")
+    revalidatePath("/capitan/ranking")
+
+    return { success: true }
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : "Error al registrar"
+    // #region agent log
+    agentLogCap("clients.ts:registerCapitanCompetitorClient", "catch", { msg: msg.slice(0, 120) }, "H1")
+    // #endregion
+    return { success: false, error: msg }
+  }
+}
 
 // Constante para la conversión de clientes a goles (3 clientes = 1 gol)
 const CLIENTES_POR_GOL = 3
