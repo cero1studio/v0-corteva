@@ -66,6 +66,7 @@ export async function getCapitanVentasForSession(): Promise<
     const role = session.user.role
     let teamId = session.user.team_id ?? null
 
+
     if (!teamId && role === "capitan") {
       const { data: row, error: pErr } = await adminSupabase
         .from("profiles")
@@ -92,6 +93,7 @@ export async function getCapitanVentasForSession(): Promise<
     } else {
       representativeIds = [userId]
     }
+
 
     const salesRows: SalesRow[] = []
     const PAGE = 2000
@@ -139,6 +141,7 @@ export async function getCapitanVentasForSession(): Promise<
     if (profilesRes.error) {
       return { success: false, error: profilesRes.error.message }
     }
+
 
     const productsData = (productsRes.data ?? []) as {
       id: string
@@ -273,6 +276,20 @@ export async function registerCapitanVenta(input: {
       return { success: false, error: "Producto o cantidad inválidos" }
     }
 
+    const { data: profileRow, error: profileError } = await adminSupabase
+      .from("profiles")
+      .select("team_id")
+      .eq("id", userId)
+      .single()
+
+    const profile = profileRow as { team_id: string | null } | null
+
+    if (profileError || !profile?.team_id) {
+      return { success: false, error: "Usuario sin equipo asignado" }
+    }
+
+    const teamId = profile.team_id
+
     const { data: product, error: productError } = await adminSupabase
       .from("products")
       .select("points, name")
@@ -291,6 +308,7 @@ export async function registerCapitanVenta(input: {
 
     const { error: insertError } = await adminSupabase.from("sales").insert({
       representative_id: userId,
+      team_id: teamId,
       product_id: productId,
       quantity,
       points: calculatedTotalPoints,
@@ -299,6 +317,25 @@ export async function registerCapitanVenta(input: {
 
     if (insertError) {
       return { success: false, error: insertError.message }
+    }
+
+
+    // Actualizar puntos del equipo
+    const { data: teamRow, error: teamError } = await adminSupabase
+      .from("teams")
+      .select("total_points, goals")
+      .eq("id", teamId)
+      .single()
+
+    if (!teamError) {
+      const teamData = teamRow as { total_points?: number | null; goals?: number | null } | null
+      const { data: configData } = await adminSupabase.from("system_config").select("value").eq("key", "puntos_para_gol").maybeSingle()
+      const puntosParaGol = configData?.value ? Number(configData.value) : 100
+
+      const newTotalPoints = (teamData?.total_points || 0) + calculatedTotalPoints
+      const newTotalGoals = Math.floor(newTotalPoints / puntosParaGol)
+
+      await adminSupabase.from("teams").update({ total_points: newTotalPoints, goals: newTotalGoals } as never).eq("id", teamId)
     }
 
     revalidatePath("/capitan/dashboard")
