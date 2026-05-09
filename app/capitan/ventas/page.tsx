@@ -74,14 +74,14 @@ export default function VentasPage() {
   useEffect(() => {
     if (authLoading) return
 
-    if (!session?.user || !user) {
+    if (!user?.id) {
       setVentas([])
       return
     }
 
     void loadVentas()
     void loadProducts()
-  }, [session, user, profile?.team_id, profile?.role, authLoading])
+  }, [user?.id, profile?.team_id, profile?.role, authLoading])
 
   const loadProducts = async () => {
     try {

@@ -93,17 +93,30 @@ export async function getCapitanVentasForSession(): Promise<
       representativeIds = [userId]
     }
 
-    const { data: salesData, error: salesError } = await adminSupabase
-      .from("sales")
-      .select("id, quantity, points, sale_date, created_at, representative_id, product_id")
-      .in("representative_id", representativeIds)
-      .order("created_at", { ascending: false })
+    const salesRows: SalesRow[] = []
+    const PAGE = 2000
+    let offset = 0
 
-    if (salesError) {
-      return { success: false, error: salesError.message }
+    for (;;) {
+      const { data: batch, error: sErr } = await adminSupabase
+        .from("sales")
+        .select("id, quantity, points, sale_date, created_at, representative_id, product_id")
+        .in("representative_id", representativeIds)
+        .order("created_at", { ascending: false })
+        .range(offset, offset + PAGE - 1)
+
+      if (sErr) {
+        return { success: false, error: sErr.message }
+      }
+
+      const rows = (batch ?? []) as SalesRow[]
+      if (rows.length === 0) break
+
+      salesRows.push(...rows)
+
+      if (rows.length < PAGE) break
+      offset += PAGE
     }
-
-    const salesRows = (salesData ?? []) as SalesRow[]
 
     if (!salesRows.length) {
       return { success: true, data: [] }

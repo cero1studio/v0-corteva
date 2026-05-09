@@ -2,7 +2,7 @@
 
 import { useSession, signIn as nextAuthSignIn, signOut as nextAuthSignOut } from "next-auth/react"
 import { useRouter } from "next/navigation"
-import { useCallback } from "react"
+import { useCallback, useMemo } from "react"
 import { getErrorMessage } from "@/lib/auth-errors"
 
 export type UserProfile = {
@@ -23,37 +23,41 @@ export function useAuth() {
   const isLoading = status === "loading"
   const isInitialized = status !== "loading"
 
-  // Mapear la sesi?n de NextAuth al formato esperado por la aplicaci?n
-  const user = session?.user
-    ? {
-        id: session.user.id,
-        email: session.user.email || "",
-        aud: "authenticated",
-        role: "authenticated",
-        email_confirmed_at: new Date().toISOString(),
-        phone: "",
-        confirmed_at: new Date().toISOString(),
-        last_sign_in_at: new Date().toISOString(),
-        app_metadata: {},
-        user_metadata: {},
-        identities: [],
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      }
-    : null
+  // Mapear la sesión de NextAuth al formato esperado por la aplicación
+  const user = useMemo(() => {
+    return session?.user
+      ? {
+          id: session.user.id,
+          email: session.user.email || "",
+          aud: "authenticated",
+          role: "authenticated",
+          email_confirmed_at: new Date().toISOString(),
+          phone: "",
+          confirmed_at: new Date().toISOString(),
+          last_sign_in_at: new Date().toISOString(),
+          app_metadata: {},
+          user_metadata: {},
+          identities: [],
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        }
+      : null
+  }, [session?.user])
 
-  const profile: UserProfile | null = session?.user
-    ? {
-        id: session.user.id,
-        email: session.user.email,
-        role: session.user.role,
-        full_name: session.user.name || undefined,
-        team_id: session.user.team_id,
-        team_name: session.user.team_name,
-        zone_id: session.user.zone_id,
-        distributor_id: session.user.distributor_id,
-      }
-    : null
+  const profile: UserProfile | null = useMemo(() => {
+    return session?.user
+      ? {
+          id: session.user.id,
+          email: session.user.email,
+          role: session.user.role,
+          full_name: session.user.name || undefined,
+          team_id: session.user.team_id,
+          team_name: session.user.team_name,
+          zone_id: session.user.zone_id,
+          distributor_id: session.user.distributor_id,
+        }
+      : null
+  }, [session?.user])
 
   const signIn = useCallback(
     async (email: string, password: string) => {
@@ -114,8 +118,12 @@ export function useAuth() {
     console.log("refreshProfile called - NextAuth maneja esto autom?ticamente")
   }, [])
 
+  const mappedSession = useMemo(() => {
+    return session ? { ...session, user } : null
+  }, [session, user])
+
   return {
-    session: session ? { ...session, user } : null,
+    session: mappedSession,
     user,
     profile,
     isLoading,
