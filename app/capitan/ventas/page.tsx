@@ -19,15 +19,15 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
-import { supabase } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/useAuth"
 import Link from "next/link"
+import { getCapitanVentasForSession, getProductosParaFiltroVentas } from "@/app/actions/captain-ventas"
 
 interface Sale {
   id: string
   quantity: number
   points: number
-  sale_date: string
+  sale_date: string | null
   created_at: string
   representative_id: string
   product_id: string
@@ -52,11 +52,19 @@ interface Product {
   name: string
 }
 
+function formatVentasLoadError(message: string): string {
+  if (/failed to fetch|networkerror|load failed|network request failed/i.test(message)) {
+    return "No se pudo conectar con el servidor. Revisa tu conexión, VPN, firewall o extensiones que bloqueen peticiones. Si el problema continúa, contacta al administrador."
+  }
+  return message
+}
+
 export default function VentasPage() {
   const [ventas, setVentas] = useState<Sale[]>([])
   const [products, setProducts] = useState<Product[]>([])
   /** Solo el fetch de ventas; en false al inicio para no quedar en spinner mientras carga NextAuth */
   const [ventasLoading, setVentasLoading] = useState(false)
+  const [ventasError, setVentasError] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedProduct, setSelectedProduct] = useState<string>("all")
   const [sortBy, setSortBy] = useState("date-desc")
@@ -77,13 +85,12 @@ export default function VentasPage() {
 
   const loadProducts = async () => {
     try {
-      const { data, error } = await supabase.from("products").select("id, name").order("name")
-
-      if (error) {
-        throw new Error(`Error al obtener productos: ${error.message}`)
+      const result = await getProductosParaFiltroVentas()
+      if (result.success) {
+        setProducts(result.data)
+      } else {
+        console.error("Error al cargar productos:", result.error)
       }
-
-      setProducts(data || [])
     } catch (error: any) {
       console.error("Error al cargar productos:", error)
     }
@@ -96,103 +103,23 @@ export default function VentasPage() {
 
     try {
       setVentasLoading(true)
+      setVentasError(null)
 
-      let captainTeamId = profile?.team_id ?? null
-      if (!captainTeamId && profile?.role === "capitan" && profile?.id) {
-        const { data } = await supabase.from("profiles").select("team_id").eq("id", profile.id).maybeSingle()
-        captainTeamId = data?.team_id ?? null
+      const result = await getCapitanVentasForSession()
+      if (!result.success) {
+        throw new Error(result.error)
       }
 
-      // Primero, obtenemos las ventas básicas
-      let query = supabase.from("sales").select(`
-          id,
-          quantity,
-          points,
-          sale_date,
-          created_at,
-          representative_id,
-          product_id
-        `)
-
-      // Si es capitán, obtener ventas de todo el equipo (usar profile/BD, no user de useAuth)
-      if (profile?.role === "capitan" && captainTeamId) {
-        // Obtener todos los miembros del equipo
-        const { data: teamMembers, error: teamError } = await supabase
-          .from("profiles")
-          .select("id")
-          .eq("team_id", captainTeamId)
-
-        if (teamError) {
-          throw new Error(`Error al obtener miembros del equipo: ${teamError.message}`)
-        }
-
-        if (teamMembers && teamMembers.length > 0) {
-          const memberIds = teamMembers.map((member) => member.id)
-          query = query.in("representative_id", memberIds)
-        } else {
-          // Sin miembros: evita consulta sin filtro (toda la tabla / cuelgue percibido)
-          setVentas([])
-          return
-        }
-      } else {
-        // Si no es capitán, solo sus propias ventas
-        query = query.eq("representative_id", session.user.id)
-      }
-
-      // Ordenar por fecha más reciente
-      query = query.order("created_at", { ascending: false })
-
-      const { data: salesData, error: salesError } = await query
-
-      if (salesError) {
-        throw new Error(`Error al obtener ventas: ${salesError.message}`)
-      }
-
-      if (!salesData || salesData.length === 0) {
-        setVentas([])
-        return
-      }
-
-      // Obtener información de productos
-      const productIds = [...new Set(salesData.map((sale) => sale.product_id))]
-      const { data: productsData, error: productsError } = await supabase
-        .from("products")
-        .select("id, name, points, image_url")
-        .in("id", productIds)
-
-      if (productsError) {
-        throw new Error(`Error al obtener productos: ${productsError.message}`)
-      }
-
-      // Obtener información de usuarios
-      const userIds = [...new Set(salesData.map((sale) => sale.representative_id))]
-      const { data: usersData, error: usersError } = await supabase
-        .from("profiles")
-        .select("id, full_name, team_id, teams:team_id (name)")
-        .in("id", userIds)
-
-      if (usersError) {
-        throw new Error(`Error al obtener usuarios: ${usersError.message}`)
-      }
-
-      // Combinar los datos
-      const ventasCompletas = salesData.map((sale) => {
-        const product = productsData?.find((p) => p.id === sale.product_id)
-        const userProfile = usersData?.find((u) => u.id === sale.representative_id)
-
-        return {
-          ...sale,
-          products: product || { id: sale.product_id, name: "Producto desconocido", points: 0 },
-          user_profile: userProfile || { id: sale.representative_id, full_name: "Usuario desconocido", team_id: "" },
-        }
-      })
-
-      setVentas(ventasCompletas)
+      setVentas(result.data as Sale[])
     } catch (error: any) {
       console.error("Error al cargar ventas:", error)
+      const raw = error?.message || String(error)
+      const friendly = formatVentasLoadError(raw)
+      setVentasError(friendly)
+      setVentas([])
       toast({
-        title: "Error",
-        description: error.message || "No se pudieron cargar las ventas",
+        title: "No se pudieron cargar las ventas",
+        description: friendly,
         variant: "destructive",
       })
     } finally {
@@ -368,6 +295,16 @@ export default function VentasPage() {
               <div className="animate-spin rounded-full h-10 w-10 border-2 border-corteva-600 border-t-transparent" />
               <p className="text-sm">Cargando ventas…</p>
             </div>
+          ) : ventasError ? (
+            <EmptyState
+              icon="package"
+              title="Error al cargar ventas"
+              description={ventasError}
+            >
+              <Button className="bg-corteva-600 hover:bg-corteva-700" onClick={() => void loadVentas()}>
+                Reintentar
+              </Button>
+            </EmptyState>
           ) : sortedVentas.length > 0 ? (
             <div className="rounded-md border">
               <Table>
