@@ -102,9 +102,15 @@ export async function middleware(req: NextRequest) {
       return NextResponse.next()
     }
 
-    // Si el capitán no tiene equipo y no está en crear-equipo ni dashboard, redirigir
-    if (role === "capitan" && !token.team_id && !pathname.includes("/crear-equipo") && !pathname.includes("/dashboard")) {
-      console.log("[MIDDLEWARE] Capitán sin equipo intentando acceder a:", pathname, "redirigiendo a crear-equipo")
+    // Capitán sin team_id en token: permitir rutas donde la BD puede tener equipo ya (sesión desfasada) o flujo inicial
+    const capitanAllowedWithoutTeamInToken =
+      pathname.includes("/crear-equipo") ||
+      pathname.includes("/dashboard") ||
+      pathname.includes("/registrar-venta") ||
+      pathname.includes("/registrar-cliente")
+
+    if (role === "capitan" && !token.team_id && !capitanAllowedWithoutTeamInToken) {
+      console.log("[MIDDLEWARE] Capitán sin team_id en token intentando acceder a:", pathname, "redirigiendo a crear-equipo")
       return NextResponse.redirect(new URL("/capitan/crear-equipo", req.url))
     }
   }

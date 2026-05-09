@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useToast } from "@/components/ui/use-toast"
 import { useAuth } from "@/hooks/useAuth"
-import { signIn } from "next-auth/react"
+import { useSession } from "next-auth/react"
 import { supabase } from "@/lib/supabase/client"
 
 export default function CrearEquipoPage() {
@@ -23,6 +23,7 @@ export default function CrearEquipoPage() {
   const router = useRouter()
   const { toast } = useToast()
   const { profile, isLoading: authLoading } = useAuth()
+  const { update: updateSession } = useSession()
 
   useEffect(() => {
     // Esperar a que la autenticación se cargue
@@ -162,10 +163,18 @@ export default function CrearEquipoPage() {
         description: "Tu equipo ha sido nombrado exitosamente",
       })
 
-      // 3. Redirigir al dashboard con parámetro especial para evitar loop de redirección
-      setTimeout(() => {
-        window.location.href = "/capitan/dashboard?team_created=true"
-      }, 800)
+      // Actualizar JWT/sesión para que el middleware permita /capitan/registrar-venta y el resto de rutas
+      try {
+        await updateSession({
+          team_id: teamData.id,
+          team_name: teamData.name,
+        })
+      } catch (e) {
+        console.error("No se pudo actualizar la sesión tras crear equipo:", e)
+      }
+
+      router.push("/capitan/dashboard?team_created=true")
+      router.refresh()
     } catch (err: any) {
       console.error("Error al crear equipo:", err)
       setError(err.message || "Error al crear equipo")

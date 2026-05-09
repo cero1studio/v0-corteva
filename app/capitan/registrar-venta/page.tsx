@@ -109,7 +109,8 @@ export default function RegistrarVentaPage() {
     }
 
     fetchData()
-  }, [toast])
+    // Carga única al montar; no usar [toast] para evitar re-fetches si la ref cambia
+  }, [])
 
   // Actualizar el producto seleccionado cuando cambia la selección
   useEffect(() => {

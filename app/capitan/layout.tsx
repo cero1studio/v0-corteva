@@ -57,7 +57,14 @@ export default function CapitanLayout({
     return <div>Cargando...</div>
   }
 
-  if (user?.role === "capitan" && user?.team_id === null && !pathname?.includes("/crear-equipo")) {
+  // Misma lógica que middleware: si el JWT aún no tiene team_id tras crear equipo, no bloquear estas rutas
+  const capitanAllowedIfTokenTeamPending =
+    pathname?.includes("/crear-equipo") ||
+    pathname?.includes("/dashboard") ||
+    pathname?.includes("/registrar-venta") ||
+    pathname?.includes("/registrar-cliente")
+
+  if (user?.role === "capitan" && user?.team_id === null && !capitanAllowedIfTokenTeamPending) {
     router.push("/capitan/crear-equipo")
     return null
   }

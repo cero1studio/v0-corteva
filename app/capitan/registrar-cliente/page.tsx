@@ -56,7 +56,7 @@ export default function RegistrarClientePage() {
     }
 
     fetchUser()
-  }, [toast])
+  }, [])
 
   const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value

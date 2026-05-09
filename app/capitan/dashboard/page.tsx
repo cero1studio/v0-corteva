@@ -18,6 +18,7 @@ import { getImageUrl } from "@/lib/utils/image"
 import { getTeamRankingByZone } from "@/app/actions/ranking"
 import { AuthGuard } from "@/components/auth-guard"
 import { chartsCache } from "@/lib/charts-cache"
+import { useSession } from "next-auth/react"
 
 // Constante para la conversión de puntos a goles
 const PUNTOS_POR_GOL = 100
@@ -28,6 +29,7 @@ function CapitanDashboardContent() {
   const [loading, setLoading] = useState(true)
   const router = useRouter()
   const { toast } = useToast()
+  const { update: updateSession } = useSession()
   const [userData, setUserData] = useState<any>(null)
   const [teamData, setTeamData] = useState<any>(null)
   const [salesData, setSalesData] = useState<any[]>([])
@@ -47,27 +49,38 @@ function CapitanDashboardContent() {
 
   useEffect(() => {
     let mounted = true
-    let timeoutId: NodeJS.Timeout
+    let timeoutId: ReturnType<typeof setTimeout> | undefined
 
-    // Timeout de seguridad para evitar loading infinito
-    timeoutId = setTimeout(() => {
+    const endInitLoading = () => {
+      if (timeoutId !== undefined) {
+        clearTimeout(timeoutId)
+        timeoutId = undefined
+      }
       if (mounted) {
-        console.log("CAPITAN DASHBOARD: Timeout reached, forcing loading to false")
         setLoading(false)
       }
-    }, 10000)
+    }
+
+    // Timeout de seguridad solo si la carga principal se queda colgada
+    timeoutId = setTimeout(() => {
+      if (mounted) {
+        console.warn("CAPITAN DASHBOARD: Timeout de seguridad (15s), ocultando loader")
+        endInitLoading()
+      }
+    }, 15000)
 
     const initializeDashboard = async () => {
       try {
         console.log("CAPITAN DASHBOARD: Initializing dashboard")
         await checkUserAndTeam()
-        await loadSystemConfig()
       } catch (error) {
         console.error("CAPITAN DASHBOARD: Error initializing:", error)
       } finally {
-        if (mounted) {
-          setLoading(false)
-        }
+        endInitLoading()
+      }
+      // Retos/config no deben bloquear el dashboard si Supabase tarda o falla
+      if (mounted) {
+        loadSystemConfig().catch((e) => console.error("CAPITAN DASHBOARD: loadSystemConfig:", e))
       }
     }
 
@@ -75,7 +88,7 @@ function CapitanDashboardContent() {
 
     return () => {
       mounted = false
-      clearTimeout(timeoutId)
+      if (timeoutId !== undefined) clearTimeout(timeoutId)
     }
   }, [])
 
@@ -83,35 +96,33 @@ function CapitanDashboardContent() {
     try {
       console.log("CAPITAN DASHBOARD: Loading system config")
 
-      // Obtener configuración del sistema
+      // maybeSingle: evita error 406 y reintentos raros si falta la fila
       const { data: configData, error: configError } = await supabase
         .from("system_config")
         .select("*")
         .eq("key", "puntos_para_gol")
-        .single()
+        .maybeSingle()
 
       if (!configError && configData) {
         setSystemConfig(configData)
         setPuntosParaGol(Number(configData.value) || PUNTOS_POR_GOL)
       }
 
-      // Cargar reto actual
       const { data: retoData, error: retoError } = await supabase
         .from("system_config")
         .select("*")
         .eq("key", "reto_actual")
-        .single()
+        .maybeSingle()
 
-      if (!retoError && retoData && retoData.value) {
+      if (!retoError && retoData?.value) {
         setRetoActual(retoData.value)
       }
 
-      // Cargar estado del reto
       const { data: activoData, error: activoError } = await supabase
         .from("system_config")
         .select("*")
         .eq("key", "reto_activo")
-        .single()
+        .maybeSingle()
 
       if (!activoError && activoData) {
         setRetoActivo(activoData.value === "true" || activoData.value === true)
@@ -161,6 +172,22 @@ function CapitanDashboardContent() {
 
       setUser(profileData)
       setUserData(profileData)
+
+      // Sincronizar JWT si la BD ya tiene equipo pero la sesión sigue sin team_id (p. ej. tras crear equipo)
+      if (
+        profileData.team_id &&
+        sessionData.user?.team_id !== profileData.team_id &&
+        profileData.role === "capitan"
+      ) {
+        try {
+          await updateSession({
+            team_id: profileData.team_id,
+            team_name: profileData.teams?.name ?? null,
+          })
+        } catch (e) {
+          console.error("CAPITAN DASHBOARD: No se pudo sincronizar team_id en la sesión:", e)
+        }
+      }
 
       // Guardar datos de zona del perfil del usuario
       if (profileData.zones) {
@@ -213,8 +240,8 @@ function CapitanDashboardContent() {
           }
         }
 
-        // Cargar datos adicionales del equipo
-        await loadTeamData(authUser.id, profileData.team_id)
+        const zoneIdForRanking = teamData?.zone_id ?? profileData.zone_id ?? undefined
+        await loadTeamData(authUser.id, profileData.team_id, zoneIdForRanking)
       }
     } catch (error: any) {
       console.error("CAPITAN DASHBOARD: Error checking user and team:", error)
@@ -228,7 +255,7 @@ function CapitanDashboardContent() {
     }
   }
 
-  async function loadTeamData(userId: string, teamId: string) {
+  async function loadTeamData(userId: string, teamId: string, zoneIdForRanking?: string) {
     try {
       console.log("CAPITAN DASHBOARD: Loading team data for:", teamId)
 
@@ -327,10 +354,10 @@ function CapitanDashboardContent() {
       const allFreeKicks = freeKicks || []
       console.log("CAPITAN DASHBOARD: Free kicks:", allFreeKicks.length)
 
-      // Obtener ranking de la zona - CON CACHE
+      const rankingZoneId = zoneIdForRanking
       const rankingResult = await chartsCache.wrapRankingQuery(
-        () => getTeamRankingByZone(teamData?.zone_id || userData?.zone_id),
-        teamData?.zone_id || userData?.zone_id,
+        () => getTeamRankingByZone(rankingZoneId),
+        rankingZoneId,
       )
 
       // Actualizar estados
