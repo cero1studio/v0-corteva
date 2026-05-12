@@ -27,10 +27,10 @@ BEGIN
   END IF;
 END $$;
 
--- Posición del equipo (usa teams.total_points)
+-- Posición del equipo (usa teams.total_points). "position" entre comillas: es palabra reservada en PostgreSQL.
 CREATE OR REPLACE FUNCTION get_team_position(team_id_param UUID)
 RETURNS TABLE (
-  position INTEGER,
+  "position" INTEGER,
   team_id UUID,
   team_name TEXT,
   total_points double precision
@@ -52,7 +52,7 @@ BEGIN
     ORDER BY total_points DESC
   ) LOOP
     IF team_rank.id = team_id_param THEN
-      position := team_rank.pos;
+      "position" := team_rank.pos;
       team_id := team_rank.id;
       team_name := team_rank.name;
       total_points := team_rank.total_points;

@@ -1,10 +1,10 @@
 -- Crear función para obtener la posición de un equipo en el ranking
 CREATE OR REPLACE FUNCTION get_team_position(team_id_param UUID)
 RETURNS TABLE (
-  position INTEGER,
+  "position" INTEGER,
   team_id UUID,
   team_name TEXT,
-  total_points INTEGER
+  total_points double precision
 ) AS $$
 DECLARE
   team_zone_id UUID;
@@ -25,7 +25,7 @@ BEGIN
     ORDER BY total_points DESC
   ) LOOP
     IF team_rank.id = team_id_param THEN
-      position := team_rank.pos;
+      "position" := team_rank.pos;
       team_id := team_rank.id;
       team_name := team_rank.name;
       total_points := team_rank.total_points;
