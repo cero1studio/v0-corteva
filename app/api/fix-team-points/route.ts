@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { contestGoalsFromPoints, parsePuntosParaGol, toContestPoints } from "@/lib/goals"
 import { createServerClient } from "@/lib/supabase/server"
 
 export async function GET() {
@@ -13,7 +14,7 @@ export async function GET() {
       .maybeSingle()
 
     // Por defecto 100 puntos = 1 gol si no hay configuración
-    const puntosParaGol = puntosConfig?.value ? Number(puntosConfig.value) : 100
+    const puntosParaGol = parsePuntosParaGol(puntosConfig?.value)
 
     // Obtener todos los equipos
     const { data: teams, error: teamsError } = await supabase.from("teams").select("id, name")
@@ -49,12 +50,12 @@ export async function GET() {
         }
 
         // Sumar puntos de este usuario
-        const userPoints = userSales ? userSales.reduce((sum, sale) => sum + (sale.points || 0), 0) : 0
+        const userPoints = userSales ? userSales.reduce((sum, sale) => sum + toContestPoints(sale.points), 0) : 0
         totalTeamPoints += userPoints
       }
 
       // Calcular goles
-      const goals = Math.floor(totalTeamPoints / puntosParaGol)
+      const goals = contestGoalsFromPoints(totalTeamPoints, puntosParaGol)
 
       // Actualizar el equipo
       const { error: updateError } = await supabase

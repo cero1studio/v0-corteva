@@ -8,9 +8,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Trophy, Medal, Award, Download, Target } from "lucide-react"
+import { contestGoalsFromPoints, parsePuntosParaGol, toContestPoints } from "@/lib/goals"
 import { toast } from "@/hooks/use-toast"
 import { getTeamRankingByZone, getFreeKicksRankingByZone } from "@/app/actions/ranking"
 import { getAllZones } from "@/app/actions/zones"
+import { getSystemConfig } from "@/app/actions/system-config"
 import { AdminRankingChart } from "@/components/admin-ranking-chart"
 import { AdminZonesChart } from "@/components/admin-zones-chart"
 import * as XLSX from "xlsx"
@@ -38,20 +40,24 @@ export default function RankingAdminPage() {
   const [selectedZone, setSelectedZone] = useState<string>("all")
 
   const fetchRankingData = useCallback(async () => {
-    const [teamsResult, zonesData, freeKicksResult] = await Promise.all([
+    const [teamsResult, zonesData, freeKicksResult, puntosRes] = await Promise.all([
       getTeamRankingByZone(),
       getAllZones(),
       getFreeKicksRankingByZone(),
+      getSystemConfig("puntos_para_gol"),
     ])
 
     if (!teamsResult.success) {
       throw new Error("Error al cargar el ranking")
     }
 
+    const puntosParaGol = parsePuntosParaGol(puntosRes.success ? puntosRes.data : undefined)
+
     return {
       teams: teamsResult.data || [],
       zones: zonesData && Array.isArray(zonesData) ? zonesData : [],
       freeKicksRanking: freeKicksResult.success ? freeKicksResult.data || [] : [],
+      puntosParaGol,
     }
   }, [])
 
@@ -59,6 +65,7 @@ export default function RankingAdminPage() {
   const teams = data?.teams || []
   const zones = data?.zones || []
   const freeKicksRanking = data?.freeKicksRanking || []
+  const puntosParaGol = data?.puntosParaGol ?? parsePuntosParaGol(undefined)
 
   const filteredTeams = teams.filter((team) => {
     if (selectedZone === "all") return true
@@ -96,7 +103,7 @@ export default function RankingAdminPage() {
         Capitán: team.captain_name,
         Zona: team.zone_name,
         Puntos: Number(team.total_points),
-        Goles: Number(team.goals ?? Math.floor(team.total_points / 100)),
+        Goles: Number(team.goals ?? contestGoalsFromPoints(toContestPoints(team.total_points), puntosParaGol)),
       }))
 
       const wb = XLSX.utils.book_new()
@@ -261,7 +268,7 @@ export default function RankingAdminPage() {
                         </TableCell>
                         <TableCell className="text-right font-bold text-blue-600">{team.total_points}</TableCell>
                         <TableCell className="text-right font-bold text-green-600">
-                          {team.goals ?? Math.floor(team.total_points / 100)}
+                          {team.goals ?? contestGoalsFromPoints(toContestPoints(team.total_points), puntosParaGol)}
                         </TableCell>
                       </TableRow>
                     ))}

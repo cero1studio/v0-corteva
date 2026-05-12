@@ -1,5 +1,6 @@
 "use client"
 
+import { contestGoalsFromPoints, parsePuntosParaGol, toContestPoints } from "@/lib/goals"
 import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -20,6 +21,7 @@ function DirectorTecnicoReportesContent() {
   const [teamsData, setTeamsData] = useState<any[]>([])
   const [freeKickData, setFreeKickData] = useState<any[]>([])
   const [zoneData, setZoneData] = useState<any>(null)
+  const [puntosParaGol, setPuntosParaGol] = useState(100)
   const { toast } = useToast()
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -28,6 +30,15 @@ function DirectorTecnicoReportesContent() {
   useEffect(() => {
     loadData()
   }, [selectedTeamId])
+
+  useEffect(() => {
+    void supabase
+      .from("system_config")
+      .select("value")
+      .eq("key", "puntos_para_gol")
+      .maybeSingle()
+      .then(({ data }) => setPuntosParaGol(parsePuntosParaGol(data?.value)))
+  }, [])
 
   const loadData = async () => {
     try {
@@ -287,7 +298,7 @@ function DirectorTecnicoReportesContent() {
 
   // Calcular estadísticas
   const totalSales = salesData.length
-  const totalSalesPoints = salesData.reduce((sum, sale) => sum + (sale.points || 0), 0)
+  const totalSalesPoints = salesData.reduce((sum, sale) => sum + toContestPoints(sale.points), 0)
   const totalClients = clientsData.length
   const totalClientsPoints = totalClients * 200
   const totalFreeKicks = freeKickData.length
@@ -382,7 +393,8 @@ function DirectorTecnicoReportesContent() {
               {(totalSalesPoints + totalClientsPoints).toLocaleString()}
             </div>
             <p className="text-xs text-gray-500">
-              {Math.floor((totalSalesPoints + totalClientsPoints) / 100)} goles (aprox. si 100 pts/gol)
+              {contestGoalsFromPoints(totalSalesPoints + totalClientsPoints, puntosParaGol)} goles (umbral{" "}
+              {puntosParaGol} pts/gol)
             </p>
           </CardContent>
         </Card>

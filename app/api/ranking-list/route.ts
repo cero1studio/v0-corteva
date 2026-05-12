@@ -1,5 +1,6 @@
 import { getFreeKicksRankingByZone, getTeamRankingByZone } from "@/app/actions/ranking"
 import { getSystemConfig } from "@/app/actions/system-config"
+import { parsePuntosParaGol } from "@/lib/goals"
 import { type NextRequest, NextResponse } from "next/server"
 
 /**
@@ -16,10 +17,7 @@ export async function GET(req: NextRequest) {
       getSystemConfig("puntos_para_gol"),
     ])
 
-    const puntosParaGol =
-      puntosRes.success && puntosRes.data != null && puntosRes.data !== ""
-        ? Number(puntosRes.data)
-        : 100
+    const puntosParaGol = parsePuntosParaGol(puntosRes.success ? puntosRes.data : undefined)
 
     if (!official.success) {
       return NextResponse.json(
@@ -44,7 +42,7 @@ export async function GET(req: NextRequest) {
     const message = error instanceof Error ? error.message : "Unexpected error"
     console.error("Error en /api/ranking-list:", error)
     return NextResponse.json(
-      { success: false, error: message, data: [], freeKicks: [], puntosParaGol: 100 },
+      { success: false, error: message, data: [], freeKicks: [], puntosParaGol: parsePuntosParaGol(undefined) },
       { status: 500 },
     )
   }

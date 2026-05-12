@@ -16,6 +16,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import { CalendarIcon, Save, Trophy, Zap, Upload } from "lucide-react"
+import { parsePuntosParaGol } from "@/lib/goals"
 import { getSystemConfig, updateSystemConfig } from "@/app/actions/system-config"
 import { useToast } from "@/components/ui/use-toast"
 import { ContestResetSection } from "@/components/admin/contest-reset-section"
@@ -80,8 +81,8 @@ export default function ConfiguracionPage() {
     try {
       // Cargar configuración de puntos para gol
       const puntosConfig = await getSystemConfig("puntos_para_gol")
-      if (puntosConfig.success && puntosConfig.data) {
-        setPuntosParaGol(Number(puntosConfig.data))
+      if (puntosConfig.success && puntosConfig.data != null && puntosConfig.data !== "") {
+        setPuntosParaGol(parsePuntosParaGol(puntosConfig.data))
       }
 
       // Cargar configuración de desafíos
@@ -154,7 +155,7 @@ export default function ConfiguracionPage() {
 
     try {
       // Guardar configuración de puntos para gol
-      await updateSystemConfig("puntos_para_gol", puntosParaGol)
+      await updateSystemConfig("puntos_para_gol", parsePuntosParaGol(puntosParaGol))
 
       // Guardar configuración de desafíos
       const desafiosConfig = {
@@ -390,11 +391,17 @@ export default function ConfiguracionPage() {
                   <Input
                     id="puntosParaGol"
                     type="number"
+                    inputMode="decimal"
+                    step="any"
+                    min="0.0001"
                     value={puntosParaGol}
-                    onChange={(e) => setPuntosParaGol(Number(e.target.value))}
+                    onChange={(e) => {
+                      const n = e.target.valueAsNumber
+                      setPuntosParaGol(Number.isFinite(n) ? n : 100)
+                    }}
                   />
                   <p className="text-xs text-muted-foreground">
-                    Número de puntos que se deben acumular para anotar un gol
+                    Puntos a acumular por gol (pueden ser decimales, p. ej. 100 o 12,5)
                   </p>
                 </div>
 

@@ -1,5 +1,6 @@
 "use client"
 
+import { contestGoalsFromPoints, parsePuntosParaGol, toContestPoints } from "@/lib/goals"
 import { useEffect, useState } from "react"
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
 import { supabase } from "@/lib/supabase/client"
@@ -38,7 +39,7 @@ export function ReportSalesChart() {
       if (puntosConfigResult.error) throw puntosConfigResult.error
 
       const sales = salesResult.data || []
-      const puntosParaGol = puntosConfigResult.data?.value ? Number(puntosConfigResult.data.value) : 100
+      const puntosParaGol = parsePuntosParaGol(puntosConfigResult.data?.value)
 
       if (sales.length === 0) {
         setData([])
@@ -54,7 +55,7 @@ export function ReportSalesChart() {
 
         const current = dailyStatsMap.get(dateKey) || { salesCount: 0, totalPoints: 0 }
         current.salesCount += 1 // Count each sale
-        current.totalPoints += sale.points || 0
+        current.totalPoints += toContestPoints(sale.points)
         dailyStatsMap.set(dateKey, current)
       })
 
@@ -63,7 +64,7 @@ export function ReportSalesChart() {
         .map(([dateKey, stats]) => ({
           name: dateKey, // Use full date for X-axis, can be formatted later
           ventas: stats.salesCount,
-          goles: Math.floor(stats.totalPoints / puntosParaGol),
+          goles: contestGoalsFromPoints(stats.totalPoints, puntosParaGol),
         }))
         .sort((a, b) => new Date(a.name).getTime() - new Date(b.name).getTime())
 

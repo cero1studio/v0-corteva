@@ -1,5 +1,6 @@
 "use client"
 
+import { contestGoalsFromPoints, parsePuntosParaGol, toContestPoints } from "@/lib/goals"
 import { useEffect, useState } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -45,8 +46,8 @@ export default function RankingPublico() {
         }
         setOfficial(json.data || [])
         setFreeKicks(json.freeKicks || [])
-        if (typeof json.puntosParaGol === "number" && !Number.isNaN(json.puntosParaGol)) {
-          setPuntosParaGol(json.puntosParaGol)
+        if (json.puntosParaGol != null && json.puntosParaGol !== "") {
+          setPuntosParaGol(parsePuntosParaGol(json.puntosParaGol))
         }
       } catch (e: unknown) {
         setError(e instanceof Error ? e.message : "Error")
@@ -132,7 +133,7 @@ export default function RankingPublico() {
                           <td className="px-4 py-2 text-muted-foreground">{team.zone_name ?? "—"}</td>
                           <td className="px-4 py-2 text-right">{team.total_points}</td>
                           <td className="px-4 py-2 text-right font-semibold">
-                            {team.goals ?? Math.floor(team.total_points / puntosParaGol)}
+                            {team.goals ?? contestGoalsFromPoints(toContestPoints(team.total_points), puntosParaGol)}
                           </td>
                         </tr>
                       ))}

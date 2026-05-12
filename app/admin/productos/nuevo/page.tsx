@@ -159,7 +159,9 @@ export default function NuevoProductoPage() {
                 id="points"
                 name="points"
                 type="number"
-                placeholder="Puntos que otorga el producto"
+                inputMode="decimal"
+                step="any"
+                placeholder="Puntos que otorga el producto (pueden ser decimales)"
                 value={formData.points}
                 onChange={handleChange}
                 min="0"

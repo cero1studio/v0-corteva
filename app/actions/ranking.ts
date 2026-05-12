@@ -1,5 +1,11 @@
 "use server"
 
+import {
+  contestGoalsFromPoints,
+  contestGoalsToClosePointsGap,
+  parsePuntosParaGol,
+  toContestPoints,
+} from "@/lib/goals"
 import { rankingCache } from "@/lib/ranking-cache"
 import { createServerClient } from "@/lib/supabase/server"
 
@@ -82,7 +88,7 @@ export async function getTeamRankingByZone(zoneId?: string) {
     const supabase = createServerClient()
 
     const { data: puntosRow } = await supabase.from("system_config").select("value").eq("key", "puntos_para_gol").maybeSingle()
-    const puntosParaGol = puntosRow?.value ? Number(puntosRow.value) : 100
+    const puntosParaGol = parsePuntosParaGol(puntosRow?.value)
 
     // Obtener equipos con sus zonas y distribuidores (sin capitanes por ahora)
     let teamsQuery = supabase.from("teams").select(`
@@ -198,14 +204,17 @@ export async function getTeamRankingByZone(zoneId?: string) {
     const salesByRepMap = new Map<string, number>()
     salesRepData.forEach((sale) => {
       if (sale.representative_id) {
-        salesByRepMap.set(sale.representative_id, (salesByRepMap.get(sale.representative_id) || 0) + (sale.points || 0))
+        salesByRepMap.set(
+          sale.representative_id,
+          (salesByRepMap.get(sale.representative_id) || 0) + toContestPoints(sale.points),
+        )
       }
     })
 
     const salesByTeamMap = new Map<string, number>()
     salesTeamData.forEach((sale) => {
       if (sale.team_id) {
-        salesByTeamMap.set(sale.team_id, (salesByTeamMap.get(sale.team_id) || 0) + (sale.points || 0))
+        salesByTeamMap.set(sale.team_id, (salesByTeamMap.get(sale.team_id) || 0) + toContestPoints(sale.points))
       }
     })
 
@@ -234,7 +243,7 @@ export async function getTeamRankingByZone(zoneId?: string) {
       if (freeKick.team_id) {
         freeKicksByTeamMap.set(
           freeKick.team_id,
-          (freeKicksByTeamMap.get(freeKick.team_id) || 0) + (freeKick.points || 0),
+          (freeKicksByTeamMap.get(freeKick.team_id) || 0) + toContestPoints(freeKick.points),
         )
       }
     })
@@ -300,7 +309,7 @@ export async function getTeamRankingByZone(zoneId?: string) {
       // 4. Goles: solo ventas + clientes (tiros libres aparte)
       const pointsForGoals = totalSalesPoints + totalClientsPoints
       const finalTotalPoints = pointsForGoals
-      const goals = Math.floor(pointsForGoals / puntosParaGol)
+      const goals = contestGoalsFromPoints(pointsForGoals, puntosParaGol)
 
       console.log(
         `DEBUG: Team ${team.name} - Points for goals: ${pointsForGoals}, Goals: ${goals}, Free kicks (apart): ${totalFreeKickPoints}`,
@@ -374,7 +383,7 @@ export async function getFreeKicksRankingByZone(
     const freeKicksByTeam = new Map<string, number>()
     freeKicksData?.forEach((fk) => {
       if (fk.team_id) {
-        freeKicksByTeam.set(fk.team_id, (freeKicksByTeam.get(fk.team_id) || 0) + (fk.points || 0))
+        freeKicksByTeam.set(fk.team_id, (freeKicksByTeam.get(fk.team_id) || 0) + toContestPoints(fk.points))
       }
     })
 
@@ -458,10 +467,10 @@ export async function getSalesRankingByZone(zoneId?: string) {
       let totalPoints = 0
 
       totalSales += salesByRep.length
-      totalPoints += salesByRep.reduce((sum, sale) => sum + (sale.points || 0), 0)
+      totalPoints += salesByRep.reduce((sum, sale) => sum + toContestPoints(sale.points), 0)
 
       totalSales += salesByTeam.length
-      totalPoints += salesByTeam.reduce((sum, sale) => sum + (sale.points || 0), 0)
+      totalPoints += salesByTeam.reduce((sum, sale) => sum + toContestPoints(sale.points), 0)
 
       ranking.push({
         position: 0, // Se asignará después del ordenamiento
@@ -635,7 +644,7 @@ export async function getUserTeamInfo(
       const { data: salesByRep } = await supabase.from("sales").select("points").in("representative_id", memberIds)
 
       if (salesByRep) {
-        totalPointsFromSales += salesByRep.reduce((sum, sale) => sum + (sale.points || 0), 0)
+        totalPointsFromSales += salesByRep.reduce((sum, sale) => sum + toContestPoints(sale.points), 0)
       }
     }
 
@@ -643,7 +652,7 @@ export async function getUserTeamInfo(
     const { data: salesByTeam } = await supabase.from("sales").select("points").eq("team_id", team.id)
 
     if (salesByTeam) {
-      totalPointsFromSales += salesByTeam.reduce((sum, sale) => sum + (sale.points || 0), 0)
+      totalPointsFromSales += salesByTeam.reduce((sum, sale) => sum + toContestPoints(sale.points), 0)
     }
 
     // 2. CALCULAR PUNTOS DE CLIENTES
@@ -659,7 +668,7 @@ export async function getUserTeamInfo(
       if (clients) {
         for (const client of clients) {
           if (!countedClientIds.has(client.id)) {
-            totalPointsFromClients += client.points || 200
+            totalPointsFromClients += toContestPoints(client.points) || 200
             countedClientIds.add(client.id)
           }
         }
@@ -672,7 +681,7 @@ export async function getUserTeamInfo(
     if (teamClients) {
       for (const client of teamClients) {
         if (!countedClientIds.has(client.id)) {
-          totalPointsFromClients += client.points || 200
+          totalPointsFromClients += toContestPoints(client.points) || 200
           countedClientIds.add(client.id)
         }
       }
@@ -683,14 +692,14 @@ export async function getUserTeamInfo(
 
     let totalPointsFromFreeKicks = 0
     if (freeKicks) {
-      totalPointsFromFreeKicks = freeKicks.reduce((sum, freeKick) => sum + (freeKick.points || 0), 0)
+      totalPointsFromFreeKicks = freeKicks.reduce((sum, freeKick) => sum + toContestPoints(freeKick.points), 0)
     }
 
     const pointsForGoals = totalPointsFromSales + totalPointsFromClients
 
     const { data: puntosRow } = await supabase.from("system_config").select("value").eq("key", "puntos_para_gol").maybeSingle()
-    const puntosParaGol = puntosRow?.value ? Number(puntosRow.value) : 100
-    const goals = Math.floor(pointsForGoals / puntosParaGol)
+    const puntosParaGol = parsePuntosParaGol(puntosRow?.value)
+    const goals = contestGoalsFromPoints(pointsForGoals, puntosParaGol)
 
     const [rankingResult, fkRankingResult] = await Promise.all([
       getTeamRankingByZone(team.zone_id),
@@ -707,7 +716,7 @@ export async function getUserTeamInfo(
       position = teamPosition?.position || 0
       const myPointsForRanking = teamPosition?.total_points ?? pointsForGoals
       const nextPoints = nextTeam?.total_points ?? 0
-      goalsToNext = nextTeam ? Math.max(0, Math.ceil((nextPoints - myPointsForRanking) / puntosParaGol)) : 0
+      goalsToNext = nextTeam ? contestGoalsToClosePointsGap(nextPoints - myPointsForRanking, puntosParaGol) : 0
     }
 
     let freeKicksPosition = 0

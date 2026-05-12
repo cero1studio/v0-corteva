@@ -1,5 +1,6 @@
 "use client"
 
+import { contestGoalsFromPoints, parsePuntosParaGol, toContestPoints } from "@/lib/goals"
 import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -43,7 +44,7 @@ function DirectorTecnicoEquiposContent() {
         .single()
 
       if (!configError && configData) {
-        setPuntosParaGol(Number(configData.value) || PUNTOS_POR_GOL)
+        setPuntosParaGol(parsePuntosParaGol(configData.value))
       }
     } catch (error) {
       console.error("Error al cargar configuración:", error)
@@ -140,10 +141,10 @@ function DirectorTecnicoEquiposContent() {
             const teamSales = salesData?.filter((sale) => teamMemberIds.includes(sale.representative_id)) || []
             const teamClients = clientsData?.filter((client) => teamMemberIds.includes(client.representative_id)) || []
 
-            const salesPoints = teamSales.reduce((sum, sale) => sum + (sale.points || 0), 0)
+            const salesPoints = teamSales.reduce((sum, sale) => sum + toContestPoints(sale.points), 0)
             const clientsPoints = teamClients.length * 200
             const totalPoints = salesPoints + clientsPoints
-            const totalGoals = Math.floor(totalPoints / puntosParaGol)
+            const totalGoals = contestGoalsFromPoints(totalPoints, puntosParaGol)
 
             return {
               ...team,

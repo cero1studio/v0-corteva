@@ -1,5 +1,6 @@
 "use client"
 
+import { contestGoalsFromPoints, parsePuntosParaGol, toContestPoints } from "@/lib/goals"
 import { useEffect, useState } from "react"
 import { Line, LineChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
 import { supabase } from "@/lib/supabase/client"
@@ -63,7 +64,7 @@ export function TeamDetailChart({ teamId }: TeamDetailChartProps) {
       const sales = salesResult.data || []
       const clients = clientsResult.data || []
       const freeKicks = freeKicksResult.data || []
-      const puntosParaGol = puntosConfigResult.data?.value ? Number(puntosConfigResult.data.value) : 100
+      const puntosParaGol = parsePuntosParaGol(puntosConfigResult.data?.value)
 
       // Also fetch sales and clients from team members
       const memberIds = teamMembers.map((m) => m.id)
@@ -92,12 +93,12 @@ export function TeamDetailChart({ teamId }: TeamDetailChartProps) {
 
         if (type === "sales") {
           current.salesCount += 1
-          current.totalPoints += entry.points || 0
+          current.totalPoints += toContestPoints(entry.points)
         } else if (type === "clients") {
           current.clientsCount += 1
-          current.totalPoints += entry.points || 200 // Assuming 200 points per client
+          current.totalPoints += toContestPoints(entry.points ?? 200)
         } else if (type === "freeKicks") {
-          current.totalPoints += entry.points || 0
+          current.totalPoints += toContestPoints(entry.points)
         }
         monthlyStatsMap.set(monthYearKey, current)
       }
@@ -111,7 +112,7 @@ export function TeamDetailChart({ teamId }: TeamDetailChartProps) {
           name: new Date(monthYearKey).toLocaleString("es-ES", { month: "short", year: "2-digit" }), // e.g., "ene. 23"
           sales: stats.salesCount,
           clients: stats.clientsCount,
-          goals: Math.floor(stats.totalPoints / puntosParaGol),
+          goals: contestGoalsFromPoints(stats.totalPoints, puntosParaGol),
         }))
         .sort((a, b) => {
           const [monthA, yearA] = a.name.split(". ")

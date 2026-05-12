@@ -3,6 +3,18 @@
 import { createServerClient, adminSupabase } from "@/lib/supabase/server"
 import { revalidatePath } from "next/cache"
 
+/** Acepta decimales y coma como separador (p. ej. 12,5). */
+function parseProductPoints(raw: unknown): number {
+  const s = String(raw ?? "")
+    .trim()
+    .replace(",", ".")
+  const n = Number.parseFloat(s)
+  if (!Number.isFinite(n) || n < 0) {
+    throw new Error("Los puntos deben ser un número mayor o igual a 0")
+  }
+  return n
+}
+
 export async function getProducts() {
   const supabase = createServerClient()
 
@@ -56,12 +68,12 @@ export async function createProduct(formData: FormData) {
   try {
     const name = formData.get("name") as string
     const description = formData.get("description") as string
-    const points = Number.parseInt(formData.get("points") as string)
+    const points = parseProductPoints(formData.get("points"))
     const active = formData.get("active") === "true"
     const imageFile = formData.get("image") as File
 
-    if (!name || isNaN(points)) {
-      throw new Error("El nombre y los puntos son requeridos")
+    if (!name?.trim()) {
+      throw new Error("El nombre es requerido")
     }
 
     let imageUrl = null
@@ -119,13 +131,13 @@ export async function updateProduct(id: string, formData: FormData) {
   try {
     const name = formData.get("name") as string
     const description = formData.get("description") as string
-    const points = Number.parseInt(formData.get("points") as string)
+    const points = parseProductPoints(formData.get("points"))
     const active = formData.get("active") === "true"
     const imageFile = formData.get("image") as File
     const currentImageUrl = formData.get("currentImageUrl") as string
 
-    if (!name || isNaN(points)) {
-      throw new Error("El nombre y los puntos son requeridos")
+    if (!name?.trim()) {
+      throw new Error("El nombre es requerido")
     }
 
     let imageUrl = currentImageUrl

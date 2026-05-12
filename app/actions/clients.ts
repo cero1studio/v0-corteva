@@ -1,5 +1,6 @@
 "use server"
 
+import { contestGoalsFromPoints, parsePuntosParaGol } from "@/lib/goals"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/app/api/auth/[...nextauth]/route"
 import { createServerSupabaseClient, adminSupabase } from "@/lib/supabase/server"
@@ -171,7 +172,7 @@ export async function registerCapitanCompetitorClient(
       .maybeSingle()
 
     const puntosConfig = puntosRow as { value?: string } | null
-    const puntosParaGol = puntosConfig?.value ? Number(puntosConfig.value) : 100
+    const puntosParaGol = parsePuntosParaGol(puntosConfig?.value)
     const golesCliente = 2
     const puntosCliente = golesCliente * puntosParaGol
 
@@ -188,7 +189,7 @@ export async function registerCapitanCompetitorClient(
     const teamData = teamRow as { total_points?: number | null; goals?: number | null } | null
 
     const newTotalPoints = (teamData?.total_points || 0) + puntosCliente
-    const newTotalGoals = Math.floor(newTotalPoints / puntosParaGol)
+    const newTotalGoals = contestGoalsFromPoints(newTotalPoints, puntosParaGol)
 
     const { error: updateError } = await adminSupabase
       .from("teams")
@@ -274,7 +275,7 @@ export async function registerCompetitorClient(formData: FormData) {
       .maybeSingle()
 
     // Por defecto 100 puntos = 1 gol si no hay configuración
-    const puntosParaGol = puntosConfig?.value ? Number(puntosConfig.value) : 100
+    const puntosParaGol = parsePuntosParaGol(puntosConfig?.value)
 
     // Actualizar los puntos y goles del equipo
     const puntosClientes = golesGenerados * puntosParaGol
@@ -290,7 +291,7 @@ export async function registerCompetitorClient(formData: FormData) {
 
     // Sumar los puntos de ventas con los puntos por clientes
     const totalPoints = (teamData?.total_points || 0) + puntosClientes
-    const totalGoals = Math.floor(totalPoints / puntosParaGol)
+    const totalGoals = contestGoalsFromPoints(totalPoints, puntosParaGol)
 
     // Actualizar el equipo con los nuevos puntos y goles
     const { error: updateError } = await supabase

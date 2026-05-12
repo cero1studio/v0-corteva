@@ -1,5 +1,6 @@
 "use server"
 
+import { contestGoalsFromPoints, parsePuntosParaGol, toContestPoints } from "@/lib/goals"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/app/api/auth/[...nextauth]/route"
 import { adminSupabase } from "@/lib/supabase/server"
@@ -242,7 +243,7 @@ export async function getCapitanRegistroVentaData(): Promise<
     }
 
     const cfgRow = configRes.data as { value?: string } | null
-    const puntosParaGol = cfgRow?.value ? Number(cfgRow.value) : 100
+    const puntosParaGol = parsePuntosParaGol(cfgRow?.value)
 
     return {
       success: true,
@@ -301,7 +302,7 @@ export async function registerCapitanVenta(input: {
     }
 
     const prod = product as { points: number; name: string }
-    const calculatedTotalPoints = prod.points * quantity
+    const calculatedTotalPoints = toContestPoints(prod.points) * quantity
     if (!calculatedTotalPoints || calculatedTotalPoints <= 0) {
       return { success: false, error: "Los puntos calculados no son válidos" }
     }
@@ -330,10 +331,9 @@ export async function registerCapitanVenta(input: {
     if (!teamError) {
       const teamData = teamRow as { total_points?: number | null; goals?: number | null } | null
       const { data: configData } = await adminSupabase.from("system_config").select("value").eq("key", "puntos_para_gol").maybeSingle()
-      const puntosParaGol = configData?.value ? Number(configData.value) : 100
-
+      const puntosParaGol = parsePuntosParaGol((configData as { value?: unknown } | null)?.value)
       const newTotalPoints = (teamData?.total_points || 0) + calculatedTotalPoints
-      const newTotalGoals = Math.floor(newTotalPoints / puntosParaGol)
+      const newTotalGoals = contestGoalsFromPoints(newTotalPoints, puntosParaGol)
 
       await adminSupabase.from("teams").update({ total_points: newTotalPoints, goals: newTotalGoals } as never).eq("id", teamId)
     }

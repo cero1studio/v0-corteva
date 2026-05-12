@@ -1,5 +1,6 @@
 "use client"
 
+import { contestGoalsFromPoints, parsePuntosParaGol, toContestPoints } from "@/lib/goals"
 import { useEffect, useState } from "react"
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis, Cell } from "recharts"
 import { supabase } from "@/lib/supabase/client"
@@ -60,7 +61,7 @@ export function AdminStatsChart() {
         .eq("key", "puntos_para_gol")
         .maybeSingle()
 
-      const puntosParaGol = configData?.value ? Number(configData.value) : 100
+      const puntosParaGol = parsePuntosParaGol(configData?.value)
 
       const colors = [
         "#3b82f6", // Azul
@@ -72,8 +73,8 @@ export function AdminStatsChart() {
 
       // Formatear datos para el gráfico usando datos del ranking
       const chartData: TeamData[] = rankingResult.data.map((team, index) => {
-        const puntos = team.total_points
-        const goles = Math.floor(puntos / puntosParaGol)
+        const puntos = toContestPoints(team.total_points)
+        const goles = contestGoalsFromPoints(puntos, puntosParaGol)
 
         return {
           name: team.team_name,

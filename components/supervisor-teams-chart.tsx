@@ -1,5 +1,6 @@
 "use client"
 
+import { contestGoalsFromPoints, parsePuntosParaGol, toContestPoints } from "@/lib/goals"
 import { useEffect, useState } from "react"
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
 import { supabase } from "@/lib/supabase/client"
@@ -54,7 +55,7 @@ export function SupervisorTeamsChart() {
       const sales = salesResult.data || []
       const clients = clientsResult.data || []
       const freeKicks = freeKicksResult.data || []
-      const puntosParaGol = puntosConfigResult.data?.value ? Number(puntosConfigResult.data.value) : 100
+      const puntosParaGol = parsePuntosParaGol(puntosConfigResult.data?.value)
 
       if (teams.length === 0) {
         setData([])
@@ -80,7 +81,7 @@ export function SupervisorTeamsChart() {
         }
         if (teamId && teamStatsMap.has(teamId)) {
           const stats = teamStatsMap.get(teamId)!
-          stats.totalPoints += s.points || 0
+          stats.totalPoints += toContestPoints(s.points)
           stats.salesCount += 1
           teamStatsMap.set(teamId, stats)
         }
@@ -94,7 +95,7 @@ export function SupervisorTeamsChart() {
         }
         if (teamId && teamStatsMap.has(teamId)) {
           const stats = teamStatsMap.get(teamId)!
-          stats.totalPoints += c.points || 200 // Assuming 200 points per client if not specified
+          stats.totalPoints += toContestPoints(c.points ?? 200)
           stats.clientsCount += 1
           teamStatsMap.set(teamId, stats)
         }
@@ -104,7 +105,7 @@ export function SupervisorTeamsChart() {
       freeKicks.forEach((fk) => {
         if (fk.team_id && teamStatsMap.has(fk.team_id)) {
           const stats = teamStatsMap.get(fk.team_id)!
-          stats.freeKicksPoints += fk.points || 0
+          stats.freeKicksPoints += toContestPoints(fk.points)
           teamStatsMap.set(fk.team_id, stats)
         }
       })
@@ -114,7 +115,7 @@ export function SupervisorTeamsChart() {
           const stats = teamStatsMap.get(team.id)!
           return {
             name: team.name,
-            goals: Math.floor(stats.totalPoints / puntosParaGol),
+            goals: contestGoalsFromPoints(stats.totalPoints, puntosParaGol),
             sales: stats.salesCount,
             clients: stats.clientsCount,
             freeKickPoints: stats.freeKicksPoints,

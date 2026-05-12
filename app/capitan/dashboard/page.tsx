@@ -1,5 +1,12 @@
 "use client"
 
+import {
+  contestGoalsFromPoints,
+  contestPointsRemainder,
+  contestPointsUntilNextGoal,
+  parsePuntosParaGol,
+  toContestPoints,
+} from "@/lib/goals"
 import { useState, useEffect } from "react"
 import { Trophy, Award, Flag, User, Package, Target } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card"
@@ -105,7 +112,7 @@ function CapitanDashboardContent() {
 
       if (!configError && configData) {
         setSystemConfig(configData)
-        setPuntosParaGol(Number(configData.value) || PUNTOS_POR_GOL)
+        setPuntosParaGol(parsePuntosParaGol(configData.value))
       }
 
       const { data: retoData, error: retoError } = await supabase
@@ -277,8 +284,8 @@ function CapitanDashboardContent() {
         .eq("key", "puntos_para_gol")
         .maybeSingle()
 
-      const puntosParaGol = puntosConfig?.value ? Number(puntosConfig.value) : PUNTOS_POR_GOL
-      setPuntosParaGol(puntosParaGol)
+      const puntosParaGolCfg = parsePuntosParaGol(puntosConfig?.value)
+      setPuntosParaGol(puntosParaGolCfg)
 
       // Obtener ventas del equipo (por miembros + ventas directas) - CON CACHE
       const [salesByMembersResult, salesByTeamResult] = await Promise.all([
@@ -414,13 +421,13 @@ function CapitanDashboardContent() {
   }
 
   // Goles y progreso: solo ventas + clientes (oficial). Tiros libres aparte.
-  const puntosVentas = salesData.reduce((sum, sale) => sum + (sale.points || 0), 0)
-  const puntosClientes = clientsData.reduce((sum, c) => sum + (c.points ?? 200), 0)
-  const puntosTirosLibres = freeKickData.reduce((sum, goal) => sum + (goal.points || 0), 0)
+  const puntosVentas = salesData.reduce((sum, sale) => sum + toContestPoints(sale.points), 0)
+  const puntosClientes = clientsData.reduce((sum, c) => sum + toContestPoints(c.points ?? 200), 0)
+  const puntosTirosLibres = freeKickData.reduce((sum, goal) => sum + toContestPoints(goal.points), 0)
   const puntosOficiales = puntosVentas + puntosClientes
-  const totalGoles = Math.floor(puntosOficiales / puntosParaGol)
-  const puntosSobrantes = puntosOficiales % puntosParaGol
-  const puntosParaSiguienteGol = puntosParaGol - puntosSobrantes
+  const totalGoles = contestGoalsFromPoints(puntosOficiales, puntosParaGol)
+  const puntosSobrantes = contestPointsRemainder(puntosOficiales, puntosParaGol)
+  const puntosParaSiguienteGol = contestPointsUntilNextGoal(puntosOficiales, puntosParaGol)
   const porcentajeCompletado = (puntosSobrantes / puntosParaGol) * 100
   const totalSales = salesData.length
   const totalClients = clientsData.length

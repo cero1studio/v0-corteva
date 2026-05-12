@@ -1,5 +1,6 @@
 "use server"
 
+import { contestGoalsFromPoints, parsePuntosParaGol } from "@/lib/goals"
 import { revalidatePath } from "next/cache"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/app/api/auth/[...nextauth]/route"
@@ -45,7 +46,7 @@ async function upsertSystemConfigKey(key: string, value: unknown) {
 
 async function recalculateAllTeamTotals() {
   const { data: puntosRow } = await db.from("system_config").select("value").eq("key", "puntos_para_gol").maybeSingle()
-  const puntosParaGol = puntosRow?.value != null ? Number(puntosRow.value) : 100
+  const puntosParaGol = parsePuntosParaGol(puntosRow?.value)
 
   const { data: teams, error: teamsError } = await db.from("teams").select("id")
   if (teamsError || !teams?.length) return
@@ -74,7 +75,7 @@ async function recalculateAllTeamTotals() {
     const nClients = clientCount ?? 0
     const clientPts = nClients * PUNTOS_POR_CLIENTE_COMPETENCIA
     const pointsForGoals = salesPts + clientPts
-    const goals = Math.floor(pointsForGoals / puntosParaGol)
+    const goals = contestGoalsFromPoints(pointsForGoals, puntosParaGol)
     const total_points = pointsForGoals
 
     await db.from("teams").update({ total_points, goals }).eq("id", teamId)

@@ -131,7 +131,13 @@ export async function createProduct(formData: FormData) {
   const name = formData.get("name") as string
   const description = (formData.get("description") as string) || null
   const price = Number.parseFloat(formData.get("price") as string) || 0
-  const points = Number.parseInt(formData.get("points") as string) || 0
+  const pointsRaw = String(formData.get("points") ?? "")
+    .trim()
+    .replace(",", ".")
+  const points = Number.parseFloat(pointsRaw)
+  if (!Number.isFinite(points) || points < 0) {
+    return { success: false, error: "Los puntos deben ser un número mayor o igual a 0" }
+  }
 
   try {
     const { error } = await supabase.from("products").insert({

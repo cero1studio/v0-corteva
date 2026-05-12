@@ -2,6 +2,7 @@
 
 import type React from "react"
 
+import { contestGoalsFromPoints, contestPointsRemainder, parsePuntosParaGol, toContestPoints } from "@/lib/goals"
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
@@ -73,7 +74,7 @@ export default function RegistrarVentaPage() {
         if (!result.success) {
           throw new Error(result.error)
         }
-        setPuntosParaGol(result.puntosParaGol || PUNTOS_POR_GOL)
+        setPuntosParaGol(parsePuntosParaGol(result.puntosParaGol))
         setProducts(result.products || [])
       } catch (error) {
         console.error("Error al cargar datos:", error)
@@ -117,7 +118,7 @@ export default function RegistrarVentaPage() {
       const product = products.find((p) => p.id === selectedProduct)
       if (!product) throw new Error("Producto no encontrado")
 
-      const calculatedTotalPoints = product.points * quantity
+      const calculatedTotalPoints = toContestPoints(product.points) * quantity
       if (!calculatedTotalPoints || calculatedTotalPoints <= 0) {
         throw new Error("Los puntos calculados no son válidos")
       }
@@ -132,7 +133,7 @@ export default function RegistrarVentaPage() {
         throw new Error(reg.error)
       }
 
-      const golesCompletos = Math.floor(calculatedTotalPoints / puntosParaGol)
+      const golesCompletos = contestGoalsFromPoints(calculatedTotalPoints, puntosParaGol)
 
       setGoalCount(golesCompletos)
       setProductName(product.name)
@@ -290,24 +291,27 @@ export default function RegistrarVentaPage() {
               </div>
             </div>
 
-            {selectedProductData && quantity > 0 && (
+            {selectedProductData && quantity > 0 && (() => {
+              const salePts = toContestPoints(selectedProductData.points) * quantity
+              return (
               <div className="rounded-md border p-3 bg-corteva-50">
                 <div className="flex justify-between text-sm mb-1">
                   <span>Total puntos:</span>
-                  <span className="font-medium">{selectedProductData.points * quantity}</span>
+                  <span className="font-medium">{salePts}</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span>Goles completos:</span>
                   <span className="font-medium">
-                    {Math.floor((selectedProductData.points * quantity) / puntosParaGol)}
+                    {contestGoalsFromPoints(salePts, puntosParaGol)}
                   </span>
                 </div>
                 <div className="flex justify-between text-sm mt-1">
                   <span>Puntos sobrantes:</span>
-                  <span className="font-medium">{(selectedProductData.points * quantity) % puntosParaGol}</span>
+                  <span className="font-medium">{contestPointsRemainder(salePts, puntosParaGol)}</span>
                 </div>
               </div>
-            )}
+              )
+            })()}
 
             <div className="space-y-2">
               <Label>Fecha de Venta</Label>

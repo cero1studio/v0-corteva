@@ -1,5 +1,6 @@
 "use server"
 
+import { contestGoalsFromPoints, parsePuntosParaGol, toContestPoints } from "@/lib/goals"
 import { createServerSupabaseClient } from "@/lib/supabase/server"
 import { getSystemConfig } from "./system-config"
 
@@ -83,20 +84,20 @@ async function checkGoalsChallenge(teamId: string, config: any, week: number, ye
   try {
     // Obtener puntos para gol
     const { success: puntosSuccess, data: puntosData } = await getSystemConfig("puntos_para_gol")
-    const puntosParaGol = puntosSuccess && puntosData ? Number(puntosData) : 100
+    const puntosParaGol = puntosSuccess ? parsePuntosParaGol(puntosData) : parsePuntosParaGol(undefined)
 
     // Contar goles de esta semana para el equipo
     const startOfWeek = getStartOfWeek(new Date())
     const { data: sales, error: salesError } = await supabase
       .from("sales")
-      .select("total_points, profiles!inner(team_id)")
+      .select("points, profiles!inner(team_id)")
       .eq("profiles.team_id", teamId)
       .gte("created_at", startOfWeek.toISOString())
 
     if (salesError) throw salesError
 
-    const totalPoints = sales?.reduce((sum, sale) => sum + (sale.total_points || 0), 0) || 0
-    const totalGoals = Math.floor(totalPoints / puntosParaGol)
+    const totalPoints = sales?.reduce((sum, sale) => sum + toContestPoints(sale.points), 0) || 0
+    const totalGoals = contestGoalsFromPoints(totalPoints, puntosParaGol)
     const target = config.meta_goles_semanales || 40
     const reward = config.penaltis_meta_goles || 1
 
@@ -140,7 +141,7 @@ export async function getChallengeProgress(userId: string, teamId: string) {
 
     // Obtener puntos para gol
     const { success: puntosSuccess, data: puntosData } = await getSystemConfig("puntos_para_gol")
-    const puntosParaGol = puntosSuccess && puntosData ? Number(puntosData) : 100
+    const puntosParaGol = puntosSuccess ? parsePuntosParaGol(puntosData) : parsePuntosParaGol(undefined)
 
     const startOfWeek = getStartOfWeek(new Date())
 
@@ -160,14 +161,14 @@ export async function getChallengeProgress(userId: string, teamId: string) {
     // Progreso de goles semanales del equipo
     const { data: teamSales, error: teamSalesError } = await supabase
       .from("sales")
-      .select("total_points, profiles!inner(team_id)")
+      .select("points, profiles!inner(team_id)")
       .eq("profiles.team_id", teamId)
       .gte("created_at", startOfWeek.toISOString())
 
     if (teamSalesError) throw teamSalesError
 
-    const totalPoints = teamSales?.reduce((sum, sale) => sum + (sale.total_points || 0), 0) || 0
-    const totalGoals = Math.floor(totalPoints / puntosParaGol)
+    const totalPoints = teamSales?.reduce((sum, sale) => sum + toContestPoints(sale.points), 0) || 0
+    const totalGoals = contestGoalsFromPoints(totalPoints, puntosParaGol)
     const goalsTarget = config.meta_goles_semanales || 40
     const goalsProgress = Math.min((totalGoals / goalsTarget) * 100, 100)
 

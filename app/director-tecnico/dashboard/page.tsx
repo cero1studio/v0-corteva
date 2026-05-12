@@ -1,5 +1,6 @@
 "use client"
 
+import { contestGoalsFromPoints, parsePuntosParaGol, toContestPoints } from "@/lib/goals"
 import { useState, useEffect } from "react"
 import { Trophy, Flag, User, Package, Users, Zap, Target, RefreshCw } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card"
@@ -135,7 +136,7 @@ function DirectorTecnicoDashboardContent() {
 
       if (!configError && configData) {
         console.log("Director Técnico - Configuración puntos para gol:", configData)
-        setPuntosParaGol(Number(configData.value) || PUNTOS_POR_GOL)
+        setPuntosParaGol(parsePuntosParaGol(configData.value))
       }
 
       // Cargar reto actual
@@ -308,7 +309,7 @@ function DirectorTecnicoDashboardContent() {
         const teamSales = salesData.filter(
           (sale) => sale.team_id === team.id || (sale.profiles && sale.profiles.team_id === team.id),
         )
-        const salesPoints = teamSales.reduce((sum, sale) => sum + (sale.points || 0), 0)
+        const salesPoints = teamSales.reduce((sum, sale) => sum + toContestPoints(sale.points), 0)
 
         // Clientes del equipo
         const teamClients = clientsData.filter(
@@ -320,7 +321,7 @@ function DirectorTecnicoDashboardContent() {
         const freeKickPoints = teamFreeKicks.reduce((sum, fk) => sum + (fk.points || 0), 0)
 
         const officialPoints = salesPoints + clientsPoints
-        const goals = Math.floor(officialPoints / puntosParaGol)
+        const goals = contestGoalsFromPoints(officialPoints, puntosParaGol)
 
         console.log(`Director Técnico - Estadísticas ${team.name}:`)
         console.log(`  - Ventas: ${teamSales.length} (${salesPoints} pts)`)
@@ -392,11 +393,11 @@ function DirectorTecnicoDashboardContent() {
   }
 
   // Calcular estadísticas de la zona
-  const puntosVentas = salesData.reduce((sum, sale) => sum + (sale.points || 0), 0)
+  const puntosVentas = salesData.reduce((sum, sale) => sum + toContestPoints(sale.points), 0)
   const puntosClientes = clientsData.length * 200
   const puntosTirosLibres = freeKickData.reduce((sum, freeKick) => sum + (freeKick.points || 0), 0)
   const puntosOficialesZona = puntosVentas + puntosClientes
-  const totalGoles = Math.floor(puntosOficialesZona / puntosParaGol)
+  const totalGoles = contestGoalsFromPoints(puntosOficialesZona, puntosParaGol)
   const totalSales = salesData.length
   const totalClients = clientsData.length
   const totalFreeKicks = freeKickData.length
