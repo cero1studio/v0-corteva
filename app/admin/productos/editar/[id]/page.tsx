@@ -1,7 +1,8 @@
 "use client"
 
 import type React from "react"
-import { use, useEffect, useState } from "react"
+import { useEffect, useState } from "react"
+import { useParams, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -10,19 +11,18 @@ import { Textarea } from "@/components/ui/textarea"
 import { Switch } from "@/components/ui/switch"
 import { useToast } from "@/hooks/use-toast"
 import { getProductById, updateProduct } from "@/app/actions/products"
-import { useRouter } from "next/navigation"
+import { useGlobalCache } from "@/lib/global-cache"
 import { Upload } from "lucide-react"
 import Image from "next/image"
 import { Skeleton } from "@/components/ui/skeleton"
 
-interface PageProps {
-  params: Promise<{ id: string }>
-}
-
-export default function EditarProductoPage({ params }: PageProps) {
-  const resolvedParams = use(params)
+export default function EditarProductoPage() {
+  const params = useParams()
+  const rawId = params?.id
+  const productId = Array.isArray(rawId) ? (rawId[0] ?? "") : (rawId ?? "")
   const { toast } = useToast()
   const router = useRouter()
+  const { clearCache } = useGlobalCache()
   const [isLoading, setIsLoading] = useState(false)
   const [isLoadingProduct, setIsLoadingProduct] = useState(true)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
@@ -37,12 +37,16 @@ export default function EditarProductoPage({ params }: PageProps) {
   useEffect(() => {
     const fetchProduct = async () => {
       try {
-        const product = await getProductById(resolvedParams.id)
+        const product = await getProductById(productId)
         if (product) {
+          const pts =
+            product.points !== null && product.points !== undefined
+              ? String(product.points).replace(",", ".")
+              : "0"
           setFormData({
             name: product.name || "",
             description: product.description || "",
-            points: product.points?.toString() || "0",
+            points: pts,
             active: product.active !== false,
           })
 
@@ -70,8 +74,18 @@ export default function EditarProductoPage({ params }: PageProps) {
       }
     }
 
+    if (!productId) {
+      setIsLoadingProduct(false)
+      toast({
+        title: "Error",
+        description: "Identificador de producto no válido",
+        variant: "destructive",
+      })
+      router.push("/admin/productos")
+      return
+    }
     fetchProduct()
-  }, [resolvedParams.id, router, toast])
+  }, [productId, router, toast])
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target
@@ -138,15 +152,17 @@ export default function EditarProductoPage({ params }: PageProps) {
         formDataObj.append("image", imageInput.files[0])
       }
 
-      console.log("Actualizando producto con ID:", resolvedParams.id)
+      console.log("Actualizando producto con ID:", productId)
 
-      const result = await updateProduct(resolvedParams.id, formDataObj)
+      const result = await updateProduct(productId, formDataObj)
 
       if (result.success) {
+        clearCache("admin-products")
         toast({
           title: "Producto actualizado",
           description: "El producto ha sido actualizado exitosamente",
         })
+        router.refresh()
         router.push("/admin/productos")
       } else {
         toast({

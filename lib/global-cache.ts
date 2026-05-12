@@ -48,10 +48,10 @@ export function useCachedList<T>(cacheKey: string, fetchFunction: () => Promise<
   const mountedRef = useRef(true)
 
   const refresh = useCallback(
-    async (force = false) => {
+    async (force = true) => {
       if (!mountedRef.current) return
 
-      // Verificar cache primero
+      // Por defecto force=true: tras mutaciones, refresh() debe traer datos nuevos (no devolver caché obsoleta).
       if (!force) {
         const cached = getCacheData(cacheKey)
         if (cached && !cached.loading) {

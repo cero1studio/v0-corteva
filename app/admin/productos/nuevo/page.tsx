@@ -11,6 +11,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Switch } from "@/components/ui/switch"
 import { useToast } from "@/hooks/use-toast"
 import { createProduct } from "@/app/actions/products"
+import { useGlobalCache } from "@/lib/global-cache"
 import { useRouter } from "next/navigation"
 import { Upload } from "lucide-react"
 import Image from "next/image"
@@ -18,6 +19,7 @@ import Image from "next/image"
 export default function NuevoProductoPage() {
   const { toast } = useToast()
   const router = useRouter()
+  const { clearCache } = useGlobalCache()
   const [isLoading, setIsLoading] = useState(false)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [formData, setFormData] = useState({
@@ -92,10 +94,12 @@ export default function NuevoProductoPage() {
       const result = await createProduct(formDataObj)
 
       if (result.success) {
+        clearCache("admin-products")
         toast({
           title: "Producto creado",
           description: "El producto ha sido creado exitosamente",
         })
+        router.refresh()
         router.push("/admin/productos")
       } else {
         toast({

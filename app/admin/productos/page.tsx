@@ -13,7 +13,7 @@ import { useToast } from "@/hooks/use-toast"
 import { useRouter } from "next/navigation"
 import { getProducts, deleteProduct, toggleProductStatus } from "@/app/actions/products"
 import Image from "next/image"
-import { useCachedList } from "@/lib/global-cache"
+import { useCachedList, useGlobalCache } from "@/lib/global-cache"
 
 // Definir la interfaz para los productos
 interface Product {
@@ -27,10 +27,10 @@ interface Product {
 
 export default function ProductosPage() {
   const [searchTerm, setSearchTerm] = useState("")
-  const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const { toast } = useToast()
   const router = useRouter()
+  const { clearCache } = useGlobalCache()
 
   const fetchProducts = useCallback(async () => {
     const result = await getProducts()
@@ -59,12 +59,12 @@ export default function ProductosPage() {
       try {
         const result = await deleteProduct(productId)
         if (result.success) {
+          clearCache("admin-products")
           toast({
             title: "Producto eliminado",
             description: "El producto ha sido eliminado exitosamente",
           })
-          // Actualizar la lista de productos
-          refresh()
+          await refresh()
         } else {
           toast({
             title: "Error",
@@ -86,14 +86,14 @@ export default function ProductosPage() {
   const handleToggleStatus = async (productId: string, currentStatus: boolean) => {
     try {
       const result = await toggleProductStatus(productId, !currentStatus)
-      if (result.success) {
-        toast({
-          title: "Estado actualizado",
-          description: `El producto ha sido ${!currentStatus ? "activado" : "desactivado"} exitosamente`,
-        })
-        // Actualizar la lista de productos
-        refresh()
-      } else {
+        if (result.success) {
+          clearCache("admin-products")
+          toast({
+            title: "Estado actualizado",
+            description: `El producto ha sido ${!currentStatus ? "activado" : "desactivado"} exitosamente`,
+          })
+          await refresh()
+        } else {
         toast({
           title: "Error",
           description: result.error || "Ha ocurrido un error al cambiar el estado del producto",
@@ -247,6 +247,7 @@ export default function ProductosPage() {
                             height={64}
                             className="object-contain"
                             style={{ maxWidth: "100%", maxHeight: "100%" }}
+                            unoptimized
                           />
                         ) : (
                           <div className="flex h-16 w-16 items-center justify-center bg-muted">
