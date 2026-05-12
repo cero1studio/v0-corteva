@@ -1,11 +1,11 @@
 "use server"
 
-import { contestGoalsFromPoints, parsePuntosParaGol } from "@/lib/goals"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/app/api/auth/[...nextauth]/route"
 import { createServerSupabaseClient, adminSupabase } from "@/lib/supabase/server"
 import { formatColombianMobile, getPhoneValidationError } from "@/lib/phone-validation"
 import { revalidatePath } from "next/cache"
+import { reconcileTeamContestTotals } from "@/app/actions/team-points-sync"
 
 export type RegisterCapitanClientePayload = {
   farmerName: string
@@ -165,43 +165,7 @@ export async function registerCapitanCompetitorClient(
       return { success: false, error: insertError.message }
     }
 
-    const { data: puntosRow } = await adminSupabase
-      .from("system_config")
-      .select("value")
-      .eq("key", "puntos_para_gol")
-      .maybeSingle()
-
-    const puntosConfig = puntosRow as { value?: string } | null
-    const puntosParaGol = parsePuntosParaGol(puntosConfig?.value)
-    const golesCliente = 2
-    const puntosCliente = golesCliente * puntosParaGol
-
-    const { data: teamRow, error: teamError } = await adminSupabase
-      .from("teams")
-      .select("total_points, goals")
-      .eq("id", teamId)
-      .single()
-
-    if (teamError) {
-      return { success: false, error: teamError.message }
-    }
-
-    const teamData = teamRow as { total_points?: number | null; goals?: number | null } | null
-
-    const newTotalPoints = (teamData?.total_points || 0) + puntosCliente
-    const newTotalGoals = contestGoalsFromPoints(newTotalPoints, puntosParaGol)
-
-    const { error: updateError } = await adminSupabase
-      .from("teams")
-      .update({
-        total_points: newTotalPoints,
-        goals: newTotalGoals,
-      } as never)
-      .eq("id", teamId)
-
-    if (updateError) {
-      return { success: false, error: updateError.message }
-    }
+    await reconcileTeamContestTotals(teamId)
 
     revalidatePath("/capitan/dashboard")
     revalidatePath("/capitan/clientes")
@@ -215,9 +179,6 @@ export async function registerCapitanCompetitorClient(
     return { success: false, error: msg }
   }
 }
-
-// Constante para la conversión de clientes a goles (3 clientes = 1 gol)
-const CLIENTES_POR_GOL = 3
 
 export async function registerCompetitorClient(formData: FormData) {
   const supabase = createServerSupabaseClient()
@@ -255,54 +216,7 @@ export async function registerCompetitorClient(formData: FormData) {
 
     if (error) throw new Error(`Error al registrar cliente: ${error.message}`)
 
-    // Verificar si se cumple el objetivo para otorgar goles por clientes captados
-    const { data: teamClients, error: clientsError } = await supabase
-      .from("competitor_clients")
-      .select("id")
-      .eq("team_id", profile.team_id)
-
-    if (clientsError) throw new Error(`Error al obtener clientes del equipo: ${clientsError.message}`)
-
-    // Calcular goles basados en la cantidad de clientes (3 clientes = 1 gol)
-    const totalClientes = teamClients?.length || 0
-    const golesGenerados = Math.floor(totalClientes / CLIENTES_POR_GOL)
-
-    // Obtener la configuración de puntos para un gol
-    const { data: puntosConfig, error: puntosError } = await supabase
-      .from("system_config")
-      .select("value")
-      .eq("key", "puntos_para_gol")
-      .maybeSingle()
-
-    // Por defecto 100 puntos = 1 gol si no hay configuración
-    const puntosParaGol = parsePuntosParaGol(puntosConfig?.value)
-
-    // Actualizar los puntos y goles del equipo
-    const puntosClientes = golesGenerados * puntosParaGol
-
-    // Obtener puntos actuales del equipo (de ventas)
-    const { data: teamData, error: teamError } = await supabase
-      .from("teams")
-      .select("total_points, goals")
-      .eq("id", profile.team_id)
-      .single()
-
-    if (teamError) throw new Error(`Error al obtener datos del equipo: ${teamError.message}`)
-
-    // Sumar los puntos de ventas con los puntos por clientes
-    const totalPoints = (teamData?.total_points || 0) + puntosClientes
-    const totalGoals = contestGoalsFromPoints(totalPoints, puntosParaGol)
-
-    // Actualizar el equipo con los nuevos puntos y goles
-    const { error: updateError } = await supabase
-      .from("teams")
-      .update({
-        total_points: totalPoints,
-        goals: totalGoals,
-      })
-      .eq("id", profile.team_id)
-
-    if (updateError) throw new Error(`Error al actualizar equipo: ${updateError.message}`)
+    await reconcileTeamContestTotals(profile.team_id)
 
     revalidatePath("/capitan/dashboard")
     revalidatePath("/capitan/clientes")
@@ -405,6 +319,8 @@ export async function getCompetitorClientsByUser(userId: string) {
     return { success: false, error: error.message }
   }
 }
+
+const CLIENTES_POR_GOL = 3
 
 export async function getClientGoalsInfo(teamId: string) {
   const supabase = createServerSupabaseClient()

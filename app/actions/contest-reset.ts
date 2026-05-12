@@ -7,6 +7,7 @@ import { authOptions } from "@/app/api/auth/[...nextauth]/route"
 import { validateCredentials } from "@/lib/auth-utils"
 import { AUTH_ERROR_CODES, getErrorMessage } from "@/lib/auth-errors"
 import { adminSupabase } from "@/lib/supabase/server"
+import { rankingCache } from "@/lib/ranking-cache"
 
 /** Cliente admin con tipos relajados: `Database` local no incluye todas las tablas. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -191,6 +192,7 @@ export async function executeContestReset(
 
     if (options.sales || options.competitorClients || options.freeKickGoals) {
       await recalculateAllTeamTotals()
+      rankingCache.clear()
     }
 
     revalidateAfterReset()

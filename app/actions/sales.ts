@@ -3,6 +3,7 @@
 import { createServerSupabaseClient } from "@/lib/supabase/server"
 import { revalidatePath } from "next/cache"
 import { toContestPoints } from "@/lib/goals"
+import { reconcileTeamContestTotals } from "@/app/actions/team-points-sync"
 
 export async function registerSale(formData: FormData) {
   const supabase = createServerSupabaseClient()
@@ -71,6 +72,8 @@ export async function registerSale(formData: FormData) {
       console.error("Error registering sale:", error)
       throw error
     }
+
+    await reconcileTeamContestTotals(team_id)
 
     revalidatePath("/sales")
     revalidatePath("/capitan/ventas")
@@ -401,6 +404,8 @@ export async function createSale(formData: FormData) {
       throw error
     }
 
+    await reconcileTeamContestTotals(representative.team_id)
+
     revalidatePath("/admin/ventas")
     revalidatePath("/capitan/ventas")
     revalidatePath("/capitan/dashboard")
@@ -420,6 +425,16 @@ export async function updateSale(id: string, formData: FormData) {
   const representative_id = formData.get("representative_id") as string
 
   try {
+    const { data: prevSale, error: prevErr } = await supabase
+      .from("sales")
+      .select("team_id")
+      .eq("id", id)
+      .maybeSingle()
+
+    if (prevErr) {
+      throw new Error("No se pudo leer la venta a actualizar")
+    }
+
     // Obtener el team_id del representante
     const { data: representative, error: repError } = await supabase
       .from("profiles")
@@ -445,6 +460,10 @@ export async function updateSale(id: string, formData: FormData) {
 
     if (error) throw error
 
+    const prevTeamId = (prevSale as { team_id: string | null } | null)?.team_id ?? null
+    await reconcileTeamContestTotals(prevTeamId)
+    await reconcileTeamContestTotals(representative.team_id)
+
     revalidatePath("/admin/ventas")
     revalidatePath("/capitan/ventas")
     return { success: true, data }
@@ -458,9 +477,29 @@ export async function deleteSale(id: string) {
   const supabase = createServerSupabaseClient()
 
   try {
+    const { data: row, error: fetchErr } = await supabase
+      .from("sales")
+      .select("team_id, representative_id")
+      .eq("id", id)
+      .maybeSingle()
+
+    if (fetchErr) {
+      throw new Error(fetchErr.message)
+    }
+
+    let teamId: string | null = (row as { team_id?: string | null; representative_id?: string | null } | null)
+      ?.team_id ?? null
+    const repId = (row as { representative_id?: string | null } | null)?.representative_id ?? null
+    if (!teamId && repId) {
+      const { data: prof } = await supabase.from("profiles").select("team_id").eq("id", repId).maybeSingle()
+      teamId = (prof as { team_id: string | null } | null)?.team_id ?? null
+    }
+
     const { error } = await supabase.from("sales").delete().eq("id", id)
 
     if (error) throw error
+
+    await reconcileTeamContestTotals(teamId)
 
     revalidatePath("/admin/ventas")
     revalidatePath("/capitan/ventas")

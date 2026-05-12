@@ -1,10 +1,11 @@
 "use server"
 
-import { contestGoalsFromPoints, parsePuntosParaGol, toContestPoints } from "@/lib/goals"
+import { parsePuntosParaGol, toContestPoints } from "@/lib/goals"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/app/api/auth/[...nextauth]/route"
 import { adminSupabase } from "@/lib/supabase/server"
 import { revalidatePath } from "next/cache"
+import { reconcileTeamContestTotals } from "@/app/actions/team-points-sync"
 
 export type CapitanVentaItem = {
   id: string
@@ -336,23 +337,7 @@ export async function registerCapitanVenta(input: {
       return { success: false, error: insertError.message }
     }
 
-
-    // Actualizar puntos del equipo
-    const { data: teamRow, error: teamError } = await adminSupabase
-      .from("teams")
-      .select("total_points, goals")
-      .eq("id", teamId)
-      .single()
-
-    if (!teamError) {
-      const teamData = teamRow as { total_points?: number | null; goals?: number | null } | null
-      const { data: configData } = await adminSupabase.from("system_config").select("value").eq("key", "puntos_para_gol").maybeSingle()
-      const puntosParaGol = parsePuntosParaGol((configData as { value?: unknown } | null)?.value)
-      const newTotalPoints = (teamData?.total_points || 0) + calculatedTotalPoints
-      const newTotalGoals = contestGoalsFromPoints(newTotalPoints, puntosParaGol)
-
-      await adminSupabase.from("teams").update({ total_points: newTotalPoints, goals: newTotalGoals } as never).eq("id", teamId)
-    }
+    await reconcileTeamContestTotals(teamId)
 
     revalidatePath("/capitan/dashboard")
     revalidatePath("/capitan/ventas")

@@ -2,6 +2,7 @@
 
 import { createServerClient } from "@/lib/supabase/server"
 import { revalidatePath } from "next/cache"
+import { reconcileTeamContestTotals } from "@/app/actions/team-points-sync"
 
 export async function registerCompetitorClient(formData: FormData) {
   const supabase = createServerClient()
@@ -48,6 +49,8 @@ export async function registerCompetitorClient(formData: FormData) {
       console.error("Error al registrar cliente de la competencia:", error)
       return { success: false, error: error.message }
     }
+
+    await reconcileTeamContestTotals(team_id)
 
     revalidatePath("/admin/clientes")
     return { success: true, message: "Cliente registrado exitosamente" }
@@ -109,12 +112,36 @@ export async function deleteCompetitorClient(clientId: string) {
   const supabase = createServerClient()
 
   try {
+    const { data: row, error: fetchErr } = await supabase
+      .from("competitor_clients")
+      .select("team_id, representative_id")
+      .eq("id", clientId)
+      .maybeSingle()
+
+    if (fetchErr) {
+      console.error("Error al leer cliente:", fetchErr)
+      return { success: false, error: fetchErr.message }
+    }
+
+    const teamId = (row as { team_id: string | null; representative_id?: string | null } | null)?.team_id ?? null
+    let reconcileId = teamId
+    if (!reconcileId && (row as { representative_id?: string | null })?.representative_id) {
+      const { data: prof } = await supabase
+        .from("profiles")
+        .select("team_id")
+        .eq("id", (row as { representative_id: string }).representative_id)
+        .maybeSingle()
+      reconcileId = (prof as { team_id: string | null } | null)?.team_id ?? null
+    }
+
     const { error } = await supabase.from("competitor_clients").delete().eq("id", clientId)
 
     if (error) {
       console.error("Error al eliminar cliente de la competencia:", error)
       return { success: false, error: error.message }
     }
+
+    await reconcileTeamContestTotals(reconcileId)
 
     revalidatePath("/admin/clientes")
     revalidatePath("/admin/ranking")
@@ -151,6 +178,19 @@ export async function updateCompetitorClient(clientId: string, formData: FormDat
   const area_finca_hectareas = area_finca_hectareas_str ? Number.parseFloat(area_finca_hectareas_str) : null
 
   try {
+    const { data: prevRow, error: prevErr } = await supabase
+      .from("competitor_clients")
+      .select("team_id")
+      .eq("id", clientId)
+      .maybeSingle()
+
+    if (prevErr) {
+      console.error("Error al leer cliente:", prevErr)
+      return { success: false, error: prevErr.message }
+    }
+
+    const prevTeamId = (prevRow as { team_id: string | null } | null)?.team_id ?? null
+
     const { error } = await supabase
       .from("competitor_clients")
       .update({
@@ -176,6 +216,9 @@ export async function updateCompetitorClient(clientId: string, formData: FormDat
       console.error("Error al actualizar cliente de la competencia:", error)
       return { success: false, error: error.message }
     }
+
+    await reconcileTeamContestTotals(prevTeamId)
+    await reconcileTeamContestTotals(team_id)
 
     revalidatePath("/admin/clientes")
     revalidatePath("/admin/ranking")
