@@ -28,6 +28,12 @@ import { getAllUsers } from "@/app/actions/users"
 import { getAllDistributors } from "@/app/actions/distributors"
 import * as XLSX from "xlsx" // Importar la librería XLSX
 import { useCachedList } from "@/lib/global-cache"
+import {
+  formatPhysicalSaleTotal,
+  NO_PHYSICAL_CONTENT_LABEL,
+  physicalSaleTotalAmount,
+  type ProductContentUnit,
+} from "@/lib/product-content"
 
 interface Sale {
   id: string
@@ -40,6 +46,8 @@ interface Sale {
     id: string
     name: string
     image_url?: string
+    content_per_unit?: number | null
+    content_unit?: string | null
   } | null
   representative: {
     id: string
@@ -76,7 +84,9 @@ interface Team {
 interface Product {
   id: string
   name: string
-  price: number
+  points: number
+  content_per_unit?: number | null
+  content_unit?: "kg" | "l" | null
 }
 
 interface User {
@@ -114,25 +124,24 @@ export default function AdminVentasPage() {
     representative_id: "",
   })
 
-  const [selectedProductPoints, setSelectedProductPoints] = useState<number>(0)
-
-  // Función para calcular kilos basándose en puntos
-  const calculateKilos = (points: number): number => {
-    // 1 gol = 100 puntos = 10 kilos
-    // Por lo tanto: kilos = puntos / 10
-    return points / 10
-  }
+  const [selectedProductPoints, setSelectedProductPoints] = useState(0)
 
   useEffect(() => {
     if (formData.product_id && formData.quantity) {
       const selectedProduct = products.find((p) => p.id === formData.product_id)
       if (selectedProduct) {
-        const calculatedPoints = selectedProduct.price * Number.parseInt(formData.quantity)
-        setSelectedProductPoints(selectedProduct.price)
+        const qty = Number.parseFloat(String(formData.quantity).replace(",", "."))
+        if (!Number.isFinite(qty) || qty <= 0) {
+          setFormData((prev) => ({ ...prev, points: "" }))
+          setSelectedProductPoints(0)
+          return
+        }
+        const ptsPer = selectedProduct.points
+        const calculatedPoints = ptsPer * qty
+        setSelectedProductPoints(ptsPer)
         setFormData((prev) => ({ ...prev, points: calculatedPoints.toString() }))
       }
     } else {
-      // Si no hay producto o cantidad, limpiar los puntos
       setFormData((prev) => ({ ...prev, points: "" }))
       setSelectedProductPoints(0)
     }
@@ -357,6 +366,17 @@ export default function AdminVentasPage() {
     return matchesSearch && matchesZone
   })
 
+  const formProduct = products.find((p) => p.id === formData.product_id)
+  const qtyPreview = Number.parseFloat(String(formData.quantity).replace(",", "."))
+  const physicalPreview =
+    formProduct && Number.isFinite(qtyPreview) && qtyPreview > 0
+      ? formatPhysicalSaleTotal(
+          qtyPreview,
+          formProduct.content_per_unit,
+          formProduct.content_unit ?? null,
+        )
+      : null
+
   const downloadExcel = () => {
     try {
       if (filteredSales.length === 0) {
@@ -368,19 +388,31 @@ export default function AdminVentasPage() {
         return
       }
 
-      // Preparar datos para Excel - CORREGIDO: Convertir números explícitamente
-      const excelData = filteredSales.map((sale) => ({
-        Producto: sale.products?.name || "N/A",
-        Capitán: sale.representative?.full_name || "N/A",
-        Distribuidor: sale.distributor?.name || "N/A",
-        Equipo: sale.team?.name || "N/A",
-        Zona: sale.zone?.name || "N/A",
-        Cantidad: Number(sale.quantity), // Convertir a number
-        Puntos: Number(sale.points || 0), // Convertir a number
-        Kilos: Number(calculateKilos(sale.points || 0).toFixed(1)), // Convertir a number
-        "Fecha de Venta": sale.sale_date ? new Date(sale.sale_date).toLocaleDateString() : "N/A",
-        "Fecha de Registro": new Date(sale.created_at).toLocaleDateString(),
-      }))
+      // Totales L/kg: siempre calculados aquí (cantidad × dato del producto). No existen columnas en `sales` para esto.
+      const excelData = filteredSales.map((sale) => {
+        const unit = sale.products?.content_unit as ProductContentUnit | null | undefined
+        const per = sale.products?.content_per_unit
+        const physicalNum = physicalSaleTotalAmount(sale.quantity, per, unit)
+        const physicalTxt = formatPhysicalSaleTotal(sale.quantity, per, unit) ?? NO_PHYSICAL_CONTENT_LABEL
+        const unitCatalog = unit === "l" ? "L" : unit === "kg" ? "kg" : ""
+        const perNum =
+          per != null && (unit === "kg" || unit === "l") && Number.isFinite(Number(per)) ? Number(per) : ""
+        return {
+          Producto: sale.products?.name || "N/A",
+          Capitán: sale.representative?.full_name || "N/A",
+          Distribuidor: sale.distributor?.name || "N/A",
+          Equipo: sale.team?.name || "N/A",
+          Zona: sale.zone?.name || "N/A",
+          Cantidad: Number(sale.quantity),
+          "L_o_kg_por_envase_catálogo": perNum,
+          "Unidad_envase_catálogo": unitCatalog,
+          "Total_L_o_kg_num_calculado": physicalNum === null ? "" : physicalNum,
+          "Total_L_o_kg_texto_calculado": physicalTxt,
+          Puntos: Number(sale.points || 0),
+          "Fecha de Venta": sale.sale_date ? new Date(sale.sale_date).toLocaleDateString() : "N/A",
+          "Fecha de Registro": new Date(sale.created_at).toLocaleDateString(),
+        }
+      })
 
       // Crear workbook y worksheet
       const wb = XLSX.utils.book_new()
@@ -388,16 +420,19 @@ export default function AdminVentasPage() {
 
       // Configurar anchos de columna
       const colWidths = [
-        { wch: 25 }, // Producto
-        { wch: 20 }, // Capitán
-        { wch: 20 }, // Distribuidor
-        { wch: 20 }, // Equipo
-        { wch: 15 }, // Zona
-        { wch: 10 }, // Cantidad
-        { wch: 10 }, // Puntos
-        { wch: 10 }, // Kilos
-        { wch: 15 }, // Fecha de Venta
-        { wch: 18 }, // Fecha de Registro
+        { wch: 25 },
+        { wch: 20 },
+        { wch: 20 },
+        { wch: 20 },
+        { wch: 15 },
+        { wch: 10 },
+        { wch: 22 },
+        { wch: 14 },
+        { wch: 22 },
+        { wch: 22 },
+        { wch: 12 },
+        { wch: 15 },
+        { wch: 18 },
       ]
       ws["!cols"] = colWidths
 
@@ -462,7 +497,8 @@ export default function AdminVentasPage() {
       if (!finalPoints || finalPoints === "0") {
         const selectedProduct = products.find((p) => p.id === formData.product_id)
         if (selectedProduct && formData.quantity) {
-          finalPoints = (selectedProduct.price * Number.parseInt(formData.quantity)).toString()
+          const qty = Number.parseFloat(String(formData.quantity).replace(",", "."))
+          finalPoints = (selectedProduct.points * (Number.isFinite(qty) ? qty : 0)).toString()
         }
       }
 
@@ -600,7 +636,7 @@ export default function AdminVentasPage() {
     setEditingSale(sale)
     const product = products.find((p) => p.id === sale.products?.id)
     if (product) {
-      setSelectedProductPoints(product.price)
+      setSelectedProductPoints(product.points)
     }
     setFormData({
       product_id: sale.products?.id || "",
@@ -709,8 +745,10 @@ export default function AdminVentasPage() {
                       <p>
                         {selectedProductPoints} puntos × {formData.quantity} = {formData.points} puntos totales
                       </p>
-                      <p className="text-green-600 font-medium">
-                        Kilos equivalentes: {calculateKilos(Number.parseFloat(formData.points) || 0).toFixed(1)} kg
+                      <p className="text-xs text-muted-foreground">
+                        {physicalPreview
+                          ? `Total físico (catálogo): ${physicalPreview}. Los puntos siguen siendo los del concurso.`
+                          : "Si configuraste kg o litros por envase en el producto, verás aquí el total físico de la venta."}
                       </p>
                     </div>
                   )}
@@ -784,8 +822,10 @@ export default function AdminVentasPage() {
         <CardHeader>
           <CardTitle>Ventas Registradas</CardTitle>
           <CardDescription>
-            {filteredSales.length} venta{filteredSales.length !== 1 ? "s" : ""} encontrada
-            {filteredSales.length !== 1 ? "s" : ""}
+            {filteredSales.length === 1
+              ? "1 venta encontrada."
+              : `${filteredSales.length} ventas encontradas.`}{" "}
+            La columna «Kg / L» usa la cantidad por envase definida en cada producto; los puntos son solo del concurso.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -809,8 +849,8 @@ export default function AdminVentasPage() {
                   <TableHead>Equipo</TableHead>
                   <TableHead>Zona</TableHead>
                   <TableHead>Cantidad</TableHead>
+                  <TableHead>Kg / L</TableHead>
                   <TableHead>Puntos</TableHead>
-                  <TableHead>Kilos</TableHead>
                   <TableHead>Fecha</TableHead>
                   <TableHead>Acciones</TableHead>
                 </TableRow>
@@ -848,10 +888,14 @@ export default function AdminVentasPage() {
                       <Badge variant="secondary">{sale.zone?.name || "N/A"}</Badge>
                     </TableCell>
                     <TableCell>{sale.quantity}</TableCell>
-                    <TableCell>{sale.points?.toLocaleString() || "0"}</TableCell>
-                    <TableCell className="font-medium text-green-600">
-                      {calculateKilos(sale.points || 0).toFixed(1)} kg
+                    <TableCell className="text-muted-foreground">
+                      {formatPhysicalSaleTotal(
+                        sale.quantity,
+                        sale.products?.content_per_unit,
+                        sale.products?.content_unit as ProductContentUnit | null | undefined,
+                      ) ?? NO_PHYSICAL_CONTENT_LABEL}
                     </TableCell>
+                    <TableCell>{sale.points?.toLocaleString() || "0"}</TableCell>
                     <TableCell>{sale.sale_date ? new Date(sale.sale_date).toLocaleDateString() : "N/A"}</TableCell>
                     <TableCell>
                       <DropdownMenu>
@@ -950,8 +994,10 @@ export default function AdminVentasPage() {
                   <p>
                     {selectedProductPoints} puntos × {formData.quantity} = {formData.points} puntos totales
                   </p>
-                  <p className="text-green-600 font-medium">
-                    Kilos equivalentes: {calculateKilos(Number.parseFloat(formData.points) || 0).toFixed(1)} kg
+                  <p className="text-xs text-muted-foreground">
+                    {physicalPreview
+                      ? `Total físico (catálogo): ${physicalPreview}. Los puntos siguen siendo los del concurso.`
+                      : "Si configuraste kg o litros por envase en el producto, verás aquí el total físico de la venta."}
                   </p>
                 </div>
               )}

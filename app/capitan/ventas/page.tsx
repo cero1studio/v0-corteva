@@ -22,6 +22,7 @@ import { es } from "date-fns/locale"
 import { useAuth } from "@/hooks/useAuth"
 import Link from "next/link"
 import { getCapitanVentasForSession, getProductosParaFiltroVentas } from "@/app/actions/captain-ventas"
+import { formatPhysicalSaleTotal, NO_PHYSICAL_CONTENT_LABEL, type ProductContentUnit } from "@/lib/product-content"
 
 interface Sale {
   id: string
@@ -36,6 +37,8 @@ interface Sale {
     name: string
     points: number
     image_url?: string
+    content_per_unit?: number | null
+    content_unit?: string | null
   }
   user_profile?: {
     id: string
@@ -313,6 +316,7 @@ export default function VentasPage() {
                     <TableHead>Producto</TableHead>
                     <TableHead>Vendedor</TableHead>
                     <TableHead>Cantidad</TableHead>
+                    <TableHead>Kg / L</TableHead>
                     <TableHead>Puntos</TableHead>
                     <TableHead>Fecha</TableHead>
                     <TableHead className="w-[80px]"></TableHead>
@@ -333,6 +337,13 @@ export default function VentasPage() {
                         </div>
                       </TableCell>
                       <TableCell>{venta.quantity}</TableCell>
+                      <TableCell className="text-muted-foreground text-sm">
+                        {formatPhysicalSaleTotal(
+                          venta.quantity,
+                          venta.products?.content_per_unit,
+                          venta.products?.content_unit as ProductContentUnit | null | undefined,
+                        ) ?? NO_PHYSICAL_CONTENT_LABEL}
+                      </TableCell>
                       <TableCell>
                         <span className="font-medium text-green-600">{venta.points}</span>
                       </TableCell>

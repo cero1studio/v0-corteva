@@ -14,6 +14,7 @@ import { useRouter } from "next/navigation"
 import { getProducts, deleteProduct, toggleProductStatus } from "@/app/actions/products"
 import Image from "next/image"
 import { useCachedList, useGlobalCache } from "@/lib/global-cache"
+import { contentUnitShortLabel } from "@/lib/product-content"
 
 // Definir la interfaz para los productos
 interface Product {
@@ -23,6 +24,8 @@ interface Product {
   points: number
   active?: boolean
   image_url?: string
+  content_per_unit?: number | null
+  content_unit?: string | null
 }
 
 export default function ProductosPage() {
@@ -222,6 +225,7 @@ export default function ProductosPage() {
                 <TableHead>Imagen</TableHead>
                 <TableHead>Nombre</TableHead>
                 <TableHead className="text-center">Puntos</TableHead>
+                <TableHead className="text-center">Por envase</TableHead>
                 <TableHead className="text-center">Estado</TableHead>
                 <TableHead className="w-[50px]"></TableHead>
               </TableRow>
@@ -229,7 +233,7 @@ export default function ProductosPage() {
             <TableBody>
               {filteredProducts.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="h-24 text-center">
+                  <TableCell colSpan={7} className="h-24 text-center">
                     No se encontraron productos con ese criterio de búsqueda.
                   </TableCell>
                 </TableRow>
@@ -263,6 +267,18 @@ export default function ProductosPage() {
                           {product.points}
                         </Badge>
                       </div>
+                    </TableCell>
+                    <TableCell className="text-center text-sm text-muted-foreground">
+                      {product.content_per_unit != null &&
+                      product.content_unit &&
+                      (product.content_unit === "kg" || product.content_unit === "l") ? (
+                        <span>
+                          {product.content_per_unit}{" "}
+                          {contentUnitShortLabel(product.content_unit as "kg" | "l")}
+                        </span>
+                      ) : (
+                        "—"
+                      )}
                     </TableCell>
                     <TableCell>
                       <div className="flex justify-center">

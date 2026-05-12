@@ -362,9 +362,6 @@ export default function AdminDashboardPage() {
             <div className="space-y-1">
               <p className="text-xs text-muted-foreground">Ventas registradas</p>
               <p className="text-xs text-green-600 font-medium">{stats.totalSalesPoints} puntos totales</p>
-              <p className="text-xs text-green-600 font-medium">
-                {Math.round((stats.totalSalesPoints / 10) * 10) / 10} kilos totales
-              </p>
             </div>
           </CardContent>
         </Card>
@@ -488,7 +485,6 @@ export default function AdminDashboardPage() {
                         <span>{product.sales} unidades</span>
                         <div className="text-right">
                           <div>{product.totalPoints} puntos</div>
-                          <div>{Math.round((product.totalPoints / 10) * 10) / 10} kilos</div>
                         </div>
                       </div>
                     </div>

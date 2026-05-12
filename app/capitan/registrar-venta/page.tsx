@@ -20,6 +20,7 @@ import { useSession } from "next-auth/react"
 import { getCapitanRegistroVentaData, registerCapitanVenta } from "@/app/actions/captain-ventas"
 import { GoalCelebration } from "@/components/goal-celebration"
 import Image from "next/image"
+import { formatPhysicalSaleTotal } from "@/lib/product-content"
 
 // Constante para la conversión de puntos a goles
 const PUNTOS_POR_GOL = 100
@@ -243,6 +244,18 @@ export default function RegistrarVentaPage() {
                   <div>
                     <p className="font-medium">{selectedProductData.name}</p>
                     <p className="text-sm text-muted-foreground">{selectedProductData.points} puntos por unidad</p>
+                    {(() => {
+                      const total = formatPhysicalSaleTotal(
+                        quantity,
+                        selectedProductData.content_per_unit,
+                        selectedProductData.content_unit === "kg" || selectedProductData.content_unit === "l"
+                          ? selectedProductData.content_unit
+                          : null,
+                      )
+                      return total ? (
+                        <p className="text-sm font-medium text-green-700 mt-1">Total físico de la venta: {total}</p>
+                      ) : null
+                    })()}
                     {selectedProductData.description && (
                       <p className="text-xs text-muted-foreground mt-1">{selectedProductData.description}</p>
                     )}

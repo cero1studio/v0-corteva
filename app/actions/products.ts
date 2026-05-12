@@ -15,6 +15,27 @@ function parseProductPoints(raw: unknown): number {
   return n
 }
 
+/** kg o litros por unidad vendida; vacío = sin dato físico en listados. */
+function parseProductContentFields(formData: FormData): {
+  content_per_unit: number | null
+  content_unit: "kg" | "l" | null
+} {
+  const rawAmount = (formData.get("content_per_unit") as string | null)?.trim() ?? ""
+  const rawUnit = (formData.get("content_unit") as string | null)?.trim() ?? ""
+  if (!rawAmount && !rawUnit) return { content_per_unit: null, content_unit: null }
+  if (!rawAmount || !rawUnit) {
+    throw new Error("Indica cantidad por unidad y unidad (kg o litros), o deja ambos campos vacíos")
+  }
+  const n = Number.parseFloat(rawAmount.replace(",", "."))
+  if (!Number.isFinite(n) || n <= 0) {
+    throw new Error("La cantidad por unidad debe ser un número mayor que 0")
+  }
+  if (rawUnit !== "kg" && rawUnit !== "l") {
+    throw new Error("Unidad inválida: use kg o litros (l)")
+  }
+  return { content_per_unit: n, content_unit: rawUnit }
+}
+
 export async function getProducts() {
   const supabase = createServerClient()
 
@@ -69,6 +90,7 @@ export async function createProduct(formData: FormData) {
     const name = formData.get("name") as string
     const description = formData.get("description") as string
     const points = parseProductPoints(formData.get("points"))
+    const { content_per_unit, content_unit } = parseProductContentFields(formData)
     const active = formData.get("active") === "true"
     const imageFile = formData.get("image") as File
 
@@ -109,6 +131,8 @@ export async function createProduct(formData: FormData) {
         name,
         description,
         points,
+        content_per_unit,
+        content_unit,
         active,
         image_url: imageUrl,
       })
@@ -132,6 +156,7 @@ export async function updateProduct(id: string, formData: FormData) {
     const name = formData.get("name") as string
     const description = formData.get("description") as string
     const points = parseProductPoints(formData.get("points"))
+    const { content_per_unit, content_unit } = parseProductContentFields(formData)
     const active = formData.get("active") === "true"
     const imageFile = formData.get("image") as File
     const currentImageUrl = formData.get("currentImageUrl") as string
@@ -189,6 +214,8 @@ export async function updateProduct(id: string, formData: FormData) {
         name,
         description,
         points,
+        content_per_unit,
+        content_unit,
         active,
         image_url: imageUrl,
         updated_at: new Date().toISOString(),
@@ -299,7 +326,7 @@ export async function getProductsSimple() {
   try {
     const { data, error } = await supabase
       .from("products")
-      .select("id, name, points")
+      .select("id, name, points, content_per_unit, content_unit")
       .eq("active", true)
       .order("name", { ascending: true })
 

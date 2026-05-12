@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Switch } from "@/components/ui/switch"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useToast } from "@/hooks/use-toast"
 import { getProductById, updateProduct } from "@/app/actions/products"
 import { useGlobalCache } from "@/lib/global-cache"
@@ -31,6 +32,8 @@ export default function EditarProductoPage() {
     name: "",
     description: "",
     points: "0",
+    content_per_unit: "",
+    content_unit: "" as "" | "kg" | "l",
     active: true,
   })
 
@@ -43,10 +46,18 @@ export default function EditarProductoPage() {
             product.points !== null && product.points !== undefined
               ? String(product.points).replace(",", ".")
               : "0"
+          const cpu =
+            product.content_per_unit != null && product.content_per_unit !== undefined
+              ? String(product.content_per_unit).replace(",", ".")
+              : ""
+          const rawUnit = product.content_unit as string | null | undefined
+          const unitOk = rawUnit === "kg" || rawUnit === "l" ? rawUnit : ""
           setFormData({
             name: product.name || "",
             description: product.description || "",
             points: pts,
+            content_per_unit: cpu,
+            content_unit: unitOk,
             active: product.active !== false,
           })
 
@@ -256,6 +267,45 @@ export default function EditarProductoPage() {
                 min="0"
                 required
               />
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="content_per_unit">Contenido por envase (opcional)</Label>
+                <Input
+                  id="content_per_unit"
+                  name="content_per_unit"
+                  type="number"
+                  inputMode="decimal"
+                  step="any"
+                  min="0"
+                  placeholder="Ej. 20"
+                  value={formData.content_per_unit}
+                  onChange={handleChange}
+                />
+                <p className="text-xs text-muted-foreground">Litros o kg por unidad vendida.</p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="content_unit">Unidad</Label>
+                <Select
+                  value={formData.content_unit === "" ? "none" : formData.content_unit}
+                  onValueChange={(v) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      content_unit: v === "none" ? "" : (v as "kg" | "l"),
+                    }))
+                  }
+                >
+                  <SelectTrigger id="content_unit">
+                    <SelectValue placeholder="Sin dato físico" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Sin dato físico</SelectItem>
+                    <SelectItem value="l">Litros (L)</SelectItem>
+                    <SelectItem value="kg">Kilogramos (kg)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
 
             <div className="space-y-2">

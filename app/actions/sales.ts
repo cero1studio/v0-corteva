@@ -2,6 +2,7 @@
 
 import { createServerSupabaseClient } from "@/lib/supabase/server"
 import { revalidatePath } from "next/cache"
+import { toContestPoints } from "@/lib/goals"
 
 export async function registerSale(formData: FormData) {
   const supabase = createServerSupabaseClient()
@@ -25,12 +26,12 @@ export async function registerSale(formData: FormData) {
     if (points && points !== "0" && points !== "") {
       finalPoints = Number.parseFloat(points)
     } else if (price && price !== "0" && price !== "") {
-      finalPoints = Number.parseFloat(price) * Number.parseInt(quantity)
+      const qty = Number.parseFloat(String(quantity).replace(",", "."))
+      finalPoints = Number.parseFloat(price) * (Number.isFinite(qty) ? qty : 0)
     } else {
-      // Obtener precio del producto
       const { data: product, error: productError } = await supabase
         .from("products")
-        .select("price")
+        .select("points")
         .eq("id", product_id)
         .single()
 
@@ -38,19 +39,26 @@ export async function registerSale(formData: FormData) {
         throw new Error("No se pudo obtener información del producto")
       }
 
-      finalPoints = (product.price || 0) * Number.parseInt(quantity)
+      const perUnit = toContestPoints((product as { points: unknown }).points)
+      const qty = Number.parseFloat(String(quantity).replace(",", "."))
+      if (!Number.isFinite(qty) || qty <= 0) {
+        throw new Error("Cantidad inválida")
+      }
+      finalPoints = perUnit * qty
     }
 
     if (!finalPoints || finalPoints <= 0) {
       throw new Error("Los puntos calculados no son válidos")
     }
 
+    const qtyInsert = Number.parseFloat(String(quantity).replace(",", ".")) || 0
+
     const { data, error } = await supabase
       .from("sales")
       .insert([
         {
           product_id: product_id,
-          quantity: Number.parseInt(quantity),
+          quantity: qtyInsert,
           points: finalPoints,
           representative_id: userId,
           team_id: team_id,
@@ -151,7 +159,7 @@ export async function getAllSales() {
   const supabase = createServerSupabaseClient()
 
   try {
-    // Primero obtenemos las ventas básicas (sin kilos ya que se calcula dinámicamente)
+    // Ventas con campos base (puntos del concurso; no hay volumen/peso derivado de puntos)
     const { data: salesData, error: salesError } = await supabase
       .from("sales")
       .select(`
@@ -179,7 +187,7 @@ export async function getAllSales() {
     const productIds = [...new Set(salesData.map((sale) => sale.product_id))]
     const { data: products, error: productsError } = await supabase
       .from("products")
-      .select("id, name, image_url")
+      .select("id, name, image_url, content_per_unit, content_unit")
       .in("id", productIds)
 
     if (productsError) {
@@ -258,6 +266,8 @@ export async function getAllSales() {
               id: product.id,
               name: product.name,
               image_url: product.image_url,
+              content_per_unit: product.content_per_unit,
+              content_unit: product.content_unit,
             }
           : null,
         representative: profile
@@ -317,16 +327,16 @@ export async function createSale(formData: FormData) {
     // Calcular puntos finales
     let finalPoints = 0
 
-    // Prioridad: points > price > precio del producto
+    // Prioridad: points > price > puntos del producto × cantidad
     if (points && points !== "0" && points !== "") {
       finalPoints = Number.parseFloat(points)
     } else if (price && price !== "0" && price !== "") {
-      finalPoints = Number.parseFloat(price) * Number.parseInt(quantity)
+      const qty = Number.parseFloat(String(quantity).replace(",", "."))
+      finalPoints = Number.parseFloat(price) * (Number.isFinite(qty) ? qty : 0)
     } else {
-      // Obtener precio del producto
       const { data: product, error: productError } = await supabase
         .from("products")
-        .select("price")
+        .select("points")
         .eq("id", product_id)
         .single()
 
@@ -334,7 +344,12 @@ export async function createSale(formData: FormData) {
         throw new Error("No se pudo obtener información del producto")
       }
 
-      finalPoints = (product.price || 0) * Number.parseInt(quantity)
+      const perUnit = toContestPoints((product as { points: unknown }).points)
+      const qty = Number.parseFloat(String(quantity).replace(",", "."))
+      if (!Number.isFinite(qty) || qty <= 0) {
+        throw new Error("Cantidad inválida")
+      }
+      finalPoints = perUnit * qty
     }
 
     // Validar que los puntos finales son válidos
@@ -357,9 +372,11 @@ export async function createSale(formData: FormData) {
       throw new Error("El representante no tiene un equipo asignado")
     }
 
+    const qtyInsert = Number.parseFloat(String(quantity).replace(",", ".")) || 0
+
     console.log("Creando venta con datos:", {
       product_id,
-      quantity: Number.parseInt(quantity),
+      quantity: qtyInsert,
       points: finalPoints,
       representative_id,
       team_id: representative.team_id,
@@ -370,7 +387,7 @@ export async function createSale(formData: FormData) {
       .insert([
         {
           product_id,
-          quantity: Number.parseInt(quantity),
+          quantity: qtyInsert,
           points: finalPoints,
           representative_id,
           team_id: representative.team_id,
@@ -418,7 +435,7 @@ export async function updateSale(id: string, formData: FormData) {
       .from("sales")
       .update({
         product_id,
-        quantity: Number.parseInt(quantity),
+        quantity: Number.parseFloat(String(quantity).replace(",", ".")) || 0,
         points: Number.parseFloat(points),
         representative_id,
         team_id: representative.team_id,

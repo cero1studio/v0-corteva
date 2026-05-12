@@ -166,6 +166,8 @@ export interface Database {
           name: string
           description: string | null
           points: number
+          content_per_unit: number | null
+          content_unit: string | null
           created_at: string
           updated_at: string
         }
@@ -174,6 +176,8 @@ export interface Database {
           name: string
           description?: string | null
           points: number
+          content_per_unit?: number | null
+          content_unit?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -182,6 +186,8 @@ export interface Database {
           name?: string
           description?: string | null
           points?: number
+          content_per_unit?: number | null
+          content_unit?: string | null
           created_at?: string
           updated_at?: string
         }

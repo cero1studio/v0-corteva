@@ -14,7 +14,14 @@ export type CapitanVentaItem = {
   created_at: string
   representative_id: string
   product_id: string
-  products: { id: string; name: string; points: number; image_url?: string | null }
+  products: {
+    id: string
+    name: string
+    points: number
+    image_url?: string | null
+    content_per_unit?: number | null
+    content_unit?: string | null
+  }
   user_profile: {
     id: string
     full_name: string
@@ -129,7 +136,10 @@ export async function getCapitanVentasForSession(): Promise<
     const repIds = [...new Set(salesRows.map((s) => s.representative_id))]
 
     const [productsRes, profilesRes] = await Promise.all([
-      adminSupabase.from("products").select("id, name, points, image_url").in("id", productIds),
+      adminSupabase
+        .from("products")
+        .select("id, name, points, image_url, content_per_unit, content_unit")
+        .in("id", productIds),
       adminSupabase
         .from("profiles")
         .select("id, full_name, team_id, teams:team_id(name)")
@@ -149,6 +159,8 @@ export async function getCapitanVentasForSession(): Promise<
       name: string
       points: number
       image_url?: string | null
+      content_per_unit?: number | null
+      content_unit?: string | null
     }[]
     const profilesData = (profilesRes.data ?? []) as ProfileJoinRow[]
 
@@ -168,6 +180,8 @@ export async function getCapitanVentasForSession(): Promise<
           name: "Producto desconocido",
           points: 0,
           image_url: null,
+          content_per_unit: null,
+          content_unit: null,
         },
         user_profile: prof
           ? mapProfileRow(prof as ProfileJoinRow)
@@ -217,6 +231,8 @@ export type CapitanProductoRegistro = {
   points: number
   image_url: string | null
   description: string | null
+  content_per_unit: number | null
+  content_unit: string | null
 }
 
 export async function getCapitanRegistroVentaData(): Promise<
@@ -232,7 +248,7 @@ export async function getCapitanRegistroVentaData(): Promise<
     const [productsRes, configRes] = await Promise.all([
       adminSupabase
         .from("products")
-        .select("id, name, points, image_url, description")
+        .select("id, name, points, image_url, description, content_per_unit, content_unit")
         .eq("active", true)
         .order("name"),
       adminSupabase.from("system_config").select("value").eq("key", "puntos_para_gol").maybeSingle(),
