@@ -168,6 +168,8 @@ export interface Database {
           points: number
           content_per_unit: number | null
           content_unit: string | null
+          active: boolean
+          image_url: string | null
           created_at: string
           updated_at: string
         }
@@ -178,6 +180,8 @@ export interface Database {
           points: number
           content_per_unit?: number | null
           content_unit?: string | null
+          active?: boolean
+          image_url?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -188,6 +192,8 @@ export interface Database {
           points?: number
           content_per_unit?: number | null
           content_unit?: string | null
+          active?: boolean
+          image_url?: string | null
           created_at?: string
           updated_at?: string
         }

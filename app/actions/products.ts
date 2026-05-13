@@ -296,23 +296,26 @@ export async function getAllProducts() {
 }
 
 export async function toggleProductStatus(id: string, isActive: boolean) {
-  const supabase = createServerClient()
-
   try {
-    const { data, error } = await supabase
+    // Service role: evita fallos por RLS al devolver filas tras UPDATE (p. ej. PGRST116 con .single()).
+    const { data, error } = await adminSupabase
       .from("products")
       .update({
         active: isActive,
         updated_at: new Date().toISOString(),
       })
       .eq("id", id)
-      .select()
-      .single()
+      .select("id")
 
-    if (error) throw new Error(`Error al cambiar estado del producto: ${error.message}`)
+    if (error) {
+      throw new Error(`Error al cambiar estado del producto: ${error.message}`)
+    }
+    if (!data?.length) {
+      throw new Error("No se actualizó ningún producto (id no encontrado)")
+    }
 
     revalidatePath("/admin/productos")
-    return { success: true, data }
+    return { success: true, data: data[0] }
   } catch (error: any) {
     console.error("Error en toggleProductStatus:", error)
     return { success: false, error: error.message }
