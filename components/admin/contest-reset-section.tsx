@@ -26,6 +26,7 @@ const defaultOptions: ContestResetOptions = {
   freeKickGoals: false,
   penalties: false,
   retoPublicado: false,
+  users: false,
 }
 
 export function ContestResetSection() {
@@ -159,6 +160,21 @@ export function ContestResetSection() {
                   </p>
                 </div>
               </label>
+              <label className="flex cursor-pointer items-start gap-3 rounded-lg border p-3 hover:bg-muted/40 sm:col-span-2">
+                <Checkbox
+                  checked={options.users}
+                  onCheckedChange={(v) => setOption("users", v === true)}
+                  id="reset-users"
+                />
+                <div>
+                  <Label htmlFor="reset-users" className="cursor-pointer font-medium text-destructive">
+                    Todos los usuarios (excepto Admin)
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    Elimina masivamente a todos los jugadores, capitanes, vendedores y directores técnicos del sistema.
+                  </p>
+                </div>
+              </label>
             </div>
           </div>
 
@@ -198,6 +214,7 @@ export function ContestResetSection() {
               {options.freeKickGoals && <span className="block text-foreground">• Tiros libres</span>}
               {options.penalties && <span className="block text-foreground">• Penaltis e historial</span>}
               {options.retoPublicado && <span className="block text-foreground">• Texto del reto y estado desactivado</span>}
+              {options.users && <span className="block text-destructive font-bold">• Eliminación masiva de usuarios</span>}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

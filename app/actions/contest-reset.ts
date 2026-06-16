@@ -23,6 +23,8 @@ export type ContestResetOptions = {
   penalties: boolean
   /** Vacía `reto_actual` y pone `reto_activo` en false (system_config). */
   retoPublicado: boolean
+  /** Elimina todos los usuarios excepto los que tienen rol 'admin' */
+  users: boolean
 }
 
 const NIL_UUID = "00000000-0000-0000-0000-000000000000"
@@ -126,7 +128,8 @@ export async function executeContestReset(
       options.competitorClients ||
       options.freeKickGoals ||
       options.penalties ||
-      options.retoPublicado
+      options.retoPublicado ||
+      options.users
     if (!anySelected) {
       return { success: false, error: "Selecciona al menos un tipo de dato a borrar." }
     }
@@ -140,6 +143,22 @@ export async function executeContestReset(
     } catch (e: unknown) {
       const code = e instanceof Error ? e.message : AUTH_ERROR_CODES.AUTH_ERROR
       return { success: false, error: getErrorMessage(code) }
+    }
+
+    if (options.users) {
+      const { data: usersToDelete, error: fetchErr } = await db.from("profiles").select("id").neq("role", "admin")
+      if (fetchErr) {
+        console.error("contest-reset users fetch:", fetchErr)
+        return { success: false, error: `No se pudieron obtener los usuarios: ${fetchErr.message}` }
+      }
+      if (usersToDelete && usersToDelete.length > 0) {
+        for (const u of usersToDelete) {
+          const { error: profileErr } = await db.from("profiles").delete().eq("id", u.id)
+          if (profileErr) console.warn(`Error borrando perfil ${u.id}:`, profileErr)
+          const { error: authErr } = await db.auth.admin.deleteUser(u.id)
+          if (authErr) console.warn(`Error borrando auth.user ${u.id}:`, authErr)
+        }
+      }
     }
 
     if (options.penalties) {
