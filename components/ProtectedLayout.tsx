@@ -42,7 +42,7 @@ function getDashboardRoute(role: string, hasTeam: boolean) {
     case "supervisor":
       return "/supervisor/dashboard"
     case "representante":
-      return "/representante/dashboard"
+      return "/vendedor/dashboard"
     case "arbitro":
       return "/arbitro/dashboard"
     default:

@@ -78,8 +78,8 @@ export async function registerCapitanCompetitorClient(
     }
 
     const userId = session.user.id
-    if (session.user.role !== "capitan") {
-      return { success: false, error: "Solo los capitanes pueden registrar clientes" }
+    if (session.user.role !== "capitan" && session.user.role !== "vendedor") {
+      return { success: false, error: "No tienes permiso para registrar clientes" }
     }
 
     const {

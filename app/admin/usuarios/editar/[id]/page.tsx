@@ -41,6 +41,8 @@ export default function EditarUsuarioPage({ params }: PageProps) {
   const [teamId, setTeamId] = useState("")
   const [zoneId, setZoneId] = useState("")
   const [distributorId, setDistributorId] = useState("")
+  const [vendedorName, setVendedorName] = useState("")
+  const [tecnicoName, setTecnicoName] = useState("")
   const [teams, setTeams] = useState<Team[]>([])
   const [zones, setZones] = useState<Zone[]>([])
   const [distributors, setDistributors] = useState<Distributor[]>([])
@@ -84,6 +86,8 @@ export default function EditarUsuarioPage({ params }: PageProps) {
         setTeamId(userResult.data.team_id || "none")
         setZoneId(userResult.data.zone_id || "none")
         setDistributorId(userResult.data.distributor_id || "none")
+        setVendedorName(userResult.data.vendedor_name || "")
+        setTecnicoName(userResult.data.tecnico_name || "")
       }
 
       if (!zonesResult.error) setZones(zonesResult.data || [])
@@ -140,6 +144,10 @@ export default function EditarUsuarioPage({ params }: PageProps) {
       formData.append("zoneId", zoneId === "none" ? "" : zoneId)
       formData.append("distributorId", distributorId === "none" ? "" : distributorId)
       formData.append("teamId", teamId === "none" ? "" : teamId)
+      if (role === "capitan") {
+        formData.append("vendedorName", vendedorName)
+        formData.append("tecnicoName", tecnicoName)
+      }
       if (password.trim()) formData.append("password", password)
 
       const result = await updateUser(userId, formData)
@@ -276,7 +284,6 @@ export default function EditarUsuarioPage({ params }: PageProps) {
                   <SelectItem value="admin">Administrador</SelectItem>
                   <SelectItem value="capitan">Capitán</SelectItem>
                   <SelectItem value="director_tecnico">Director Técnico</SelectItem>
-                  <SelectItem value="vendedor">Vendedor</SelectItem>
                   <SelectItem value="arbitro">Árbitro</SelectItem>
                 </SelectContent>
               </Select>
@@ -334,6 +341,31 @@ export default function EditarUsuarioPage({ params }: PageProps) {
                     </SelectContent>
                   </Select>
                 </div>
+
+                {role === "capitan" && (
+                  <>
+                    <div className="space-y-2">
+                      <Label htmlFor="vendedorName">Nombre del Vendedor (opcional)</Label>
+                      <Input
+                        id="vendedorName"
+                        type="text"
+                        value={vendedorName}
+                        onChange={(e) => setVendedorName(e.target.value)}
+                        placeholder="Ej. Juan Pérez"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="tecnicoName">Nombre del Técnico (opcional)</Label>
+                      <Input
+                        id="tecnicoName"
+                        type="text"
+                        value={tecnicoName}
+                        onChange={(e) => setTecnicoName(e.target.value)}
+                        placeholder="Ej. María Gómez"
+                      />
+                    </div>
+                  </>
+                )}
               </>
             )}
           </CardContent>

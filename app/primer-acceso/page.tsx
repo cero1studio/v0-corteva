@@ -132,7 +132,7 @@ export default function PrimerAccesoPage() {
 
       // Redirigir después de mostrar mensaje de éxito
       setTimeout(() => {
-        router.push("/representante/dashboard")
+        router.push("/vendedor/dashboard")
       }, 2000)
     }, 1500)
   }

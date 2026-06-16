@@ -134,8 +134,8 @@ export function DashboardNav({ role, onMobileMenuClose }: NavProps) {
         ]
       case "representante":
         return [
-          { href: "/representante/dashboard", label: "Dashboard", icon: Home },
-          { href: "/representante/registrar-venta", label: "Registrar Venta", icon: ShoppingCart },
+          { href: "/vendedor/dashboard", label: "Dashboard", icon: Home },
+          { href: "/vendedor/registrar-venta", label: "Registrar Venta", icon: ShoppingCart },
           { href: "/perfil", label: "Perfil", icon: User },
         ]
       case "arbitro":

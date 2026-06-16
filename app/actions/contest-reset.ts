@@ -25,6 +25,8 @@ export type ContestResetOptions = {
   retoPublicado: boolean
   /** Elimina todos los usuarios excepto los que tienen rol 'admin' */
   users: boolean
+  /** Elimina todos los equipos */
+  teams: boolean
 }
 
 const NIL_UUID = "00000000-0000-0000-0000-000000000000"
@@ -158,6 +160,17 @@ export async function executeContestReset(
           const { error: authErr } = await db.auth.admin.deleteUser(u.id)
           if (authErr) console.warn(`Error borrando auth.user ${u.id}:`, authErr)
         }
+      }
+    }
+
+    if (options.teams) {
+      // 1. Desvincular todos los usuarios de sus equipos
+      await db.from("profiles").update({ team_id: null }).neq("id", NIL_UUID)
+      // 2. Borrar todos los equipos
+      const { error: teamsErr } = await db.from("teams").delete().neq("id", NIL_UUID)
+      if (teamsErr) {
+        console.error("contest-reset teams:", teamsErr)
+        return { success: false, error: `No se pudieron borrar los equipos: ${teamsErr.message}` }
       }
     }
 

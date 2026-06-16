@@ -144,13 +144,14 @@ export default function CrearEquipoPage() {
 
       console.log("Equipo creado:", teamData)
 
-      // 2. Actualizar el perfil del usuario
+      // 2. Actualizar el perfil del usuario Y todos los miembros de la misma zona y distribuidor
       const { error: updateError } = await supabase
         .from("profiles")
         .update({
           team_id: teamData.id,
         })
-        .eq("id", profile.id)
+        .eq("zone_id", profile.zone_id)
+        .eq("distributor_id", profile.distributor_id)
 
       if (updateError) {
         throw new Error(`Error al actualizar perfil: ${updateError.message}`)

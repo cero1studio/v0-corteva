@@ -285,8 +285,8 @@ export async function registerCapitanVenta(input: {
     }
 
     const userId = session.user.id
-    if (session.user.role !== "capitan") {
-      return { success: false, error: "Solo los capitanes pueden registrar ventas" }
+    if (session.user.role !== "capitan" && session.user.role !== "vendedor") {
+      return { success: false, error: "No tienes permiso para registrar ventas" }
     }
 
     const { productId, quantity, saleDate } = input

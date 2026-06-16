@@ -12,17 +12,17 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
-import Papa from "papaparse"
+import * as XLSX from "xlsx"
 import { supabase } from "@/lib/supabase/client"
 
 interface UserImportData {
   Nombre: string
   Email: string
-  Contrasena: string
   Rol: string
   Zona: string
   Distribuidor: string
-  Equipo: string
+  Vendedor?: string
+  Tecnico?: string
 }
 
 type ResultType = {
@@ -69,16 +69,16 @@ export default function ImportarUsuariosPage() {
   }, [])
 
   const downloadTemplate = () => {
-    const csvContent = "Nombre,Email,Contrasena,Rol,Zona,Distribuidor,Equipo\nJuan Perez,juan@ejemplo.com,password123,vendedor,Antioquia,Agralba Antioquia,Equipo Alfa\nMaria Gomez,maria@ejemplo.com,password123,capitan,Santander,Agralba Santander,Equipo Beta\nCarlos Ruiz,carlos@ejemplo.com,password123,director_tecnico,Antioquia,Agralba Antioquia,Equipo Alfa"
-    
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement("a")
-    link.setAttribute("href", url)
-    link.setAttribute("download", "plantilla_usuarios.csv")
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
+    const wsData = [
+      ["Nombre", "Email", "Rol", "Zona", "Distribuidor", "Vendedor", "Tecnico"],
+      ["Maria Gomez", "maria@ejemplo.com", "capitan", "Santander", "Agralba Santander", "Juan Vendedor", "Pedro Tecnico"],
+      ["Carlos Ruiz", "carlos@ejemplo.com", "director_tecnico", "Antioquia", "Agralba Antioquia", "", ""],
+      ["Ana Juez", "ana@ejemplo.com", "arbitro", "", "", "", ""]
+    ]
+    const ws = XLSX.utils.aoa_to_sheet(wsData)
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, "Plantilla Usuarios")
+    XLSX.writeFile(wb, "plantilla_usuarios.xlsx")
   }
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -88,49 +88,52 @@ export default function ImportarUsuariosPage() {
     setFileSelected(file)
     setResults([])
 
-    Papa.parse(file, {
-      header: true,
-      skipEmptyLines: true,
-      complete: (results) => {
-        // Transform the parsed data to ensure keys match our interface
-        const parsedData = results.data.map((row: any) => ({
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      try {
+        const data = e.target?.result
+        const workbook = XLSX.read(data, { type: "binary" })
+        const sheetName = workbook.SheetNames[0]
+        const worksheet = workbook.Sheets[sheetName]
+        const jsonData = XLSX.utils.sheet_to_json<any>(worksheet)
+
+        const parsedData = jsonData.map((row) => ({
           Nombre: row.Nombre?.trim() || "",
           Email: row.Email?.trim() || "",
-          Contrasena: row.Contrasena?.trim() || "",
           Rol: row.Rol?.trim().toLowerCase() || "",
           Zona: row.Zona?.trim() || "",
           Distribuidor: row.Distribuidor?.trim() || "",
-          Equipo: row.Equipo?.trim() || "",
+          Vendedor: row.Vendedor?.trim() || "",
+          Tecnico: row.Tecnico?.trim() || "",
         }))
-        
-        // Filter out empty rows
+
         const validData = parsedData.filter(u => u.Email && u.Nombre)
-        
+
         if (validData.length === 0) {
           toast({
             title: "Archivo inválido",
-            description: "No se encontraron usuarios válidos en el archivo. Verifica que las cabeceras sean: Nombre, Email, Contrasena, Rol, Zona, Distribuidor, Equipo.",
+            description: "No se encontraron usuarios válidos en el archivo. Verifica que las cabeceras sean: Nombre, Email, Rol, Zona, Distribuidor, Vendedor, Tecnico.",
             variant: "destructive"
           })
           setUsersData([])
           setFileSelected(null)
           return
         }
-        
+
         setUsersData(validData as UserImportData[])
         toast({
           title: "Archivo cargado",
           description: `Se encontraron ${validData.length} usuarios para procesar.`,
         })
-      },
-      error: (error) => {
+      } catch (error: any) {
         toast({
           title: "Error al leer el archivo",
           description: error.message,
           variant: "destructive"
         })
       }
-    })
+    }
+    reader.readAsBinaryString(file)
   }
 
   // Find IDs based on names (case insensitive)
@@ -172,11 +175,17 @@ export default function ImportarUsuariosPage() {
         // Resolve foreign keys
         const zoneId = resolveReference("zone", user.Zona)
         const distributorId = resolveReference("distributor", user.Distribuidor)
-        const teamId = resolveReference("team", user.Equipo)
 
         // Validate required fields based on role
         if (!user.Email || !user.Rol || !user.Nombre) {
           setResults((prev) => [...prev, { user, success: false, action: "error", error: "Email, Nombre y Rol son obligatorios" }])
+          errors++
+          setProgress(((i + 1) / totalUsers) * 100)
+          continue
+        }
+
+        if (user.Rol === "vendedor" || user.Rol === "tecnico") {
+          setResults((prev) => [...prev, { user, success: false, action: "error", error: `El rol '${user.Rol}' ya no es un usuario del sistema (ahora son campos del Capitán)` }])
           errors++
           setProgress(((i + 1) / totalUsers) * 100)
           continue
@@ -203,8 +212,7 @@ export default function ImportarUsuariosPage() {
             // Verificar si necesita actualización
             const needsZoneUpdate = !existingUser.zone_id && zoneId
             const needsDistributorUpdate = !existingUser.distributor_id && distributorId
-            const needsTeamUpdate = !existingUser.team_id && teamId
-            const needsUpdate = !updateOnlyMissing || needsZoneUpdate || needsDistributorUpdate || needsTeamUpdate
+            const needsUpdate = !updateOnlyMissing || needsZoneUpdate || needsDistributorUpdate
 
             if (needsUpdate) {
               const result = await updateUserProfile(existingUser.id, {
@@ -212,7 +220,8 @@ export default function ImportarUsuariosPage() {
                 role: user.Rol,
                 zoneId: zoneId || existingUser.zone_id,
                 distributorId: distributorId || existingUser.distributor_id,
-                teamId: teamId || existingUser.team_id,
+                vendedorName: user.Vendedor,
+                tecnicoName: user.Tecnico,
               })
 
               if (result.error) {
@@ -239,22 +248,17 @@ export default function ImportarUsuariosPage() {
             ])
             skipped++
           } else {
-            if (!user.Contrasena || user.Contrasena.length < 6) {
-              setResults((prev) => [...prev, { user, success: false, action: "error", error: "Contraseña debe tener al menos 6 caracteres para nuevos usuarios" }])
-              errors++
-              setProgress(((i + 1) / totalUsers) * 100)
-              continue
-            }
-
-            // Crear FormData como lo hace el formulario normal
             const formData = new FormData()
             formData.append("email", user.Email)
-            formData.append("password", user.Contrasena)
+            formData.append("password", "Corteva2026*")
             formData.append("full_name", user.Nombre)
             formData.append("role", user.Rol)
             if (zoneId) formData.append("zone_id", zoneId)
             if (distributorId) formData.append("distributor_id", distributorId)
-            if (teamId) formData.append("team_id", teamId)
+            if (user.Rol === "capitan") {
+              if (user.Vendedor) formData.append("vendedor_name", user.Vendedor)
+              if (user.Tecnico) formData.append("tecnico_name", user.Tecnico)
+            }
 
             const result = await createUser(Object.fromEntries(formData))
 

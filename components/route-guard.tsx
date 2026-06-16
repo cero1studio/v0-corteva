@@ -22,9 +22,8 @@ const roleRoutes: Record<string, string[]> = {
   admin: ["/admin"],
   capitan: ["/capitan"],
   director_tecnico: ["/director-tecnico"],
-  arbitro: ["/director-tecnico"],
+  arbitro: ["/arbitro"], // assuming arbitro goes to /arbitro
   supervisor: ["/supervisor"],
-  representante: ["/representante"],
 }
 
 export function RouteGuard({ children }: { children: React.ReactNode }) {
@@ -51,6 +50,7 @@ export function RouteGuard({ children }: { children: React.ReactNode }) {
 
       // Si hay perfil, verificar si tiene acceso a la ruta
       if (user) {
+
         const allowedRoutes = roleRoutes[user.role] || []
         const hasAccess = allowedRoutes.some((route) => pathname?.startsWith(route))
 
@@ -62,7 +62,7 @@ export function RouteGuard({ children }: { children: React.ReactNode }) {
           if (user.role === "capitan" && !user.team_id) {
             router.push("/capitan/crear-equipo")
           } else {
-            const dashboardRoute = `/${user.role}/dashboard`
+            const dashboardRoute = `/${user.role === "director_tecnico" ? "director-tecnico" : user.role}/dashboard`
             router.push(dashboardRoute)
           }
         }

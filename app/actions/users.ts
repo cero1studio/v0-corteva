@@ -209,7 +209,7 @@ export async function testSupabaseConfig() {
 
 export async function createUser(userData: any) {
   try {
-    const { email, password, full_name, role, zone_id, distributor_id, team_id } = userData
+    const { email, password, full_name, role, zone_id, distributor_id, team_id, vendedor_name, tecnico_name } = userData
 
     console.log("Iniciando creación de usuario...")
     console.log("Email:", email)
@@ -265,7 +265,7 @@ export async function createUser(userData: any) {
     console.log("Usuario creado en auth con ID:", authData.user.id)
 
     // Crear perfil en la base de datos
-    const profileData = {
+    const profileData: any = {
       id: authData.user.id,
       email: email,
       full_name: full_name,
@@ -273,6 +273,11 @@ export async function createUser(userData: any) {
       zone_id: zone_id && zone_id !== "none" && zone_id !== "" ? zone_id : null,
       distributor_id: distributor_id && distributor_id !== "none" && distributor_id !== "" ? distributor_id : null,
       team_id: team_id && team_id !== "none" && team_id !== "" ? team_id : null,
+    }
+
+    if (role === "capitan") {
+      if (vendedor_name) profileData.vendedor_name = vendedor_name
+      if (tecnico_name) profileData.tecnico_name = tecnico_name
     }
 
     console.log("Creando perfil:", profileData)
@@ -332,6 +337,8 @@ export async function updateUser(userId: string, formData: FormData) {
     const distributorId = formData.get("distributorId") as string
     const teamId = formData.get("teamId") as string
     const password = formData.get("password") as string
+    const vendedorName = formData.get("vendedorName") as string
+    const tecnicoName = formData.get("tecnicoName") as string
 
     console.log("Datos a actualizar:", {
       email,
@@ -375,13 +382,18 @@ export async function updateUser(userId: string, formData: FormData) {
     console.log("Actualizando perfil en base de datos...")
 
     // Actualizar perfil en la base de datos
-    const updateData = {
+    const updateData: any = {
       email,
       full_name: fullName,
       role,
       zone_id: zoneId === "none" || !zoneId ? null : zoneId,
       distributor_id: distributorId === "none" || !distributorId ? null : distributorId,
       team_id: teamId === "none" || !teamId ? null : teamId,
+    }
+
+    if (role === "capitan") {
+      if (vendedorName !== null) updateData.vendedor_name = vendedorName || null
+      if (tecnicoName !== null) updateData.tecnico_name = tecnicoName || null
     }
 
     const { error: profileError } = await supabase.from("profiles").update(updateData).eq("id", userId)
@@ -884,7 +896,18 @@ export async function updateUserProfile(userId: string, updates: any) {
   try {
     const supabase = createServerClient() // Use the centralized client
 
-    const { error } = await supabase.from("profiles").update(updates).eq("id", userId)
+    const dataToUpdate: any = {}
+    if (updates.fullName !== undefined) dataToUpdate.full_name = updates.fullName
+    if (updates.role !== undefined) dataToUpdate.role = updates.role
+    if (updates.zoneId !== undefined) dataToUpdate.zone_id = updates.zoneId || null
+    if (updates.distributorId !== undefined) dataToUpdate.distributor_id = updates.distributorId || null
+    if (updates.teamId !== undefined) dataToUpdate.team_id = updates.teamId || null
+    
+    // Additional captain fields
+    if (updates.vendedorName !== undefined) dataToUpdate.vendedor_name = updates.vendedorName || null
+    if (updates.tecnicoName !== undefined) dataToUpdate.tecnico_name = updates.tecnicoName || null
+
+    const { error } = await supabase.from("profiles").update(dataToUpdate).eq("id", userId)
 
     if (error) {
       return { error: error.message }

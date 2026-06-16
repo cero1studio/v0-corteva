@@ -448,6 +448,9 @@ function CapitanDashboardContent() {
             Zona: {zoneData?.name || "N/A"} |
             <span className="flex items-center">Distribuidor: {distributorData?.name || "N/A"}</span>
           </div>
+          <div className="text-muted-foreground flex items-center gap-2 mt-1">
+            Vendedor: {userData?.vendedor_name || "N/A"} | Técnico: {userData?.tecnico_name || "N/A"}
+          </div>
         </div>
       </div>
 

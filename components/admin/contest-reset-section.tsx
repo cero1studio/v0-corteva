@@ -27,6 +27,7 @@ const defaultOptions: ContestResetOptions = {
   penalties: false,
   retoPublicado: false,
   users: false,
+  teams: false,
 }
 
 export function ContestResetSection() {
@@ -172,6 +173,21 @@ export function ContestResetSection() {
                   </Label>
                   <p className="text-xs text-muted-foreground">
                     Elimina masivamente a todos los jugadores, capitanes, vendedores y directores técnicos del sistema.
+                  </p>
+                </div>
+              </label>
+              <label className="flex cursor-pointer items-start gap-3 rounded-lg border p-3 hover:bg-muted/40 sm:col-span-2">
+                <Checkbox
+                  checked={options.teams}
+                  onCheckedChange={(v) => setOption("teams", v === true)}
+                  id="reset-teams"
+                />
+                <div>
+                  <Label htmlFor="reset-teams" className="cursor-pointer font-medium text-destructive">
+                    Todos los equipos
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    Elimina masivamente a todos los equipos creados en la plataforma. (También desvincula a los miembros).
                   </p>
                 </div>
               </label>
