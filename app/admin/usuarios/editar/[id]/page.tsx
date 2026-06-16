@@ -139,6 +139,7 @@ export default function EditarUsuarioPage({ params }: PageProps) {
       formData.append("role", role)
       formData.append("zoneId", zoneId === "none" ? "" : zoneId)
       formData.append("distributorId", distributorId === "none" ? "" : distributorId)
+      formData.append("teamId", teamId === "none" ? "" : teamId)
       if (password.trim()) formData.append("password", password)
 
       const result = await updateUser(userId, formData)
