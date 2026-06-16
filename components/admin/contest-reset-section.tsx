@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { Loader2 } from "lucide-react"
 import { AlertTriangle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -49,8 +50,8 @@ export function ContestResetSection() {
       const result = await executeContestReset(password, options)
       if (result.success) {
         toast({
-          title: "Reseteo completado",
-          description: "Se borraron los datos seleccionados y se actualizaron totales de equipos si aplica.",
+          title: "Éxito",
+          description: "El reseteo de datos se ha completado correctamente.",
         })
         setPassword("")
         setOptions({ ...defaultOptions })
@@ -244,7 +245,14 @@ export function ContestResetSection() {
           <AlertDialogFooter>
             <AlertDialogCancel disabled={running}>Cancelar</AlertDialogCancel>
             <Button type="button" variant="destructive" disabled={running} onClick={() => void runReset()}>
-              Sí, borrar
+              {running ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Borrando...
+                </>
+              ) : (
+                "Sí, borrar"
+              )}
             </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
