@@ -18,7 +18,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { useToast } from "@/components/ui/use-toast"
-import { Edit, Trash2, Plus, UserCheck, AlertCircle, Search, Filter } from "lucide-react"
+import { Edit, Trash2, Plus, UserCheck, AlertCircle, Search, Filter, Upload } from "lucide-react"
 import Link from "next/link"
 import { Badge } from "@/components/ui/badge"
 import { EmptyState } from "@/components/empty-state"
@@ -162,12 +162,20 @@ export default function UsuariosPage() {
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="text-3xl font-bold tracking-tight">Usuarios</h2>
-          <Button asChild>
-            <Link href="/admin/usuarios/nuevo">
-              <Plus className="mr-2 h-4 w-4" />
-              Nuevo Usuario
-            </Link>
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" asChild>
+              <Link href="/admin/usuarios/importar">
+                <Upload className="mr-2 h-4 w-4" />
+                Importar CSV
+              </Link>
+            </Button>
+            <Button asChild>
+              <Link href="/admin/usuarios/nuevo">
+                <Plus className="mr-2 h-4 w-4" />
+                Nuevo Usuario
+              </Link>
+            </Button>
+          </div>
         </div>
 
         {/* Filtros */}
