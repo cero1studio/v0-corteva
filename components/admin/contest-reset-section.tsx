@@ -62,6 +62,12 @@ export function ContestResetSection() {
           variant: "destructive",
         })
       }
+    } catch (err: any) {
+      toast({
+        title: "Error inesperado",
+        description: err.message || "Ocurrió un error al procesar la solicitud. Es posible que algunos datos se hayan borrado parcialmente.",
+        variant: "destructive",
+      })
     } finally {
       setRunning(false)
     }

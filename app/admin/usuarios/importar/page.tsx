@@ -354,12 +354,12 @@ export default function ImportarUsuariosPage() {
                   <Input 
                     ref={fileInputRef}
                     type="file" 
-                    accept=".csv" 
+                    accept=".xlsx, .xls, .csv" 
                     onChange={handleFileUpload}
                     className="hidden" 
-                    id="csv-upload"
+                    id="excel-upload"
                   />
-                  <Label htmlFor="csv-upload" className="cursor-pointer">
+                  <Label htmlFor="excel-upload" className="cursor-pointer">
                     <div className="bg-primary text-primary-foreground hover:bg-primary/90 inline-flex items-center justify-center rounded-md text-sm font-medium h-10 px-4 py-2">
                       Seleccionar Archivo
                     </div>

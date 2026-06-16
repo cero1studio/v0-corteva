@@ -131,7 +131,8 @@ export async function executeContestReset(
       options.freeKickGoals ||
       options.penalties ||
       options.retoPublicado ||
-      options.users
+      options.users ||
+      options.teams
     if (!anySelected) {
       return { success: false, error: "Selecciona al menos un tipo de dato a borrar." }
     }
@@ -154,11 +155,20 @@ export async function executeContestReset(
         return { success: false, error: `No se pudieron obtener los usuarios: ${fetchErr.message}` }
       }
       if (usersToDelete && usersToDelete.length > 0) {
-        for (const u of usersToDelete) {
-          const { error: profileErr } = await db.from("profiles").delete().eq("id", u.id)
-          if (profileErr) console.warn(`Error borrando perfil ${u.id}:`, profileErr)
-          const { error: authErr } = await db.auth.admin.deleteUser(u.id)
-          if (authErr) console.warn(`Error borrando auth.user ${u.id}:`, authErr)
+        // Borrar perfiles de forma masiva
+        const { error: profileErr } = await db.from("profiles").delete().neq("role", "admin")
+        if (profileErr) console.warn("Error borrando perfiles masivamente:", profileErr)
+
+        // Borrar auth users en lotes de 10 para evitar timeouts
+        const chunkSize = 10
+        for (let i = 0; i < usersToDelete.length; i += chunkSize) {
+          const chunk = usersToDelete.slice(i, i + chunkSize)
+          await Promise.all(
+            chunk.map(async (u) => {
+              const { error: authErr } = await db.auth.admin.deleteUser(u.id)
+              if (authErr) console.warn(`Error borrando auth.user ${u.id}:`, authErr)
+            })
+          )
         }
       }
     }

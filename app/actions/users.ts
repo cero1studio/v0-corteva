@@ -148,8 +148,8 @@ export async function deleteUser(userId: string) {
     // 1. Desvincular como capitán de equipo
     await supabase.from("teams").update({ captain_id: null }).eq("captain_id", userId)
     
-    // 2. Eliminar ventas registradas por el usuario
-    await supabase.from("sales").delete().eq("user_id", userId)
+    // 2. Eliminar ventas registradas por el usuario o donde sea representante
+    await supabase.from("sales").delete().or(`user_id.eq.${userId},representative_id.eq.${userId}`)
     
     // 3. Eliminar clientes de competencia reportados por el usuario
     await supabase.from("competitor_clients").delete().eq("user_id", userId)
@@ -162,7 +162,7 @@ export async function deleteUser(userId: string) {
 
     if (profileError) {
       console.error("Error al eliminar perfil:", profileError)
-      return { error: profileError.message }
+      return { error: `No se pudo eliminar el perfil (posible restricción de base de datos): ${profileError.message}` }
     }
 
     // Luego eliminamos el usuario de auth
