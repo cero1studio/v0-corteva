@@ -148,29 +148,14 @@ export async function executeContestReset(
       return { success: false, error: getErrorMessage(code) }
     }
 
+    // Primero recolectamos usuarios si se van a borrar, pero los borramos al final
+    let usersToDelete: any[] = []
     if (options.users) {
-      const { data: usersToDelete, error: fetchErr } = await db.from("profiles").select("id").neq("role", "admin")
+      const { data, error: fetchErr } = await db.from("profiles").select("id").neq("role", "admin")
       if (fetchErr) {
-        console.error("contest-reset users fetch:", fetchErr)
         return { success: false, error: `No se pudieron obtener los usuarios: ${fetchErr.message}` }
       }
-      if (usersToDelete && usersToDelete.length > 0) {
-        // Borrar perfiles de forma masiva
-        const { error: profileErr } = await db.from("profiles").delete().neq("role", "admin")
-        if (profileErr) console.warn("Error borrando perfiles masivamente:", profileErr)
-
-        // Borrar auth users en lotes de 10 para evitar timeouts
-        const chunkSize = 10
-        for (let i = 0; i < usersToDelete.length; i += chunkSize) {
-          const chunk = usersToDelete.slice(i, i + chunkSize)
-          await Promise.all(
-            chunk.map(async (u) => {
-              const { error: authErr } = await db.auth.admin.deleteUser(u.id)
-              if (authErr) console.warn(`Error borrando auth.user ${u.id}:`, authErr)
-            })
-          )
-        }
-      }
+      usersToDelete = data || []
     }
 
     if (options.teams) {
@@ -229,6 +214,25 @@ export async function executeContestReset(
         const msg = e instanceof Error ? e.message : "Error al resetear reto"
         console.error("contest-reset reto config:", e)
         return { success: false, error: msg }
+      }
+    }
+
+    // AHORA borramos perfiles de usuario, porque ya se limpiaron las dependencias (si las marcaron)
+    if (options.users && usersToDelete.length > 0) {
+      // 1. Limpiar llaves foraneas si es que no borraron ventas o equipos
+      await db.from("teams").update({ captain_id: null }).neq("id", NIL_UUID)
+      
+      const { error: profileErr } = await db.from("profiles").delete().neq("role", "admin")
+      if (profileErr) {
+        console.error("Error borrando perfiles masivamente:", profileErr)
+        return { success: false, error: `No se pudieron borrar los perfiles (posible restricción de llave foránea que no se seleccionó para borrado): ${profileErr.message}` }
+      }
+
+      // Borrar auth users en lotes muy rápidos (20) sin esperar tanto si falla
+      const chunkSize = 20
+      for (let i = 0; i < usersToDelete.length; i += chunkSize) {
+        const chunk = usersToDelete.slice(i, i + chunkSize)
+        await Promise.allSettled(chunk.map(u => db.auth.admin.deleteUser(u.id)))
       }
     }
 

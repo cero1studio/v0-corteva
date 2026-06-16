@@ -56,6 +56,7 @@ export function ContestResetSection() {
         setOptions({ ...defaultOptions })
         setConfirmOpen(false)
       } else {
+        setConfirmOpen(false)
         toast({
           title: "No se pudo completar",
           description: result.error || "Error desconocido",
@@ -63,6 +64,7 @@ export function ContestResetSection() {
         })
       }
     } catch (err: any) {
+      setConfirmOpen(false)
       toast({
         title: "Error inesperado",
         description: err.message || "Ocurrió un error al procesar la solicitud. Es posible que algunos datos se hayan borrado parcialmente.",
