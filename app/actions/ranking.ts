@@ -443,34 +443,84 @@ export async function getSalesRankingByZone(zoneId?: string) {
       console.error("Error fetching teams for sales ranking:", teamsError)
       return { success: false, error: teamsError.message }
     }
+    
+    if (!teams || teams.length === 0) {
+      return { success: true, data: [] }
+    }
+
+    const teamIds = teams.map((t) => t.id)
+
+    // Consultas en lote: Perfiles y Ventas
+    const { data: allMembers } = await supabase.from("profiles").select("id, team_id").in("team_id", teamIds)
+    const allMemberIds = allMembers?.map((m) => m.id) || []
+    
+    const teamMemberMap = new Map<string, string[]>()
+    if (allMembers) {
+      allMembers.forEach((member) => {
+        if (member.team_id) {
+          if (!teamMemberMap.has(member.team_id)) teamMemberMap.set(member.team_id, [])
+          teamMemberMap.get(member.team_id)!.push(member.id)
+        }
+      })
+    }
+
+    const [salesByRepResult, salesByTeamResult] = await Promise.allSettled([
+      allMemberIds.length > 0
+        ? supabase.from("sales").select("points, representative_id").in("representative_id", allMemberIds)
+        : Promise.resolve({ data: [], error: null }),
+      teamIds.length > 0
+        ? supabase.from("sales").select("points, team_id").in("team_id", teamIds)
+        : Promise.resolve({ data: [], error: null }),
+    ])
+
+    const salesByRep = salesByRepResult.status === "fulfilled" ? salesByRepResult.value.data || [] : []
+    const salesByTeam = salesByTeamResult.status === "fulfilled" ? salesByTeamResult.value.data || [] : []
+
+    const salesByRepMap = new Map<string, { count: number; points: number }>()
+    salesByRep.forEach((sale) => {
+      if (sale.representative_id) {
+        const current = salesByRepMap.get(sale.representative_id) || { count: 0, points: 0 }
+        salesByRepMap.set(sale.representative_id, {
+          count: current.count + 1,
+          points: current.points + toContestPoints(sale.points),
+        })
+      }
+    })
+
+    const salesByTeamMap = new Map<string, { count: number; points: number }>()
+    salesByTeam.forEach((sale) => {
+      if (sale.team_id) {
+        const current = salesByTeamMap.get(sale.team_id) || { count: 0, points: 0 }
+        salesByTeamMap.set(sale.team_id, {
+          count: current.count + 1,
+          points: current.points + toContestPoints(sale.points),
+        })
+      }
+    })
 
     const ranking: SalesRanking[] = []
 
-    for (const team of teams || []) {
-      // Obtener miembros del equipo
-      const { data: teamMembers } = await supabase.from("profiles").select("id").eq("team_id", team.id)
-
-      const memberIds = teamMembers?.map((member) => member.id) || []
-
-      // Obtener ventas del equipo a través de los miembros y ventas directas del equipo
-      const [salesByRepResult, salesByTeamResult] = await Promise.allSettled([
-        memberIds.length > 0
-          ? supabase.from("sales").select("points").in("representative_id", memberIds)
-          : Promise.resolve({ data: [], error: null }),
-        supabase.from("sales").select("points").eq("team_id", team.id),
-      ])
-
-      const salesByRep = salesByRepResult.status === "fulfilled" ? salesByRepResult.value.data || [] : []
-      const salesByTeam = salesByTeamResult.status === "fulfilled" ? salesByTeamResult.value.data || [] : []
+    for (const team of teams) {
+      const memberIds = teamMemberMap.get(team.id) || []
 
       let totalSales = 0
       let totalPoints = 0
 
-      totalSales += salesByRep.length
-      totalPoints += salesByRep.reduce((sum, sale) => sum + toContestPoints(sale.points), 0)
+      // Sumar ventas por representantes
+      memberIds.forEach((memberId) => {
+        const repSales = salesByRepMap.get(memberId)
+        if (repSales) {
+          totalSales += repSales.count
+          totalPoints += repSales.points
+        }
+      })
 
-      totalSales += salesByTeam.length
-      totalPoints += salesByTeam.reduce((sum, sale) => sum + toContestPoints(sale.points), 0)
+      // Sumar ventas directas del equipo
+      const teamSales = salesByTeamMap.get(team.id)
+      if (teamSales) {
+        totalSales += teamSales.count
+        totalPoints += teamSales.points
+      }
 
       ranking.push({
         position: 0, // Se asignará después del ordenamiento
@@ -520,54 +570,75 @@ export async function getClientsRankingByZone(zoneId?: string) {
       console.error("Error fetching teams for clients ranking:", teamsError)
       return { success: false, error: teamsError.message }
     }
+    
+    if (!teams || teams.length === 0) {
+      return { success: true, data: [] }
+    }
+
+    const teamIds = teams.map((t) => t.id)
+
+    // Obtener representantes
+    const { data: allReps } = await supabase.from("profiles").select("id, team_id").in("team_id", teamIds)
+    const allRepIds = allReps?.map(r => r.id) || []
+
+    const teamRepsMap = new Map<string, string[]>()
+    if (allReps) {
+      allReps.forEach(rep => {
+        if (rep.team_id) {
+          if (!teamRepsMap.has(rep.team_id)) teamRepsMap.set(rep.team_id, [])
+          teamRepsMap.get(rep.team_id)!.push(rep.id)
+        }
+      })
+    }
+
+    // Consultar clientes en lote
+    const [clientsByRepResult, clientsByTeamResult] = await Promise.allSettled([
+      allRepIds.length > 0
+        ? supabase.from("competitor_clients").select("id, representative_id").in("representative_id", allRepIds)
+        : Promise.resolve({ data: [], error: null }),
+      teamIds.length > 0
+        ? supabase.from("competitor_clients").select("id, team_id").in("team_id", teamIds)
+        : Promise.resolve({ data: [], error: null }),
+    ])
+
+    const clientsByRep = clientsByRepResult.status === "fulfilled" ? clientsByRepResult.value.data || [] : []
+    const clientsByTeam = clientsByTeamResult.status === "fulfilled" ? clientsByTeamResult.value.data || [] : []
+
+    const repClientsMap = new Map<string, Set<string>>()
+    clientsByRep.forEach(client => {
+      if (client.representative_id) {
+        if (!repClientsMap.has(client.representative_id)) repClientsMap.set(client.representative_id, new Set())
+        repClientsMap.get(client.representative_id)!.add(client.id)
+      }
+    })
+
+    const teamClientsMap = new Map<string, Set<string>>()
+    clientsByTeam.forEach(client => {
+      if (client.team_id) {
+        if (!teamClientsMap.has(client.team_id)) teamClientsMap.set(client.team_id, new Set())
+        teamClientsMap.get(client.team_id)!.add(client.id)
+      }
+    })
 
     const ranking: ClientsRanking[] = []
 
-    for (const team of teams || []) {
-      // Obtener representantes del equipo
-      const { data: representatives, error: repsError } = await supabase
-        .from("profiles")
-        .select("id")
-        .eq("team_id", team.id)
+    for (const team of teams) {
+      const repIds = teamRepsMap.get(team.id) || []
+      const countedClientIds = new Set<string>()
 
-      let totalClients = 0
-      const countedClientIds = new Set()
-
-      if (!repsError && representatives && representatives.length > 0) {
-        const { data: clients, error: clientsError } = await supabase
-          .from("competitor_clients")
-          .select("id")
-          .in(
-            "representative_id",
-            representatives.map((rep) => rep.id),
-          )
-
-        if (!clientsError && clients) {
-          // Contar clientes únicos
-          clients.forEach((client) => {
-            if (!countedClientIds.has(client.id)) {
-              countedClientIds.add(client.id)
-              totalClients++
-            }
-          })
+      repIds.forEach(repId => {
+        const clientIds = repClientsMap.get(repId)
+        if (clientIds) {
+          clientIds.forEach(cId => countedClientIds.add(cId))
         }
+      })
+
+      const tClients = teamClientsMap.get(team.id)
+      if (tClients) {
+        tClients.forEach(cId => countedClientIds.add(cId))
       }
 
-      // También verificar clientes asignados directamente al equipo
-      const { data: teamClients, error: teamClientsError } = await supabase
-        .from("competitor_clients")
-        .select("id")
-        .eq("team_id", team.id)
-
-      if (!teamClientsError && teamClients) {
-        teamClients.forEach((client) => {
-          if (!countedClientIds.has(client.id)) {
-            countedClientIds.add(client.id)
-            totalClients++
-          }
-        })
-      }
-
+      const totalClients = countedClientIds.size
       const totalPointsFromClients = totalClients * 200 // 200 puntos por cliente
 
       ranking.push({
