@@ -151,8 +151,8 @@ export async function deleteUser(userId: string) {
     // 2. Eliminar ventas registradas por el usuario o donde sea representante
     await supabase.from("sales").delete().or(`user_id.eq.${userId},representative_id.eq.${userId}`)
     
-    // 3. Eliminar clientes de competencia reportados por el usuario
-    await supabase.from("competitor_clients").delete().eq("user_id", userId)
+    // 3. Eliminar clientes de competencia reportados por el usuario o donde sea representante
+    await supabase.from("competitor_clients").delete().or(`user_id.eq.${userId},representative_id.eq.${userId}`)
     
     // 4. Eliminar tiros libres creados por el usuario
     await supabase.from("free_kick_goals").delete().eq("created_by", userId)
