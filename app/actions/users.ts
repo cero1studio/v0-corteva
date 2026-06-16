@@ -144,15 +144,28 @@ export async function deleteUser(userId: string) {
 
     console.log("Eliminando usuario:", userId)
 
-    // Limpiar relaciones para evitar errores de llave foránea (elimina bien)
-    // 1. Desvincular como capitán de equipo
-    await supabase.from("teams").update({ captain_id: null }).eq("captain_id", userId)
+    // Si es capitán de un equipo, eliminamos el equipo y desvinculamos a sus miembros
+    const { data: teamData } = await supabase.from("teams").select("id").eq("captain_id", userId).maybeSingle()
     
+    if (teamData) {
+      const teamId = teamData.id
+      // Desvincular miembros
+      await supabase.from("profiles").update({ team_id: null }).eq("team_id", teamId)
+      // Borrar dependencias del equipo
+      await supabase.from("penalty_history").delete().eq("team_id", teamId)
+      await supabase.from("penalties").delete().eq("team_id", teamId)
+      await supabase.from("free_kick_goals").delete().eq("team_id", teamId)
+      await supabase.from("sales").delete().eq("team_id", teamId)
+      await supabase.from("competitor_clients").delete().eq("team_id", teamId)
+      // Borrar el equipo
+      await supabase.from("teams").delete().eq("id", teamId)
+    }
+
     // 2. Eliminar ventas registradas por el usuario o donde sea representante
     await supabase.from("sales").delete().or(`user_id.eq.${userId},representative_id.eq.${userId}`)
     
     // 3. Eliminar clientes de competencia reportados por el usuario o donde sea representante
-    await supabase.from("competitor_clients").delete().or(`user_id.eq.${userId},representative_id.eq.${userId}`)
+    await supabase.from("competitor_clients").delete().eq("representative_id", userId)
     
     // 4. Eliminar tiros libres creados por el usuario
     await supabase.from("free_kick_goals").delete().eq("created_by", userId)

@@ -349,8 +349,13 @@ export default function UsuariosPage() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Esta acción eliminará permanentemente al usuario y no se puede deshacer.
+            <AlertDialogDescription className="space-y-2">
+              <span className="block">
+                Esta acción eliminará permanentemente al usuario y no se puede deshacer.
+              </span>
+              <span className="block font-bold text-destructive">
+                ⚠️ ¡ADVERTENCIA! También se eliminarán todas sus ventas, su equipo (si es capitán), clientes y tiros libres asociados.
+              </span>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
