@@ -1,370 +1,33 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useRef } from "react"
 import { createUser, findUserByEmail, updateUserProfile } from "@/app/actions/users"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { useToast } from "@/components/ui/use-toast"
 import { Progress } from "@/components/ui/progress"
-import { ArrowLeft, Upload, CheckCircle, XCircle, RefreshCw } from "lucide-react"
+import { ArrowLeft, Upload, CheckCircle, XCircle, RefreshCw, Download, FileText } from "lucide-react"
 import Link from "next/link"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
+import Papa from "papaparse"
+import { supabase } from "@/lib/supabase/client"
 
 interface UserImportData {
-  name: string
-  email: string
-  password: string
-  role: string
-  zone: string
-  distributor: string
+  Nombre: string
+  Email: string
+  Contrasena: string
+  Rol: string
+  Zona: string
+  Distribuidor: string
+  Equipo: string
 }
-
-const usersData: UserImportData[] = [
-  // ANTIOQUIA
-  {
-    name: "LILIANA TAMAYO",
-    email: "capiltamayo@superganaderia.com",
-    password: "P@ss_antioquia_40mT",
-    role: "capitan",
-    zone: "ANTIOQUIA",
-    distributor: "Agralba Antioquia",
-  },
-  {
-    name: "JAIRO ANDRES CARDONA",
-    email: "capijcardona@superganaderia.com",
-    password: "P@ss_antioquia_LZPP",
-    role: "capitan",
-    zone: "ANTIOQUIA",
-    distributor: "Agralba Antioquia",
-  },
-  {
-    name: "DIANA GONZALEZ",
-    email: "capidgonzalez@superganaderia.com",
-    password: "P@ss_antioquia_mzet",
-    role: "capitan",
-    zone: "ANTIOQUIA",
-    distributor: "Agralba Antioquia",
-  },
-  {
-    name: "HERNEY PINTO",
-    email: "capihpinto@superganaderia.com",
-    password: "P@ss_antioquia_YFFM",
-    role: "capitan",
-    zone: "ANTIOQUIA",
-    distributor: "Agralba Antioquia",
-  },
-  {
-    name: "LAURA LONDOÑO",
-    email: "capillondono@superganaderia.com",
-    password: "P@ss_antioquia_txWI",
-    role: "capitan",
-    zone: "ANTIOQUIA",
-    distributor: "Agralba Antioquia",
-  },
-  {
-    name: "FELIPE TOBON",
-    email: "capiftobon@superganaderia.com",
-    password: "P@ss_antioquia_3zjO",
-    role: "capitan",
-    zone: "ANTIOQUIA",
-    distributor: "Agralba Antioquia",
-  },
-  {
-    name: "VERONICA OLARTE",
-    email: "capivolarte@superganaderia.com",
-    password: "P@ss_antioquia_X1bV",
-    role: "capitan",
-    zone: "ANTIOQUIA",
-    distributor: "Agralba Antioquia",
-  },
-  {
-    name: "JOHAN HENAO",
-    email: "capijhenao@superganaderia.com",
-    password: "P@ss_antioquia_QJdN",
-    role: "capitan",
-    zone: "ANTIOQUIA",
-    distributor: "Agralba Antioquia",
-  },
-  {
-    name: "GUILLERMO LONDOÑO",
-    email: "capiglondono@superganaderia.com",
-    password: "P@ss_antioquia_qkJA",
-    role: "capitan",
-    zone: "ANTIOQUIA",
-    distributor: "Agralba Antioquia",
-  },
-
-  // MAG. MEDIO
-  {
-    name: "KAREN DELGADO",
-    email: "capikdelgado@superganaderia.com",
-    password: "P@ss_mag.medio_FxcF",
-    role: "capitan",
-    zone: "MAG. MEDIO",
-    distributor: "Agralba Antioquia",
-  },
-  {
-    name: "REYNEL ARCILA",
-    email: "capirarcila@superganaderia.com",
-    password: "P@ss_mag.medio_4qdY",
-    role: "capitan",
-    zone: "MAG. MEDIO",
-    distributor: "Agralba Antioquia",
-  },
-  {
-    name: "WILLINTON ZAPATA",
-    email: "capiwzapata@superganaderia.com",
-    password: "P@ss_mag.medio_yZFL",
-    role: "capitan",
-    zone: "MAG. MEDIO",
-    distributor: "Agralba Antioquia",
-  },
-  {
-    name: "CAMILO BARRERA",
-    email: "capicbarrera@superganaderia.com",
-    password: "P@ss_mag.medio_BIaF",
-    role: "director_tecnico",
-    zone: "MAG. MEDIO",
-    distributor: "Agralba Antioquia",
-  },
-
-  // SANTANDER
-  {
-    name: "YEISON PÁEZ",
-    email: "capiypaez@superganaderia.com",
-    password: "P@ss_santander_W5h0",
-    role: "capitan",
-    zone: "SANTANDER",
-    distributor: "Agralba Santander",
-  },
-  {
-    name: "RAFAEL VÁSQUEZ",
-    email: "capirvasquez@superganaderia.com",
-    password: "P@ss_santander_ApOG",
-    role: "capitan",
-    zone: "SANTANDER",
-    distributor: "Agralba Santander",
-  },
-  {
-    name: "YAIR VERGARA",
-    email: "capiyvergara@superganaderia.com",
-    password: "P@ss_santander_3DmN",
-    role: "capitan",
-    zone: "SANTANDER",
-    distributor: "Agralba Santander",
-  },
-  {
-    name: "JORDAN MOGOLLON",
-    email: "capijmogollon@superganaderia.com",
-    password: "P@ss_santander_ZoIs",
-    role: "capitan",
-    zone: "SANTANDER",
-    distributor: "Agralba Santander",
-  },
-  {
-    name: "FELIPE ARIZA",
-    email: "capifariza@superganaderia.com",
-    password: "P@ss_santander_YIxG",
-    role: "capitan",
-    zone: "SANTANDER",
-    distributor: "Agralba Santander",
-  },
-  {
-    name: "JAIRO CAMACHO",
-    email: "capijcamacho@superganaderia.com",
-    password: "P@ss_santander_R93f",
-    role: "director_tecnico",
-    zone: "SANTANDER",
-    distributor: "Agralba Santander",
-  },
-
-  // CARIBE HUMEDO
-  {
-    name: "ALVARO URIBE",
-    email: "capiauribe@superganaderia.com",
-    password: "P@ss_caribehumedo_B3rM",
-    role: "capitan",
-    zone: "CARIBE HUMEDO",
-    distributor: "Agralba Antioquia",
-  },
-  {
-    name: "JOSE G BULA",
-    email: "capijbula@superganaderia.com",
-    password: "P@ss_caribehumedo_MPuf",
-    role: "capitan",
-    zone: "CARIBE HUMEDO",
-    distributor: "Agralba Antioquia",
-  },
-  {
-    name: "AURA DOMINGUEZ",
-    email: "capiadominguez@superganaderia.com",
-    password: "P@ss_caribehumedo_qiZI",
-    role: "capitan",
-    zone: "CARIBE HUMEDO",
-    distributor: "Agralba Antioquia",
-  },
-  {
-    name: "WILMAR MARTINEZ",
-    email: "capiwmartinez@superganaderia.com",
-    password: "P@ss_caribehumedo_MlRE",
-    role: "capitan",
-    zone: "CARIBE HUMEDO",
-    distributor: "Agralba Antioquia",
-  },
-  {
-    name: "GILDARDO CASTRO",
-    email: "capigcastro@superganaderia.com",
-    password: "P@ss_caribehumedo_FadA",
-    role: "capitan",
-    zone: "CARIBE HUMEDO",
-    distributor: "Agralba Antioquia",
-  },
-  {
-    name: "JUAN FERNANDO ESPINOZA",
-    email: "capijespinoza@superganaderia.com",
-    password: "P@ss_caribehumedo_VOBJ",
-    role: "capitan",
-    zone: "CARIBE HUMEDO",
-    distributor: "Agralba Antioquia",
-  },
-  {
-    name: "ARNOLD FLOREZ",
-    email: "capiaflorez1@superganaderia.com",
-    password: "P@ss_caribehumedo_AQQy",
-    role: "capitan",
-    zone: "CARIBE HUMEDO",
-    distributor: "Agralba Antioquia",
-  },
-  {
-    name: "EDWIN ARRIETA",
-    email: "capiearrieta@superganaderia.com",
-    password: "P@ss_caribehumedo_zD6F",
-    role: "capitan",
-    zone: "CARIBE HUMEDO",
-    distributor: "Agralba Antioquia",
-  },
-  {
-    name: "WENDY MONTERROSA",
-    email: "capiwmonterrosa@superganaderia.com",
-    password: "P@ss_caribehumedo_DCw3",
-    role: "capitan",
-    zone: "CARIBE HUMEDO",
-    distributor: "Agralba Antioquia",
-  },
-  {
-    name: "NICOLAS QUINTERO",
-    email: "capinquintero@superganaderia.com",
-    password: "P@ss_caribehumedo_o4Vk",
-    role: "director_tecnico",
-    zone: "CARIBE HUMEDO",
-    distributor: "Agralba Antioquia",
-  },
-
-  // CARIBE SECO
-  {
-    name: "ANA RUBY LOPEZ",
-    email: "capialopez@superganaderia.com",
-    password: "P@ss_caribeseco_sDb9",
-    role: "capitan",
-    zone: "CARIBE SECO",
-    distributor: "Agralba Antioquia",
-  },
-  {
-    name: "JANER PAYARES",
-    email: "capijpayares@superganaderia.com",
-    password: "P@ss_caribeseco_C22j",
-    role: "capitan",
-    zone: "CARIBE SECO",
-    distributor: "Agralba Antioquia",
-  },
-  {
-    name: "ANA ISABEL FERNANDEZ",
-    email: "capiafernandez@superganaderia.com",
-    password: "P@ss_caribeseco_ATpv",
-    role: "capitan",
-    zone: "CARIBE SECO",
-    distributor: "Agralba Antioquia",
-  },
-  {
-    name: "CARLOS MEZA",
-    email: "capicmeza@superganaderia.com",
-    password: "P@ss_caribeseco_U9Rg",
-    role: "capitan",
-    zone: "CARIBE SECO",
-    distributor: "Agralba Antioquia",
-  },
-  {
-    name: "JOSE GREGORIO FLOREZ",
-    email: "capijflorez@superganaderia.com",
-    password: "P@ss_caribeseco_QDO8",
-    role: "capitan",
-    zone: "CARIBE SECO",
-    distributor: "Agralba Antioquia",
-  },
-  {
-    name: "TULIO FARELO",
-    email: "capitfarelo@superganaderia.com",
-    password: "P@ss_caribeseco_ZOC4",
-    role: "capitan",
-    zone: "CARIBE SECO",
-    distributor: "Agralba Antioquia",
-  },
-  {
-    name: "JOSELIN NADJAR",
-    email: "capijnadjar@superganaderia.com",
-    password: "P@ss_caribeseco_Crj2",
-    role: "capitan",
-    zone: "CARIBE SECO",
-    distributor: "Agralba Antioquia",
-  },
-  {
-    name: "KELLY CONSUEGRA",
-    email: "capikconsuegra@superganaderia.com",
-    password: "P@ss_caribeseco_S9ia",
-    role: "capitan",
-    zone: "CARIBE SECO",
-    distributor: "Agralba Antioquia",
-  },
-  {
-    name: "ANGELICA MOLINA",
-    email: "capiamolina@superganaderia.com",
-    password: "P@ss_caribeseco_C5jZ",
-    role: "capitan",
-    zone: "CARIBE SECO",
-    distributor: "Agralba Antioquia",
-  },
-  {
-    name: "JUAN CARLOS CABALLERO",
-    email: "capijcaballero@superganaderia.com",
-    password: "P@ss_caribeseco_053h",
-    role: "capitan",
-    zone: "CARIBE SECO",
-    distributor: "Agralba Antioquia",
-  },
-  {
-    name: "LENIN ZAPATA",
-    email: "capilzapata@superganaderia.com",
-    password: "P@ss_caribeseco_E1dJ",
-    role: "capitan",
-    zone: "CARIBE SECO",
-    distributor: "Agralba Antioquia",
-  },
-  {
-    name: "ALAN FLOREZ",
-    email: "capiaflorez@superganaderia.com",
-    password: "P@ss_caribeseco_hJTM",
-    role: "director_tecnico",
-    zone: "CARIBE SECO",
-    distributor: "Agralba Antioquia",
-  },
-]
 
 type ResultType = {
   user: UserImportData
   success: boolean
-  action: "created" | "updated" | "skipped"
+  action: "created" | "updated" | "skipped" | "error"
   error?: string
 }
 
@@ -375,9 +38,121 @@ export default function ImportarUsuariosPage() {
   const [currentUser, setCurrentUser] = useState<string>("")
   const [mode, setMode] = useState<"create" | "update" | "both">("both")
   const [updateOnlyMissing, setUpdateOnlyMissing] = useState(true)
+  
+  const [usersData, setUsersData] = useState<UserImportData[]>([])
+  const [fileSelected, setFileSelected] = useState<File | null>(null)
+  
+  // Database references
+  const [zones, setZones] = useState<any[]>([])
+  const [distributors, setDistributors] = useState<any[]>([])
+  const [teams, setTeams] = useState<any[]>([])
+
   const { toast } = useToast()
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    // Load reference data to map names to IDs
+    const loadReferences = async () => {
+      const [zonesRes, distRes, teamsRes] = await Promise.all([
+        supabase.from("zones").select("id, name"),
+        supabase.from("distributors").select("id, name"),
+        supabase.from("teams").select("id, name")
+      ])
+
+      if (zonesRes.data) setZones(zonesRes.data)
+      if (distRes.data) setDistributors(distRes.data)
+      if (teamsRes.data) setTeams(teamsRes.data)
+    }
+
+    loadReferences()
+  }, [])
+
+  const downloadTemplate = () => {
+    const csvContent = "Nombre,Email,Contrasena,Rol,Zona,Distribuidor,Equipo\nJuan Perez,juan@ejemplo.com,password123,vendedor,Antioquia,Agralba Antioquia,Equipo Alfa\nMaria Gomez,maria@ejemplo.com,password123,capitan,Santander,Agralba Santander,Equipo Beta\nCarlos Ruiz,carlos@ejemplo.com,password123,director_tecnico,Antioquia,Agralba Antioquia,Equipo Alfa"
+    
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement("a")
+    link.setAttribute("href", url)
+    link.setAttribute("download", "plantilla_usuarios.csv")
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }
+
+  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    setFileSelected(file)
+    setResults([])
+
+    Papa.parse(file, {
+      header: true,
+      skipEmptyLines: true,
+      complete: (results) => {
+        // Transform the parsed data to ensure keys match our interface
+        const parsedData = results.data.map((row: any) => ({
+          Nombre: row.Nombre?.trim() || "",
+          Email: row.Email?.trim() || "",
+          Contrasena: row.Contrasena?.trim() || "",
+          Rol: row.Rol?.trim().toLowerCase() || "",
+          Zona: row.Zona?.trim() || "",
+          Distribuidor: row.Distribuidor?.trim() || "",
+          Equipo: row.Equipo?.trim() || "",
+        }))
+        
+        // Filter out empty rows
+        const validData = parsedData.filter(u => u.Email && u.Nombre)
+        
+        if (validData.length === 0) {
+          toast({
+            title: "Archivo inválido",
+            description: "No se encontraron usuarios válidos en el archivo. Verifica que las cabeceras sean: Nombre, Email, Contrasena, Rol, Zona, Distribuidor, Equipo.",
+            variant: "destructive"
+          })
+          setUsersData([])
+          setFileSelected(null)
+          return
+        }
+        
+        setUsersData(validData as UserImportData[])
+        toast({
+          title: "Archivo cargado",
+          description: `Se encontraron ${validData.length} usuarios para procesar.`,
+        })
+      },
+      error: (error) => {
+        toast({
+          title: "Error al leer el archivo",
+          description: error.message,
+          variant: "destructive"
+        })
+      }
+    })
+  }
+
+  // Find IDs based on names (case insensitive)
+  const resolveReference = (type: "zone" | "distributor" | "team", name: string) => {
+    if (!name) return null
+    const normalizedName = name.toLowerCase().trim()
+    
+    if (type === "zone") {
+      const found = zones.find(z => z.name.toLowerCase().trim() === normalizedName)
+      return found ? found.id : null
+    } else if (type === "distributor") {
+      const found = distributors.find(d => d.name.toLowerCase().trim() === normalizedName)
+      return found ? found.id : null
+    } else if (type === "team") {
+      const found = teams.find(t => t.name.toLowerCase().trim() === normalizedName)
+      return found ? found.id : null
+    }
+    return null
+  }
 
   async function handleProcess() {
+    if (usersData.length === 0) return
+
     setIsProcessing(true)
     setProgress(0)
     setResults([])
@@ -390,22 +165,32 @@ export default function ImportarUsuariosPage() {
 
     for (let i = 0; i < totalUsers; i++) {
       const user = usersData[i]
-      setCurrentUser(user.name)
+      setCurrentUser(user.Nombre)
 
       try {
-        // Verificar si el usuario ya existe
-        const { data: existingUser, error: findError } = await findUserByEmail(user.email)
+        // Resolve foreign keys
+        const zoneId = resolveReference("zone", user.Zona)
+        const distributorId = resolveReference("distributor", user.Distribuidor)
+        const teamId = resolveReference("team", user.Equipo)
+
+        // Validate required fields based on role
+        if (!user.Email || !user.Rol || !user.Nombre) {
+          setResults((prev) => [...prev, { user, success: false, action: "error", error: "Email, Nombre y Rol son obligatorios" }])
+          errors++
+          setProgress(((i + 1) / totalUsers) * 100)
+          continue
+        }
+
+        // Verify if user exists
+        const { data: existingUser, error: findError } = await findUserByEmail(user.Email)
 
         if (findError) {
           setResults((prev) => [
             ...prev,
-            { user, success: false, action: "skipped", error: `Error al buscar usuario: ${findError}` },
+            { user, success: false, action: "error", error: `Error al buscar usuario: ${findError}` },
           ])
           errors++
-          continue
-        }
-
-        if (existingUser) {
+        } else if (existingUser) {
           // El usuario existe, actualizar si está en modo "update" o "both"
           if (mode === "create") {
             setResults((prev) => [
@@ -415,20 +200,22 @@ export default function ImportarUsuariosPage() {
             skipped++
           } else {
             // Verificar si necesita actualización
-            const needsZoneUpdate = !existingUser.zone_id
-            const needsDistributorUpdate = !existingUser.distributor_id
-            const needsUpdate = !updateOnlyMissing || needsZoneUpdate || needsDistributorUpdate
+            const needsZoneUpdate = !existingUser.zone_id && zoneId
+            const needsDistributorUpdate = !existingUser.distributor_id && distributorId
+            const needsTeamUpdate = !existingUser.team_id && teamId
+            const needsUpdate = !updateOnlyMissing || needsZoneUpdate || needsDistributorUpdate || needsTeamUpdate
 
             if (needsUpdate) {
               const result = await updateUserProfile(existingUser.id, {
-                fullName: user.name,
-                role: user.role,
-                zoneId: user.zone,
-                distributorId: user.distributor,
+                fullName: user.Nombre,
+                role: user.Rol,
+                zoneId: zoneId || existingUser.zone_id,
+                distributorId: distributorId || existingUser.distributor_id,
+                teamId: teamId || existingUser.team_id,
               })
 
               if (result.error) {
-                setResults((prev) => [...prev, { user, success: false, action: "updated", error: result.error }])
+                setResults((prev) => [...prev, { user, success: false, action: "error", error: result.error }])
                 errors++
               } else {
                 setResults((prev) => [...prev, { user, success: true, action: "updated" }])
@@ -451,19 +238,27 @@ export default function ImportarUsuariosPage() {
             ])
             skipped++
           } else {
+            if (!user.Contrasena || user.Contrasena.length < 6) {
+              setResults((prev) => [...prev, { user, success: false, action: "error", error: "Contraseña debe tener al menos 6 caracteres para nuevos usuarios" }])
+              errors++
+              setProgress(((i + 1) / totalUsers) * 100)
+              continue
+            }
+
             // Crear FormData como lo hace el formulario normal
             const formData = new FormData()
-            formData.append("email", user.email)
-            formData.append("password", user.password)
-            formData.append("fullName", user.name)
-            formData.append("role", user.role)
-            formData.append("zoneId", user.zone)
-            formData.append("distributorId", user.distributor)
+            formData.append("email", user.Email)
+            formData.append("password", user.Contrasena)
+            formData.append("full_name", user.Nombre)
+            formData.append("role", user.Rol)
+            if (zoneId) formData.append("zone_id", zoneId)
+            if (distributorId) formData.append("distributor_id", distributorId)
+            if (teamId) formData.append("team_id", teamId)
 
-            const result = await createUser(formData)
+            const result = await createUser(Object.fromEntries(formData))
 
             if (result.error) {
-              setResults((prev) => [...prev, { user, success: false, action: "created", error: result.error }])
+              setResults((prev) => [...prev, { user, success: false, action: "error", error: result.error }])
               errors++
             } else {
               setResults((prev) => [...prev, { user, success: true, action: "created" }])
@@ -472,18 +267,25 @@ export default function ImportarUsuariosPage() {
           }
         }
       } catch (error: any) {
-        setResults((prev) => [...prev, { user, success: false, action: "skipped", error: error.message }])
+        setResults((prev) => [...prev, { user, success: false, action: "error", error: error.message }])
         errors++
       }
 
       setProgress(((i + 1) / totalUsers) * 100)
 
-      // Pequeña pausa para no sobrecargar el servidor
-      await new Promise((resolve) => setTimeout(resolve, 500))
+      // Pausa más larga para evitar Rate Limits (Max 30 requests / second en auth admin, 
+      // pero es mejor ir lento para no colapsar Supabase free tier o edge functions limit)
+      await new Promise((resolve) => setTimeout(resolve, 800))
     }
 
     setIsProcessing(false)
     setCurrentUser("")
+    
+    // Clear the file input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
+    setFileSelected(null)
 
     toast({
       title: "Proceso completado",
@@ -518,61 +320,95 @@ export default function ImportarUsuariosPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Importación y Actualización de Usuarios</CardTitle>
-          <CardDescription>
-            Esta herramienta permite crear nuevos usuarios y actualizar usuarios existentes con sus zonas y
-            distribuidores
-          </CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>Importación Masiva de Usuarios</CardTitle>
+              <CardDescription>
+                Sube un archivo CSV para crear nuevos usuarios o actualizar los existentes con sus zonas, distribuidores y equipos.
+              </CardDescription>
+            </div>
+            <Button variant="outline" onClick={downloadTemplate}>
+              <Download className="mr-2 h-4 w-4" />
+              Descargar Plantilla CSV
+            </Button>
+          </div>
         </CardHeader>
         <CardContent className="space-y-6">
-          {!isProcessing && results.length === 0 && (
+          {!isProcessing && (
             <div className="space-y-6">
-              <div className="p-4 bg-blue-50 rounded-lg">
-                <h3 className="font-medium text-blue-900 mb-2">Usuarios a procesar:</h3>
-                <div className="text-sm text-blue-700 space-y-1">
-                  <p>• ANTIOQUIA: 9 capitanes</p>
-                  <p>• MAG. MEDIO: 3 capitanes + 1 director técnico</p>
-                  <p>• SANTANDER: 5 capitanes + 1 director técnico</p>
-                  <p>• CARIBE HÚMEDO: 9 capitanes + 1 director técnico</p>
-                  <p>• CARIBE SECO: 11 capitanes + 1 director técnico</p>
+              
+              <div className="border-2 border-dashed rounded-lg p-10 flex flex-col items-center justify-center text-center bg-gray-50/50 hover:bg-gray-50 transition-colors">
+                <FileText className="h-10 w-10 text-muted-foreground mb-4" />
+                <h3 className="text-lg font-semibold mb-1">
+                  {fileSelected ? fileSelected.name : "Subir archivo CSV"}
+                </h3>
+                <p className="text-sm text-muted-foreground mb-4">
+                  {fileSelected ? `Seleccionado (${usersData.length} usuarios encontrados)` : "Sube el archivo completado a partir de la plantilla"}
+                </p>
+                <div className="flex gap-2">
+                  <Input 
+                    ref={fileInputRef}
+                    type="file" 
+                    accept=".csv" 
+                    onChange={handleFileUpload}
+                    className="hidden" 
+                    id="csv-upload"
+                  />
+                  <Label htmlFor="csv-upload" className="cursor-pointer">
+                    <div className="bg-primary text-primary-foreground hover:bg-primary/90 inline-flex items-center justify-center rounded-md text-sm font-medium h-10 px-4 py-2">
+                      Seleccionar Archivo
+                    </div>
+                  </Label>
+                  {fileSelected && (
+                    <Button variant="outline" onClick={() => {
+                      setFileSelected(null)
+                      setUsersData([])
+                      if (fileInputRef.current) fileInputRef.current.value = ''
+                    }}>
+                      Cancelar
+                    </Button>
+                  )}
                 </div>
               </div>
 
-              <Tabs defaultValue="both" className="w-full" onValueChange={(v) => setMode(v as any)}>
-                <TabsList className="grid w-full grid-cols-3">
-                  <TabsTrigger value="both">Crear y Actualizar</TabsTrigger>
-                  <TabsTrigger value="create">Solo Crear Nuevos</TabsTrigger>
-                  <TabsTrigger value="update">Solo Actualizar Existentes</TabsTrigger>
-                </TabsList>
-                <TabsContent value="both" className="p-4 border rounded-md mt-2">
-                  <p className="text-sm text-muted-foreground">
-                    Este modo creará usuarios nuevos y actualizará los existentes con la información correcta de zona y
-                    distribuidor.
-                  </p>
-                </TabsContent>
-                <TabsContent value="create" className="p-4 border rounded-md mt-2">
-                  <p className="text-sm text-muted-foreground">
-                    Este modo solo creará usuarios nuevos y omitirá los que ya existen en el sistema.
-                  </p>
-                </TabsContent>
-                <TabsContent value="update" className="p-4 border rounded-md mt-2">
-                  <p className="text-sm text-muted-foreground">
-                    Este modo solo actualizará usuarios existentes y omitirá la creación de nuevos usuarios.
-                  </p>
-                </TabsContent>
-              </Tabs>
+              {usersData.length > 0 && (
+                <>
+                  <Tabs defaultValue="both" className="w-full" onValueChange={(v) => setMode(v as any)}>
+                    <TabsList className="grid w-full grid-cols-3">
+                      <TabsTrigger value="both">Crear y Actualizar</TabsTrigger>
+                      <TabsTrigger value="create">Solo Crear Nuevos</TabsTrigger>
+                      <TabsTrigger value="update">Solo Actualizar Existentes</TabsTrigger>
+                    </TabsList>
+                    <TabsContent value="both" className="p-4 border rounded-md mt-2">
+                      <p className="text-sm text-muted-foreground">
+                        Este modo creará usuarios nuevos y actualizará los existentes con la información correcta.
+                      </p>
+                    </TabsContent>
+                    <TabsContent value="create" className="p-4 border rounded-md mt-2">
+                      <p className="text-sm text-muted-foreground">
+                        Este modo solo creará usuarios nuevos y omitirá los que ya existen en el sistema.
+                      </p>
+                    </TabsContent>
+                    <TabsContent value="update" className="p-4 border rounded-md mt-2">
+                      <p className="text-sm text-muted-foreground">
+                        Este modo solo actualizará usuarios existentes y omitirá la creación de nuevos usuarios.
+                      </p>
+                    </TabsContent>
+                  </Tabs>
 
-              {(mode === "update" || mode === "both") && (
-                <div className="flex items-center space-x-2 mt-4">
-                  <Switch id="update-missing" checked={updateOnlyMissing} onCheckedChange={setUpdateOnlyMissing} />
-                  <Label htmlFor="update-missing">Solo actualizar usuarios que les falte zona o distribuidor</Label>
-                </div>
+                  {(mode === "update" || mode === "both") && (
+                    <div className="flex items-center space-x-2 mt-4">
+                      <Switch id="update-missing" checked={updateOnlyMissing} onCheckedChange={setUpdateOnlyMissing} />
+                      <Label htmlFor="update-missing">Solo actualizar usuarios que les falte información</Label>
+                    </div>
+                  )}
+
+                  <Button onClick={handleProcess} className="w-full" size="lg" disabled={usersData.length === 0}>
+                    <Upload className="mr-2 h-4 w-4" />
+                    Iniciar Proceso ({usersData.length} usuarios)
+                  </Button>
+                </>
               )}
-
-              <Button onClick={handleProcess} className="w-full" size="lg">
-                <Upload className="mr-2 h-4 w-4" />
-                Iniciar Proceso ({usersData.length} usuarios)
-              </Button>
             </div>
           )}
 
@@ -593,8 +429,8 @@ export default function ImportarUsuariosPage() {
           )}
 
           {results.length > 0 && (
-            <div className="space-y-4">
-              <h3 className="font-medium">Resultados:</h3>
+            <div className="space-y-4 mt-8">
+              <h3 className="font-medium">Resultados del último proceso:</h3>
               <div className="max-h-96 overflow-y-auto space-y-2">
                 {results.map((result, index) => (
                   <div
@@ -606,18 +442,19 @@ export default function ImportarUsuariosPage() {
                     <div className="flex items-center space-x-3">
                       {getActionIcon(result.action)}
                       <div>
-                        <div className="font-medium">{result.user.name}</div>
-                        <div className="text-sm text-muted-foreground">{result.user.email}</div>
+                        <div className="font-medium">{result.user.Nombre}</div>
+                        <div className="text-sm text-muted-foreground">{result.user.Email}</div>
                       </div>
                     </div>
                     <div className="text-right">
                       <div className="text-sm font-medium">
-                        {result.user.zone} - {result.user.role}
+                        {result.user.Rol}
                       </div>
                       <div className="text-xs">
                         {result.action === "created" && "Creado"}
                         {result.action === "updated" && "Actualizado"}
                         {result.action === "skipped" && "Omitido"}
+                        {result.action === "error" && "Error"}
                       </div>
                       {result.error && <div className="text-xs text-red-500">{result.error}</div>}
                     </div>
@@ -625,9 +462,9 @@ export default function ImportarUsuariosPage() {
                 ))}
               </div>
 
-              <div className="flex justify-between items-center p-4 bg-gray-50 rounded-lg">
+              <div className="flex flex-wrap gap-4 items-center p-4 bg-gray-50 rounded-lg justify-between">
                 <span className="font-medium">Resumen:</span>
-                <div className="flex space-x-4 text-sm">
+                <div className="flex gap-4 text-sm font-medium">
                   <span className="text-green-600">
                     Creados: {results.filter((r) => r.action === "created" && r.success).length}
                   </span>

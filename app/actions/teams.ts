@@ -8,13 +8,17 @@ export async function createTeam(formData: FormData) {
 
   const name = formData.get("name") as string
   const zone_id = formData.get("zone_id") as string
+  const distributor_id = formData.get("distributor_id") as string
   const captain_id = formData.get("captain_id") as string
+  const goals = formData.get("goal") ? parseInt(formData.get("goal") as string, 10) : 0
 
   try {
     const { error } = await supabase.from("teams").insert({
       name,
       zone_id,
+      distributor_id: distributor_id || null,
       captain_id,
+      goals,
     })
 
     if (error) {
@@ -82,18 +86,23 @@ export async function getTeamById(teamId: string) {
 export async function updateTeam(teamId: string, formData: FormData) {
   const supabase = createServerClient()
 
-  const name = formData.get("name") as string
-  const zone_id = formData.get("zone_id") as string
-  const captain_id = formData.get("captain_id") as string
+  const name = formData.get("name") as string | null
+  const zone_id = formData.get("zone_id") as string | null
+  const distributor_id = formData.get("distributor_id") as string | null
+  const captain_id = formData.get("captain_id") as string | null
+  const goals = formData.get("goal") ? parseInt(formData.get("goal") as string, 10) : null
 
   try {
+    const updateData: any = {}
+    if (name) updateData.name = name
+    if (zone_id) updateData.zone_id = zone_id
+    if (distributor_id !== null) updateData.distributor_id = distributor_id
+    if (captain_id) updateData.captain_id = captain_id
+    if (goals !== null) updateData.goals = goals
+
     const { error } = await supabase
       .from("teams")
-      .update({
-        name,
-        zone_id,
-        captain_id,
-      })
+      .update(updateData)
       .eq("id", teamId)
 
     if (error) {

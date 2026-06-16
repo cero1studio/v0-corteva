@@ -321,12 +321,13 @@ export default function NuevoUsuario() {
                     <SelectItem value="admin">Administrador</SelectItem>
                     <SelectItem value="capitan">Capitán</SelectItem>
                     <SelectItem value="director_tecnico">Director Técnico</SelectItem>
+                    <SelectItem value="vendedor">Vendedor</SelectItem>
                     <SelectItem value="arbitro">Árbitro</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
-              {(formData.role === "capitan" || formData.role === "director_tecnico" || formData.role === "arbitro") && (
+              {(formData.role === "capitan" || formData.role === "director_tecnico" || formData.role === "vendedor" || formData.role === "arbitro") && (
                 <div className="space-y-2">
                   <Label htmlFor="zone_id">Zona</Label>
                   <Select value={formData.zone_id} onValueChange={(value) => handleInputChange("zone_id", value)}>
@@ -344,7 +345,7 @@ export default function NuevoUsuario() {
                 </div>
               )}
 
-              {formData.role === "capitan" && (
+              {(formData.role === "capitan" || formData.role === "director_tecnico" || formData.role === "vendedor") && (
                 <div className="space-y-2">
                   <Label htmlFor="distributor_id">Distribuidor</Label>
                   <Select
@@ -365,7 +366,7 @@ export default function NuevoUsuario() {
                 </div>
               )}
 
-              {formData.role === "capitan" && formData.zone_id && (
+              {(formData.role === "capitan" || formData.role === "director_tecnico" || formData.role === "vendedor") && formData.zone_id && (
                 <div className="space-y-2">
                   <Label htmlFor="team_id">Equipo</Label>
                   <Select value={formData.team_id} onValueChange={(value) => handleInputChange("team_id", value)}>

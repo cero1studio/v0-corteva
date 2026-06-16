@@ -275,6 +275,7 @@ export default function EditarUsuarioPage({ params }: PageProps) {
                   <SelectItem value="admin">Administrador</SelectItem>
                   <SelectItem value="capitan">Capitán</SelectItem>
                   <SelectItem value="director_tecnico">Director Técnico</SelectItem>
+                  <SelectItem value="vendedor">Vendedor</SelectItem>
                   <SelectItem value="arbitro">Árbitro</SelectItem>
                 </SelectContent>
               </Select>

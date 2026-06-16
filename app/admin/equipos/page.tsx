@@ -11,6 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { EmptyState } from "@/components/empty-state"
 import { useToast } from "@/hooks/use-toast"
 import { supabase } from "@/lib/supabase/client"
+import { deleteTeam } from "@/app/actions/teams"
 import Link from "next/link"
 import { Building2, Search, Plus, Edit, Trash2, Users, Trophy, MapPin } from "lucide-react"
 
@@ -205,11 +206,12 @@ export default function TeamsAdminPage() {
     }
 
     try {
-      const { error } = await supabase.from("teams").delete().eq("id", teamId)
+      const result = await deleteTeam(teamId)
 
-      if (error) throw error
+      if (result.error) throw new Error(result.error)
 
       setTeams(teams.filter((team) => team.id !== teamId))
+      fetchTeams() // To refetch data and counts correctly
       toast({
         title: "Equipo eliminado",
         description: `El equipo "${teamName}" ha sido eliminado correctamente.`,
@@ -218,7 +220,7 @@ export default function TeamsAdminPage() {
       console.error("Error al eliminar equipo:", error)
       toast({
         title: "Error",
-        description: "No se pudo eliminar el equipo",
+        description: error.message || "No se pudo eliminar el equipo",
         variant: "destructive",
       })
     }

@@ -523,9 +523,9 @@ export default function AdminClientesPage() {
           await refresh()
           
           // Pequeño delay para asegurar que se actualice
-          setTimeout(() => {
+          setTimeout(async () => {
             console.log("DEBUG: Final refresh after delay")
-            refresh()
+            await refresh(true)
           }, 500)
         }}
         clientToEdit={clientEditing ? {

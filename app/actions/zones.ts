@@ -27,6 +27,31 @@ export async function createZone(formData: FormData) {
   }
 }
 
+export async function updateZone(zoneId: string, formData: FormData) {
+  const supabase = createServerClient()
+
+  const name = formData.get("name") as string
+  const description = formData.get("description") as string
+
+  try {
+    const updateData: any = { name }
+    if (description !== null) {
+      updateData.description = description
+    }
+
+    const { error } = await supabase.from("zones").update(updateData).eq("id", zoneId)
+
+    if (error) {
+      return { error: error.message }
+    }
+
+    revalidatePath("/admin/zonas")
+    return { success: true }
+  } catch (error: any) {
+    return { error: error.message || "Error al actualizar la zona" }
+  }
+}
+
 export async function getZones() {
   const supabase = createServerClient() // Use the centralized client
 

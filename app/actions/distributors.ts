@@ -31,12 +31,16 @@ export async function createDistributor(formData: FormData) {
     const supabase = createServerClient()
 
     const name = formData.get("name") as string
+    const logo_url = formData.get("logo_url") as string | null
 
     if (!name) {
       return { success: false, error: "El nombre es requerido" }
     }
 
-    const { data, error } = await supabase.from("distributors").insert([{ name }]).select().single()
+    const { data, error } = await supabase.from("distributors").insert([{ 
+      name, 
+      logo_url: logo_url || null 
+    }]).select().single()
 
     if (error) {
       console.error("Error creating distributor:", error)
@@ -55,12 +59,18 @@ export async function updateDistributor(id: string, formData: FormData) {
     const supabase = createServerClient()
 
     const name = formData.get("name") as string
+    const logo_url = formData.get("logo_url") as string | null
 
     if (!name) {
       return { success: false, error: "El nombre es requerido" }
     }
 
-    const { data, error } = await supabase.from("distributors").update({ name }).eq("id", id).select().single()
+    const updateData: any = { name }
+    if (logo_url !== null) {
+      updateData.logo_url = logo_url || null
+    }
+
+    const { data, error } = await supabase.from("distributors").update(updateData).eq("id", id).select().single()
 
     if (error) {
       console.error("Error updating distributor:", error)

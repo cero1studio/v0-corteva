@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label"
 import { useToast } from "@/components/ui/use-toast"
 import { ArrowLeft, Save, Building } from "lucide-react"
 import Link from "next/link"
+import { createDistributor } from "@/app/actions/distributors"
 
 export default function NuevoDistribuidorPage() {
   const router = useRouter()
@@ -105,15 +106,15 @@ export default function NuevoDistribuidorPage() {
         }
       }
 
-      const { data, error } = await supabase
-        .from("distributors")
-        .insert({
-          name: distributor.name.trim(),
-          logo_url: logoUrl || null,
-        })
-        .select()
+      const form = new FormData()
+      form.append("name", distributor.name.trim())
+      if (logoUrl) {
+        form.append("logo_url", logoUrl)
+      }
 
-      if (error) throw error
+      const result = await createDistributor(form)
+
+      if (!result.success) throw new Error(result.error || "Error al crear distribuidor")
 
       toast({
         title: "Distribuidor creado",

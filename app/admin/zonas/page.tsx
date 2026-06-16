@@ -19,6 +19,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { useCachedList } from "@/lib/global-cache"
+import { createZone, updateZone, deleteZone } from "@/app/actions/zones"
 
 interface Zone {
   id: string
@@ -72,24 +73,16 @@ export default function ZonasPage() {
     }
 
     setIsAddingZone(true)
-    const abortController = new AbortController()
 
     try {
-      const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error("Timeout al crear zona")), 3000),
-      )
+      const formData = new FormData()
+      formData.append("name", newZoneName.trim())
 
-      const insertPromise = supabase
-        .from("zones")
-        .insert({ name: newZoneName.trim() })
-        .select()
-        .abortSignal(abortController.signal)
+      const result = await createZone(formData)
 
-      const result = (await Promise.race([insertPromise, timeoutPromise])) as any
+      if (result.error) throw new Error(result.error)
 
-      if (result.error) throw result.error
-
-      refresh()
+      await refresh(true)
       setNewZoneName("")
       toast({
         title: "Zona añadida",
@@ -119,21 +112,24 @@ export default function ZonasPage() {
     }
 
     try {
-      const { error } = await supabase.from("zones").update({ name: editingZone.name.trim() }).eq("id", editingZone.id)
+      const formData = new FormData()
+      formData.append("name", editingZone.name.trim())
 
-      if (error) throw error
+      const result = await updateZone(editingZone.id, formData)
 
-      refresh()
+      if (result.error) throw new Error(result.error)
+
+      await refresh(true)
 
       toast({
         title: "Zona actualizada",
         description: "La zona ha sido actualizada exitosamente",
       })
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error al actualizar zona:", error)
       toast({
         title: "Error",
-        description: "No se pudo actualizar la zona",
+        description: "No se pudo actualizar la zona: " + error.message,
         variant: "destructive",
       })
     } finally {
@@ -147,30 +143,28 @@ export default function ZonasPage() {
     }
 
     try {
-      // Eliminar directamente sin verificar dependencias
-      const { error } = await supabase.from("zones").delete().eq("id", id)
+      const result = await deleteZone(id)
 
-      if (error) {
-        // Si hay un error, probablemente sea por restricciones de clave foránea
+      if (result.error) {
         toast({
           title: "Error",
-          description: "No se pudo eliminar la zona. Asegúrate de que no tenga distribuidores o equipos asociados.",
+          description: result.error,
           variant: "destructive",
         })
         return
       }
 
-      refresh()
+      await refresh(true)
 
       toast({
         title: "Zona eliminada",
         description: "La zona ha sido eliminada exitosamente",
       })
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error al eliminar zona:", error)
       toast({
         title: "Error",
-        description: "No se pudo eliminar la zona. Asegúrate de que no tenga distribuidores o equipos asociados.",
+        description: "No se pudo eliminar la zona.",
         variant: "destructive",
       })
     }

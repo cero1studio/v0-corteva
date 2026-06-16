@@ -13,6 +13,7 @@ import { useToast } from "@/hooks/use-toast"
 import { ArrowLeft, Save } from "lucide-react"
 import Link from "next/link"
 import { supabase } from "@/lib/supabase/client"
+import { updateTeam } from "@/app/actions/teams"
 
 interface Team {
   id: string
@@ -91,15 +92,13 @@ export default function EditTeamPage() {
     setSaving(true)
 
     try {
-      const { error } = await supabase
-        .from("teams")
-        .update({
-          name: formData.name,
-          zone_id: formData.zone_id,
-        })
-        .eq("id", teamId)
+      const form = new FormData()
+      form.append("name", formData.name)
+      form.append("zone_id", formData.zone_id)
 
-      if (error) throw error
+      const result = await updateTeam(teamId, form)
+
+      if (result.error) throw new Error(result.error)
 
       toast({
         title: "Equipo actualizado",

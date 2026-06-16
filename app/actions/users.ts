@@ -144,6 +144,19 @@ export async function deleteUser(userId: string) {
 
     console.log("Eliminando usuario:", userId)
 
+    // Limpiar relaciones para evitar errores de llave foránea (elimina bien)
+    // 1. Desvincular como capitán de equipo
+    await supabase.from("teams").update({ captain_id: null }).eq("captain_id", userId)
+    
+    // 2. Eliminar ventas registradas por el usuario
+    await supabase.from("sales").delete().eq("user_id", userId)
+    
+    // 3. Eliminar clientes de competencia reportados por el usuario
+    await supabase.from("competitor_clients").delete().eq("user_id", userId)
+    
+    // 4. Eliminar tiros libres creados por el usuario
+    await supabase.from("free_kick_goals").delete().eq("created_by", userId)
+
     // Primero eliminamos el perfil
     const { error: profileError } = await supabase.from("profiles").delete().eq("id", userId)
 
@@ -317,6 +330,7 @@ export async function updateUser(userId: string, formData: FormData) {
     const role = formData.get("role") as string
     const zoneId = formData.get("zoneId") as string
     const distributorId = formData.get("distributorId") as string
+    const teamId = formData.get("teamId") as string
     const password = formData.get("password") as string
 
     console.log("Datos a actualizar:", {
@@ -325,6 +339,7 @@ export async function updateUser(userId: string, formData: FormData) {
       role,
       zoneId,
       distributorId,
+      teamId,
       hasPassword: !!password,
     })
 
@@ -366,6 +381,7 @@ export async function updateUser(userId: string, formData: FormData) {
       role,
       zone_id: zoneId === "none" || !zoneId ? null : zoneId,
       distributor_id: distributorId === "none" || !distributorId ? null : distributorId,
+      team_id: teamId === "none" || !teamId ? null : teamId,
     }
 
     const { error: profileError } = await supabase.from("profiles").update(updateData).eq("id", userId)

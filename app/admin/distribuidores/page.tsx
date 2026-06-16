@@ -122,19 +122,16 @@ export default function DistribuidoresPage() {
       if (result.error) {
         toast({
           title: "Error",
-          description: "No se pudo eliminar el distribuidor. Asegúrate de que no tenga equipos o usuarios asociados.",
+          description: result.error.message || "No se pudo eliminar el distribuidor. Asegúrate de que no tenga equipos o usuarios asociados.",
           variant: "destructive",
         })
-        return
+      } else {
+        toast({
+          title: "Distribuidor eliminado",
+          description: "El distribuidor ha sido eliminado exitosamente",
+        })
+        await refresh(true)
       }
-
-      // setDistributors((prev) => prev.filter((distributor) => distributor.id !== id))
-      refresh()
-
-      toast({
-        title: "Distribuidor eliminado",
-        description: "El distribuidor ha sido eliminado exitosamente",
-      })
     } catch (error: any) {
       console.error("Error al eliminar distribuidor:", error)
       toast({

@@ -1,0 +1,4 @@
+{"sessionId":"cf94f3","location":"captain-ventas.ts:getCapitanVentasForSession","message":"entry","data":{},"timestamp":1778346444129,"hypothesisId":"V1","runId":"capitan-venta-page"}
+{"sessionId":"cf94f3","location":"captain-ventas.ts:getCapitanVentasForSession","message":"user_info","data":{"userId":"0db70185-ef51-42a3-9ba4-ea232a0b8210","role":"capitan","teamId":"29575206-dd75-4ff2-a403-ae3fdd9023a4"},"timestamp":1778346444142,"hypothesisId":"V1","runId":"capitan-venta-page"}
+{"sessionId":"cf94f3","location":"captain-ventas.ts:getCapitanVentasForSession","message":"fetching_sales","data":{"repIds":1},"timestamp":1778346444273,"hypothesisId":"V1","runId":"capitan-venta-page"}
+{"sessionId":"cf94f3","location":"captain-ventas.ts:registerCapitanVenta","message":"success","data":{"teamId":"29575206-dd75-4ff2-a403-ae3fdd9023a4"},"timestamp":1778346459321,"hypothesisId":"V5","runId":"capitan-venta-page"}

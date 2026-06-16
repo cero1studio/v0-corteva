@@ -13,6 +13,7 @@ import { useToast } from "@/components/ui/use-toast"
 import { ArrowLeft, Save, Building } from "lucide-react"
 import Link from "next/link"
 import { getImageUrl } from "@/lib/utils/image"
+import { updateDistributor } from "@/app/actions/distributors"
 
 interface Distributor {
   id: string
@@ -138,15 +139,15 @@ export default function EditarDistribuidorPage() {
         }
       }
 
-      const { error } = await supabase
-        .from("distributors")
-        .update({
-          name: distributor.name.trim(),
-          logo_url: logoUrl || null,
-        })
-        .eq("id", distributor.id)
+      const form = new FormData()
+      form.append("name", distributor.name.trim())
+      if (logoUrl) {
+        form.append("logo_url", logoUrl)
+      }
 
-      if (error) throw error
+      const result = await updateDistributor(distributor.id, form)
+
+      if (!result.success) throw new Error(result.error || "Error al actualizar distribuidor")
 
       toast({
         title: "Distribuidor actualizado",

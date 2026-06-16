@@ -528,7 +528,7 @@ export default function AdminVentasPage() {
         setFormData({ product_id: "", quantity: "", points: "", representative_id: "" })
         setSelectedProductPoints(0)
         // loadData()
-        refresh()
+        await refresh(true)
       } else {
         toast({
           title: "Error",
@@ -581,7 +581,7 @@ export default function AdminVentasPage() {
         setIsEditDialogOpen(false)
         setEditingSale(null)
         // loadData()
-        refresh()
+        await refresh(true)
       } else {
         toast({
           title: "Error",
@@ -611,9 +611,9 @@ export default function AdminVentasPage() {
           description: "Venta eliminada correctamente",
         })
         // Pequeño delay para asegurar sincronización
-        setTimeout(() => {
+        setTimeout(async () => {
           // loadData()
-          refresh()
+          await refresh(true)
         }, 100)
       } else {
         toast({

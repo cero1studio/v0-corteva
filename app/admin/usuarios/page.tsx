@@ -80,7 +80,7 @@ export default function UsuariosPage() {
           title: "Usuario eliminado",
           description: "El usuario ha sido eliminado exitosamente",
         })
-        refresh()
+        await refresh(true)
       }
     } catch (error) {
       console.error("Error al eliminar usuario:", error)
