@@ -169,39 +169,40 @@ export async function executeContestReset(
       }
     }
 
-    if (options.penalties) {
+    // Si van a borrar todos los usuarios, obligatoriamente debemos borrar todo lo que depende de ellos
+    const deletePenalties = options.penalties || options.users
+    const deleteSales = options.sales || options.users
+    const deleteFreeKicks = options.freeKickGoals || options.users
+    const deleteClients = options.competitorClients || options.users
+
+    if (deletePenalties) {
       const { error: hErr } = await db.from("penalty_history").delete().neq("id", NIL_UUID)
       if (hErr) {
-        console.error("contest-reset penalty_history:", hErr)
         return { success: false, error: `No se pudo borrar historial de penaltis: ${hErr.message}` }
       }
       const { error: pErr } = await db.from("penalties").delete().neq("id", NIL_UUID)
       if (pErr) {
-        console.error("contest-reset penalties:", pErr)
         return { success: false, error: `No se pudo borrar penaltis: ${pErr.message}` }
       }
     }
 
-    if (options.sales) {
+    if (deleteSales) {
       const { error } = await db.from("sales").delete().neq("id", NIL_UUID)
       if (error) {
-        console.error("contest-reset sales:", error)
         return { success: false, error: `No se pudo borrar ventas: ${error.message}` }
       }
     }
 
-    if (options.freeKickGoals) {
+    if (deleteFreeKicks) {
       const { error } = await db.from("free_kick_goals").delete().neq("id", NIL_UUID)
       if (error) {
-        console.error("contest-reset free_kick_goals:", error)
         return { success: false, error: `No se pudo borrar tiros libres: ${error.message}` }
       }
     }
 
-    if (options.competitorClients) {
+    if (deleteClients) {
       const { error } = await db.from("competitor_clients").delete().neq("id", NIL_UUID)
       if (error) {
-        console.error("contest-reset competitor_clients:", error)
         return { success: false, error: `No se pudo borrar clientes: ${error.message}` }
       }
     }
