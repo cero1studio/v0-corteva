@@ -60,7 +60,7 @@ export default function ClientesPage() {
   }
 
   const filteredClients = clients.filter((client) =>
-    client.client_name.toLowerCase().includes(searchTerm.toLowerCase()),
+    (client?.client_name || "").toLowerCase().includes(searchTerm.toLowerCase()),
   )
 
   // Mostrar loading solo si auth está cargando O si estamos cargando clientes
@@ -144,7 +144,7 @@ export default function ClientesPage() {
                 <div>
                   <p className="text-sm font-medium text-green-700">Este Mes</p>
                   <p className="text-2xl font-bold text-green-900">
-                    {clients.filter((c) => new Date(c.created_at).getMonth() === new Date().getMonth()).length}
+                    {clients.filter((c) => c?.created_at && new Date(c.created_at).getMonth() === new Date().getMonth()).length}
                   </p>
                 </div>
               </div>
@@ -257,11 +257,11 @@ export default function ClientesPage() {
                       <div className="flex-1 min-w-0">
                         <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Fecha de registro</p>
                         <p className="text-sm font-medium text-gray-900">
-                          {new Date(client.created_at).toLocaleDateString("es-ES", {
+                          {client?.created_at ? new Date(client.created_at).toLocaleDateString("es-ES", {
                             year: "numeric",
                             month: "long",
                             day: "numeric",
-                          })}
+                          }) : "Fecha no disponible"}
                         </p>
                       </div>
                     </div>

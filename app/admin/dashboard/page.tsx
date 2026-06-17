@@ -89,10 +89,10 @@ export default function AdminDashboardPage() {
       timeoutRef.current = setTimeout(() => {
         if (mountedRef.current) {
           cleanup()
-          setError("Timeout - los datos tardan en cargar")
+          setError("Timeout - los datos tardan en cargar (30s)")
           setLoading(false)
         }
-      }, 15000)
+      }, 30000)
 
       const result = await getAdminDashboardBasicStats()
 
