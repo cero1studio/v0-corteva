@@ -13,7 +13,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
 import { SalesChart } from "@/components/sales-chart"
-import { GoalCelebration } from "@/components/goal-celebration"
+import { PremiumCelebration } from "@/components/premium-celebration"
 import { LiveFeed } from "@/components/live-feed"
 import Link from "next/link"
 import { supabase } from "@/lib/supabase/client"
@@ -758,11 +758,11 @@ function CapitanDashboardContent() {
         )}
       </Tabs>
 
-      <GoalCelebration
+      <PremiumCelebration
         isOpen={showCelebration}
         onClose={() => setShowCelebration(false)}
+        type="sale"
         goalCount={25}
-        productName="Producto A"
       />
 
       <LiveFeed />

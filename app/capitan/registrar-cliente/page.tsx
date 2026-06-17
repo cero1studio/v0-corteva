@@ -12,7 +12,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { ArrowLeft, Users, Phone } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 import { useSession } from "next-auth/react"
-import { ClientGoalCelebration } from "@/components/client-goal-celebration"
+import { PremiumCelebration } from "@/components/premium-celebration"
 import { registerCapitanCompetitorClient } from "@/app/actions/clients"
 import { getPhoneValidationError, PHONE_INPUT_PROPS } from "@/lib/phone-validation"
 
@@ -196,14 +196,15 @@ export default function RegistrarClientePage() {
         <h1 className="text-3xl font-bold">Registrar Cliente de la Competencia</h1>
       </div>
 
-      <Card className="mx-auto max-w-md">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Users className="h-5 w-5" />
-            Nuevo Cliente
+      <Card className="mx-auto max-w-md border-2 border-yellow-400/50 shadow-xl shadow-yellow-100 relative overflow-hidden bg-gradient-to-b from-white to-yellow-50/30">
+        <div className="absolute top-0 w-full h-2 bg-gradient-to-r from-yellow-400 via-amber-500 to-yellow-400"></div>
+        <CardHeader className="pb-4 border-b border-yellow-100 bg-white/50">
+          <CardTitle className="flex items-center gap-2 text-yellow-800">
+            <Users className="h-6 w-6 text-amber-500" />
+            <span className="font-extrabold text-xl tracking-tight">Fichaje Premium</span>
           </CardTitle>
-          <CardDescription>
-            Registra un nuevo cliente captado de la competencia (+2 goles). Todos los campos son obligatorios.
+          <CardDescription className="text-gray-600 font-medium">
+            Captura un cliente de la competencia y asegura <span className="text-amber-600 font-bold px-1.5 py-0.5 rounded-md bg-amber-100">+2 GOLES</span> directos a tu marcador.
           </CardDescription>
         </CardHeader>
         <form onSubmit={handleSubmit}>
@@ -353,17 +354,22 @@ export default function RegistrarClientePage() {
               />
             </div>
           </CardContent>
-          <CardFooter>
-            <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? "Registrando..." : "Registrar Cliente (+2 goles)"}
+          <CardFooter className="pt-6 pb-8 bg-white/50">
+            <Button 
+              type="submit" 
+              className="w-full h-14 text-xl font-black tracking-wide shadow-[0_8px_30px_rgb(251,191,36,0.4)] transition-all bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-white border border-yellow-400/50 hover:scale-[1.02] active:scale-[0.98]" 
+              disabled={loading}
+            >
+              {loading ? "Procesando Fichaje..." : "¡Confirmar Fichaje! 📝"}
             </Button>
           </CardFooter>
         </form>
       </Card>
 
-      <ClientGoalCelebration
+      <PremiumCelebration
         isOpen={showCelebration}
         onClose={handleCelebrationClose}
+        type="client"
         goalCount={2}
         clientName={farmerName}
       />

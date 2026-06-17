@@ -18,7 +18,7 @@ import { CalendarIcon, ShoppingBag, ArrowLeft, Plus, Minus } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 import { useSession } from "next-auth/react"
 import { getCapitanRegistroVentaData, registerCapitanVenta } from "@/app/actions/captain-ventas"
-import { GoalCelebration } from "@/components/goal-celebration"
+import { PremiumCelebration } from "@/components/premium-celebration"
 import Image from "next/image"
 import { formatPhysicalSaleTotal } from "@/lib/product-content"
 
@@ -306,21 +306,37 @@ export default function RegistrarVentaPage() {
 
             {selectedProductData && quantity > 0 && (() => {
               const salePts = toContestPoints(selectedProductData.points) * quantity
+              const goals = contestGoalsFromPoints(salePts, puntosParaGol)
+              const remaining = contestPointsRemainder(salePts, puntosParaGol)
+              const percentage = Math.min(100, Math.round((remaining / puntosParaGol) * 100))
+              
               return (
-              <div className="rounded-md border p-3 bg-corteva-50">
-                <div className="flex justify-between text-sm mb-1">
-                  <span>Total puntos:</span>
-                  <span className="font-medium">{salePts}</span>
+              <div className="rounded-xl border-2 border-corteva-200 p-4 bg-gradient-to-br from-white to-corteva-50 shadow-sm relative overflow-hidden">
+                <div className="absolute -right-4 -top-4 opacity-10">
+                  <Image src="/soccer-ball.png" alt="" width={80} height={80} />
                 </div>
-                <div className="flex justify-between text-sm">
-                  <span>Goles completos:</span>
-                  <span className="font-medium">
-                    {contestGoalsFromPoints(salePts, puntosParaGol)}
-                  </span>
+                <div className="flex justify-between items-end mb-4">
+                  <div>
+                    <p className="text-sm font-semibold text-gray-500 uppercase tracking-wide">Poder de Tiro</p>
+                    <p className="text-3xl font-black text-corteva-700">{salePts} <span className="text-base font-bold text-corteva-500">PTS</span></p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm font-semibold text-gray-500 uppercase tracking-wide">Goles a marcar</p>
+                    <p className="text-3xl font-black text-green-600">+{goals}</p>
+                  </div>
                 </div>
-                <div className="flex justify-between text-sm mt-1">
-                  <span>Puntos sobrantes:</span>
-                  <span className="font-medium">{contestPointsRemainder(salePts, puntosParaGol)}</span>
+                
+                <div className="space-y-1">
+                  <div className="flex justify-between text-xs font-bold text-gray-600">
+                    <span>Sobran {remaining} pts</span>
+                    <span>Meta: {puntosParaGol} pts</span>
+                  </div>
+                  <div className="h-3 w-full bg-gray-200 rounded-full overflow-hidden">
+                    <div 
+                      className="h-full bg-gradient-to-r from-amber-400 to-amber-500 transition-all duration-500"
+                      style={{ width: `${percentage}%` }}
+                    />
+                  </div>
                 </div>
               </div>
               )
@@ -348,20 +364,28 @@ export default function RegistrarVentaPage() {
             </div>
           </CardContent>
           <CardFooter>
-            <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? "Registrando..." : "Registrar Venta"}
+            <Button 
+              type="submit" 
+              className={`w-full h-14 text-xl font-bold shadow-lg transition-all ${
+                selectedProductData && quantity > 0 && toContestPoints(selectedProductData.points) * quantity >= puntosParaGol
+                ? 'bg-green-600 hover:bg-green-700 animate-pulse text-white'
+                : 'bg-corteva-600 hover:bg-corteva-700 text-white'
+              }`} 
+              disabled={loading}
+            >
+              {loading ? "Preparando tiro..." : "¡Patear al Arco! ⚽"}
             </Button>
           </CardFooter>
         </form>
       </Card>
 
-      <GoalCelebration
+      <PremiumCelebration
         isOpen={showCelebration}
         onClose={handleCelebrationClose}
+        type="sale"
         goalCount={goalCount}
-        productName={productName}
-        totalPoints={totalPoints}
-        pointsPerGoal={puntosParaGol}
+        extraPoints={totalPoints % puntosParaGol}
+        pointsNeeded={puntosParaGol - (totalPoints % puntosParaGol)}
       />
     </div>
   )
