@@ -70,10 +70,11 @@ export default function ImportarUsuariosPage() {
 
   const downloadTemplate = () => {
     const wsData = [
-      ["Nombre", "Email", "Rol", "Zona", "Distribuidor", "Vendedor", "Tecnico"],
+      ["Nombre Completo", "Email", "Rol", "Zona", "Distribuidor", "Vendedor", "Tecnico"],
       ["Maria Gomez", "maria@ejemplo.com", "capitan", "Santander", "Agralba Santander", "Juan Vendedor", "Pedro Tecnico"],
       ["Carlos Ruiz", "carlos@ejemplo.com", "director_tecnico", "Antioquia", "Agralba Antioquia", "", ""],
-      ["Ana Juez", "ana@ejemplo.com", "arbitro", "", "", "", ""]
+      ["Ana Juez", "ana@ejemplo.com", "arbitro", "", "", "", ""],
+      ["Luis Supervisor", "luis@ejemplo.com", "supervisor", "Norte", "Distribuidor XYZ", "", ""]
     ]
     const ws = XLSX.utils.aoa_to_sheet(wsData)
     const wb = XLSX.utils.book_new()
@@ -98,7 +99,7 @@ export default function ImportarUsuariosPage() {
         const jsonData = XLSX.utils.sheet_to_json<any>(worksheet)
 
         const parsedData = jsonData.map((row) => ({
-          Nombre: row.Nombre?.trim() || "",
+          Nombre: (row["Nombre Completo"] || row.Nombre)?.trim() || "",
           Email: row.Email?.trim() || "",
           Rol: row.Rol?.trim().toLowerCase() || "",
           Zona: row.Zona?.trim() || "",
@@ -112,7 +113,7 @@ export default function ImportarUsuariosPage() {
         if (validData.length === 0) {
           toast({
             title: "Archivo inválido",
-            description: "No se encontraron usuarios válidos en el archivo. Verifica que las cabeceras sean: Nombre, Email, Rol, Zona, Distribuidor, Vendedor, Tecnico.",
+            description: "No se encontraron usuarios válidos en el archivo. Verifica que las cabeceras sean: Nombre Completo, Email, Rol, Zona, Distribuidor, Vendedor, Tecnico.",
             variant: "destructive"
           })
           setUsersData([])
@@ -328,8 +329,19 @@ export default function ImportarUsuariosPage() {
           <div className="flex items-center justify-between">
             <div>
               <CardTitle>Importación Masiva de Usuarios</CardTitle>
-              <CardDescription>
-                Sube un archivo CSV para crear nuevos usuarios o actualizar los existentes con sus zonas, distribuidores y equipos.
+              <CardDescription className="space-y-4 pt-2">
+                <p>
+                  Sube un archivo Excel (.xlsx) o CSV para crear nuevos usuarios o actualizar los existentes con sus zonas, distribuidores y equipos.
+                </p>
+                <div className="bg-muted p-4 rounded-md text-sm text-left">
+                  <h4 className="font-bold mb-2 text-foreground">Instrucciones importantes:</h4>
+                  <ul className="list-disc pl-5 space-y-2 text-muted-foreground">
+                    <li>La columna <strong>Nombre Completo</strong> debe llevar nombres y apellidos en la misma celda (no separados).</li>
+                    <li>Los <strong>Roles exactos</strong> permitidos en la columna "Rol" son: <code className="bg-background px-1 py-0.5 rounded text-foreground">capitan</code>, <code className="bg-background px-1 py-0.5 rounded text-foreground">director_tecnico</code>, <code className="bg-background px-1 py-0.5 rounded text-foreground">arbitro</code>, <code className="bg-background px-1 py-0.5 rounded text-foreground">supervisor</code>, <code className="bg-background px-1 py-0.5 rounded text-foreground">admin</code>.</li>
+                    <li><strong>Vendedor y Técnico NO son roles:</strong> Son nombres de personas asociadas al <strong>capitan</strong>. Llena esas dos columnas ÚNICAMENTE cuando el Rol del usuario sea <code className="bg-background px-1 py-0.5 rounded text-foreground">capitan</code>.</li>
+                    <li>Las columnas <strong>Zona</strong> y <strong>Distribuidor</strong> deben tener el nombre exacto de la zona y distribuidor que ya fueron creados previamente en el sistema.</li>
+                  </ul>
+                </div>
               </CardDescription>
             </div>
             <Button variant="outline" onClick={downloadTemplate}>
