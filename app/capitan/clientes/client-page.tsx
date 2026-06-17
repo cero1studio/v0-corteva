@@ -150,7 +150,7 @@ export default function ClientesClientPage({ initialClients, userId, teamId }: {
             <Card className="shadow-sm border-gray-200">
               <CardContent className="py-16">
                 <EmptyState
-                  icon={<Users className="h-16 w-16 text-gray-400" />}
+                  icon="users"
                   title="No hay clientes"
                   description={
                     searchTerm
@@ -159,17 +159,16 @@ export default function ClientesClientPage({ initialClients, userId, teamId }: {
                         ? "Aún no hay clientes registrados por tu equipo"
                         : "No tienes un equipo asignado. Contacta al administrador."
                   }
-                  action={
-                    teamId ? (
-                      <Button asChild className="bg-corteva-600 hover:bg-corteva-700">
-                        <Link href="/capitan/registrar-cliente" className="flex items-center gap-2">
-                          <Plus className="h-4 w-4" />
-                          Registrar Primer Cliente
-                        </Link>
-                      </Button>
-                    ) : null
-                  }
-                />
+                >
+                  {teamId ? (
+                    <Button asChild className="bg-corteva-600 hover:bg-corteva-700 mt-4">
+                      <Link href="/capitan/registrar-cliente" className="flex items-center gap-2">
+                        <Plus className="h-4 w-4" />
+                        Registrar Primer Cliente
+                      </Link>
+                    </Button>
+                  ) : null}
+                </EmptyState>
               </CardContent>
             </Card>
           ) : (
