@@ -31,8 +31,18 @@ export default function ClientesClientPage({ initialClients, userId, teamId }: {
     (client?.client_name || "").toLowerCase().includes(searchTerm.toLowerCase()),
   )
 
-  // Mostrar loading solo si auth está cargando O si estamos cargando clientes
-  
+  const [isMounted, setIsMounted] = useState(false)
+  useEffect(() => {
+    setIsMounted(true)
+  }, [])
+
+  if (!isMounted) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-6 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-corteva-500"></div>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-6">
