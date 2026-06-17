@@ -90,7 +90,7 @@ export default function CambiarContrasenaPage() {
     <div className="min-h-screen bg-[#f8fafc] flex flex-col items-center justify-center p-4">
       <div className="mb-8 relative w-48 h-16">
         <Image 
-          src="https://hebbkx1anhila5yf.public.blob.vercel-storage.com/logo_color-u60759kL9Lh56qN9EaM7NnsaZ9Hk4A.png" 
+          src="/super-ganaderia-logo-transparent.png" 
           alt="Llevo las Riendas" 
           fill
           style={{ objectFit: 'contain' }}
