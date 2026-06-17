@@ -280,6 +280,7 @@ export async function createUser(userData: any) {
     // Crear perfil en la base de datos
     const profileData: any = {
       id: authData.user.id,
+      user_id: authData.user.id,
       email: email,
       full_name: full_name,
       role: role,
