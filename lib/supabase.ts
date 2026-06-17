@@ -15,12 +15,12 @@ if (!supabaseAnonKey) {
 }
 
 // Cliente de Supabase para uso general
-export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey)
+export const supabase = createClient<Database>(supabaseUrl!, supabaseAnonKey!)
 
 // Cliente de Supabase con rol de administrador para operaciones privilegiadas
 export const adminSupabase = createClient<Database>(
-  supabaseUrl,
-  supabaseServiceKey || supabaseAnonKey, // Fallback al anon key si no hay service key
+  supabaseUrl!,
+  supabaseServiceKey || supabaseAnonKey!, // Fallback al anon key si no hay service key
   {
     auth: {
       autoRefreshToken: false,
@@ -30,5 +30,5 @@ export const adminSupabase = createClient<Database>(
 )
 
 export function createServerSupabaseClient() {
-  return createClient<Database>(supabaseUrl, supabaseAnonKey)
+  return createClient<Database>(supabaseUrl!, supabaseAnonKey!)
 }

@@ -38,7 +38,7 @@ export async function createZone(name: string) {
 
 export async function updateZone(id: string, name: string) {
   const supabase = createServerSupabaseClient()
-  const { data, error } = await supabase.from("zones").update({ name, updated_at: new Date() }).eq("id", id).select()
+  const { data, error } = await supabase.from("zones").update({ name, updated_at: new Date().toISOString() }).eq("id", id).select()
 
   if (error) {
     console.error(`Error updating zone ${id}:`, error)

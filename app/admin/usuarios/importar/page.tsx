@@ -99,16 +99,23 @@ export default function ImportarUsuariosPage() {
         const worksheet = workbook.Sheets[sheetName]
         const jsonData = XLSX.utils.sheet_to_json<any>(worksheet)
 
-        const parsedData = jsonData.map((row) => ({
-          Nombre: (row["Nombre Completo"] || row.Nombre)?.trim() || "",
-          Email: row.Email?.trim() || "",
-          Rol: row.Rol?.trim().toLowerCase() || "",
-          Zona: row.Zona?.trim() || "",
-          Distribuidor: row.Distribuidor?.trim() || "",
-          Vendedor: row.Vendedor?.trim() || "",
-          Tecnico: row.Tecnico?.trim() || "",
-          Contraseña: row.Contraseña?.trim() || "",
-        }))
+        const parsedData = jsonData.map((rawRow) => {
+          const row: any = {}
+          Object.keys(rawRow).forEach(k => {
+            row[k.trim()] = rawRow[k]
+          })
+          
+          return {
+            Nombre: (row["Nombre Completo"] || row.Nombre)?.trim() || "",
+            Email: row.Email?.trim() || "",
+            Rol: row.Rol?.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "") || "",
+            Zona: row.Zona?.trim() || "",
+            Distribuidor: row.Distribuidor?.trim() || "",
+            Vendedor: row.Vendedor?.trim() || "",
+            Tecnico: row.Tecnico?.trim() || "",
+            Contraseña: row.Contraseña?.trim() || "",
+          }
+        })
 
         const validData = parsedData.filter(u => u.Email && u.Nombre)
 
@@ -199,7 +206,7 @@ export default function ImportarUsuariosPage() {
           continue
         }
 
-        if (user.Rol === "vendedor" || user.Rol === "tecnico") {
+        if (user.Rol === "vendedor" || user.Rol === "tecnico" || user.Rol === "técnico") {
           setResults((prev) => [...prev, { user, success: false, action: "error", error: `El rol '${user.Rol}' ya no es un usuario del sistema (ahora son campos del Capitán)` }])
           errors++
           setProgress(((i + 1) / totalUsers) * 100)
@@ -270,7 +277,7 @@ export default function ImportarUsuariosPage() {
             formData.append("role", user.Rol)
             if (zoneId) formData.append("zone_id", zoneId)
             if (distributorId) formData.append("distributor_id", distributorId)
-            if (user.Rol === "capitan") {
+            if (user.Rol === "capitan" || user.Rol === "capitán") {
               if (user.Vendedor) formData.append("vendedor_name", user.Vendedor)
               if (user.Tecnico) formData.append("tecnico_name", user.Tecnico)
             }

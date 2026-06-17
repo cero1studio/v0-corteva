@@ -43,7 +43,9 @@ export default function DirectorTecnicoLayout({ children }: { children: React.Re
 
       <main className="flex-1 lg:ml-64">
         <header className="flex h-16 shrink-0 items-center border-b px-6">
-          <h2 className="text-lg font-semibold">Panel de Director Técnico</h2>
+          <h2 className="text-lg font-semibold">
+            Panel de {userRole === "arbitro" ? "Árbitro" : "Director Técnico"}
+          </h2>
         </header>
         <div className="p-6">{children}</div>
       </main>

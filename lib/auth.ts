@@ -34,7 +34,7 @@ export async function getCurrentUser() {
     return {
       id: session.user.id,
       email: session.user.email,
-      ...profile,
+      ...(profile as any),
     }
   } catch (error) {
     console.error("Error en getCurrentUser:", error)

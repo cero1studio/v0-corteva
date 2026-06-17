@@ -95,7 +95,7 @@ export async function middleware(req: NextRequest) {
       admin: ["/admin"],
       capitan: ["/capitan"],
       director_tecnico: ["/director-tecnico"],
-      arbitro: ["/arbitro"],
+      arbitro: ["/arbitro", "/director-tecnico"],
       supervisor: ["/supervisor"],
       representante: ["/representante"],
       all: ["/cambiar-contrasena"] // Allow global access for this specific route

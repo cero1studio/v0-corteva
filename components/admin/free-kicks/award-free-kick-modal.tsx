@@ -137,11 +137,14 @@ export function AwardFreeKickModal({ open, onOpenChange, zones, onSubmit, submit
                 <SelectValue placeholder={selectedZone ? "Selecciona un capitán" : "Primero selecciona una zona"} />
               </SelectTrigger>
               <SelectContent>
-                {filteredCaptains.map((captain) => (
-                  <SelectItem key={captain.id} value={captain.teams?.id || captain.id}>
-                    {captain.full_name} {captain.teams?.name ? `(${captain.teams.name})` : ""}
-                  </SelectItem>
-                ))}
+                {filteredCaptains.map((captain) => {
+                  if (!captain.teams?.id) return null
+                  return (
+                    <SelectItem key={captain.id} value={captain.teams.id}>
+                      {captain.full_name} ({captain.teams.name})
+                    </SelectItem>
+                  )
+                })}
                 {captainSearch && filteredCaptains.length === 0 && (
                   <div className="px-2 py-1 text-sm text-muted-foreground">No se encontraron capitanes</div>
                 )}

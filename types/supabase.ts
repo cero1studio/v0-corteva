@@ -3,6 +3,32 @@ export type Json = string | number | boolean | null | { [key: string]: Json | un
 export interface Database {
   public: {
     Tables: {
+      free_kick_goals: {
+        Row: {
+          id: string
+          team_id: string | null
+          vendedor_name?: string | null
+          tecnico_name?: string | null
+          points: number
+          reason: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          team_id?: string | null
+          points: number
+          reason: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          team_id?: string | null
+          points?: number
+          reason?: string
+          created_at?: string
+        }
+        Relationships: any[]
+      },
       competitor_clients: {
         Row: {
           id: string
@@ -11,6 +37,8 @@ export interface Database {
           contact_info: string | null
           captured_by: string | null
           team_id: string | null
+          vendedor_name?: string | null
+          tecnico_name?: string | null
           capture_date: string | null
           notes: string | null
           created_at: string
@@ -40,6 +68,7 @@ export interface Database {
           created_at?: string
           updated_at?: string
         }
+        Relationships: any[]
       }
       distributors: {
         Row: {
@@ -72,6 +101,7 @@ export interface Database {
           created_at?: string
           updated_at?: string
         }
+        Relationships: any[]
       }
       medals: {
         Row: {
@@ -101,6 +131,7 @@ export interface Database {
           points?: number | null
           created_at?: string
         }
+        Relationships: any[]
       }
       penalties: {
         Row: {
@@ -130,6 +161,7 @@ export interface Database {
           created_at?: string
           updated_at?: string
         }
+        Relationships: any[]
       }
       penalty_history: {
         Row: {
@@ -159,6 +191,7 @@ export interface Database {
           description?: string | null
           created_at?: string
         }
+        Relationships: any[]
       }
       products: {
         Row: {
@@ -197,19 +230,24 @@ export interface Database {
           created_at?: string
           updated_at?: string
         }
+        Relationships: any[]
       }
       profiles: {
         Row: {
           id: string
-          user_id: string | null
+          user_id: string
+          representative_id?: string | null | null
           email: string
           full_name: string | null
           role: string | null
           team_id: string | null
+          vendedor_name?: string | null
+          tecnico_name?: string | null
           zone_id: string | null
           distributor_id: string | null
           created_at: string | null
           updated_at: string | null
+          force_password_change: boolean | null
         }
         Insert: {
           id?: string
@@ -222,6 +260,7 @@ export interface Database {
           distributor_id?: string | null
           created_at?: string | null
           updated_at?: string | null
+          force_password_change?: boolean | null
         }
         Update: {
           id?: string
@@ -234,7 +273,9 @@ export interface Database {
           distributor_id?: string | null
           created_at?: string | null
           updated_at?: string | null
+          force_password_change?: boolean | null
         }
+        Relationships: any[]
       }
       sales: {
         Row: {
@@ -243,6 +284,7 @@ export interface Database {
           quantity: number
           team_id: string
           user_id: string
+          representative_id?: string | null
           created_at: string
           updated_at: string
           points: number
@@ -253,6 +295,7 @@ export interface Database {
           quantity: number
           team_id: string
           user_id: string
+          representative_id?: string | null
           created_at?: string
           updated_at?: string
           points?: number
@@ -267,6 +310,7 @@ export interface Database {
           updated_at?: string
           points?: number
         }
+        Relationships: any[]
       }
       system_config: {
         Row: {
@@ -293,6 +337,7 @@ export interface Database {
           created_at?: string
           updated_at?: string
         }
+        Relationships: any[]
       }
       teams: {
         Row: {
@@ -301,6 +346,7 @@ export interface Database {
           zone_id: string | null
           distributor_id: string | null
           logo_url: string | null
+          total_points?: number
           created_at: string
           updated_at: string
         }
@@ -322,6 +368,7 @@ export interface Database {
           created_at?: string
           updated_at?: string
         }
+        Relationships: any[]
       }
       zones: {
         Row: {
@@ -345,6 +392,7 @@ export interface Database {
           created_at?: string
           updated_at?: string
         }
+        Relationships: any[]
       }
     }
     Views: {

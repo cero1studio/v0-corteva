@@ -322,6 +322,20 @@ export default function CrearEquipoPage() {
                   No tienes un distribuidor asignado. Contacta al administrador.
                 </div>
               )}
+              
+              {profile?.vendedor_name && (
+                <div className="space-y-2">
+                  <Label>Vendedor asignado</Label>
+                  <div className="p-2 border rounded-md bg-muted/50">{profile.vendedor_name}</div>
+                </div>
+              )}
+              
+              {profile?.tecnico_name && (
+                <div className="space-y-2">
+                  <Label>Técnico asignado</Label>
+                  <div className="p-2 border rounded-md bg-muted/50">{profile.tecnico_name}</div>
+                </div>
+              )}
             </div>
 
             <div className="flex justify-end">

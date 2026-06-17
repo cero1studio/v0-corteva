@@ -45,14 +45,15 @@ function DirectorTecnicoReportesContent() {
       setLoading(true)
 
       // Obtener el usuario actual
-      const {
-        data: { user: authUser },
-      } = await supabase.auth.getUser()
+      const sessionRes = await fetch("/api/auth/session")
+      const sessionData = await sessionRes.json()
 
-      if (!authUser) {
-        router.push("/login")
+      if (!sessionData?.user) {
+        if (typeof router !== "undefined") router.push("/login")
         return
       }
+
+      const authUser = { id: sessionData.user.id }
 
       console.log("Director Técnico Reportes - Usuario autenticado:", authUser.id)
 

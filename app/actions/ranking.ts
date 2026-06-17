@@ -7,7 +7,7 @@ import {
   toContestPoints,
 } from "@/lib/goals"
 import { rankingCache } from "@/lib/ranking-cache"
-import { createServerClient } from "@/lib/supabase/server"
+import { adminSupabase as supabase } from "@/lib/supabase/server"
 
 export interface TeamRanking {
   position: number
@@ -85,7 +85,7 @@ export async function getTeamRankingByZone(zoneId?: string) {
     }
 
     // Si no está en cache, continuar con la lógica existente...
-    const supabase = createServerClient()
+    
 
     const { data: puntosRow } = await supabase.from("system_config").select("value").eq("key", "puntos_para_gol").maybeSingle()
     const puntosParaGol = parsePuntosParaGol(puntosRow?.value)
@@ -160,32 +160,19 @@ export async function getTeamRankingByZone(zoneId?: string) {
     // Obtener todas las ventas, clientes y tiros libres en consultas batch
     const [salesByRep, salesByTeam, clientsByRep, clientsByTeam, allFreeKicks] = await Promise.allSettled([
       // Ventas por representante
-      allMemberIds.length > 0
-        ? supabase.from("sales").select("points, representative_id").in("representative_id", allMemberIds)
-        : Promise.resolve({ data: [], error: null }),
+      !zoneId ? supabase.from("sales").select("points, representative_id").not("representative_id", "is", null) : allMemberIds.length > 0 ? supabase.from("sales").select("points, representative_id").in("representative_id", allMemberIds) : Promise.resolve({ data: [], error: null }),
 
       // Ventas por equipo
-      teamIds.length > 0
-        ? supabase.from("sales").select("points, team_id").in("team_id", teamIds)
-        : Promise.resolve({ data: [], error: null }),
+      !zoneId ? supabase.from("sales").select("points, team_id").not("team_id", "is", null) : teamIds.length > 0 ? supabase.from("sales").select("points, team_id").in("team_id", teamIds) : Promise.resolve({ data: [], error: null }),
 
       // Clientes por representante
-      allMemberIds.length > 0
-        ? supabase
-            .from("competitor_clients")
-            .select("id, points, representative_id")
-            .in("representative_id", allMemberIds)
-        : Promise.resolve({ data: [], error: null }),
+      !zoneId ? supabase.from("competitor_clients").select("id, points, representative_id").not("representative_id", "is", null) : allMemberIds.length > 0 ? supabase.from("competitor_clients").select("id, points, representative_id").in("representative_id", allMemberIds) : Promise.resolve({ data: [], error: null }),
 
       // Clientes por equipo
-      teamIds.length > 0
-        ? supabase.from("competitor_clients").select("id, points, team_id").in("team_id", teamIds)
-        : Promise.resolve({ data: [], error: null }),
+      !zoneId ? supabase.from("competitor_clients").select("id, points, team_id").not("team_id", "is", null) : teamIds.length > 0 ? supabase.from("competitor_clients").select("id, points, team_id").in("team_id", teamIds) : Promise.resolve({ data: [], error: null }),
 
       // Tiros libres
-      teamIds.length > 0
-        ? supabase.from("free_kick_goals").select("points, team_id").in("team_id", teamIds)
-        : Promise.resolve({ data: [], error: null }),
+      !zoneId ? supabase.from("free_kick_goals").select("points, team_id").not("team_id", "is", null) : teamIds.length > 0 ? supabase.from("free_kick_goals").select("points, team_id").in("team_id", teamIds) : Promise.resolve({ data: [], error: null }),
     ])
 
     // Procesar resultados y manejar errores
@@ -356,7 +343,7 @@ export async function getFreeKicksRankingByZone(
   zoneId?: string,
 ): Promise<{ success: boolean; data?: FreeKicksRankingItem[]; error?: string }> {
   try {
-    const supabase = createServerClient()
+    
 
     let teamsQuery = supabase.from("teams").select(`
       id,
@@ -375,10 +362,8 @@ export async function getFreeKicksRankingByZone(
     }
 
     const teamIds = teams.map((t) => t.id)
-    const { data: freeKicksData } = await supabase
-      .from("free_kick_goals")
-      .select("points, team_id")
-      .in("team_id", teamIds)
+    const freeKicksQuery = supabase.from("free_kick_goals").select("points, team_id");
+    const { data: freeKicksData } = await (!zoneId ? freeKicksQuery.not("team_id", "is", null) : freeKicksQuery.in("team_id", teamIds));
 
     const freeKicksByTeam = new Map<string, number>()
     freeKicksData?.forEach((fk) => {
@@ -423,7 +408,7 @@ export async function getFreeKicksRankingByZone(
 
 export async function getSalesRankingByZone(zoneId?: string) {
   try {
-    const supabase = createServerClient()
+    
 
     // Obtener equipos de la zona
     let teamsQuery = supabase.from("teams").select(`
@@ -465,12 +450,8 @@ export async function getSalesRankingByZone(zoneId?: string) {
     }
 
     const [salesByRepResult, salesByTeamResult] = await Promise.allSettled([
-      allMemberIds.length > 0
-        ? supabase.from("sales").select("points, representative_id").in("representative_id", allMemberIds)
-        : Promise.resolve({ data: [], error: null }),
-      teamIds.length > 0
-        ? supabase.from("sales").select("points, team_id").in("team_id", teamIds)
-        : Promise.resolve({ data: [], error: null }),
+      !zoneId ? supabase.from("sales").select("points, representative_id").not("representative_id", "is", null) : allMemberIds.length > 0 ? supabase.from("sales").select("points, representative_id").in("representative_id", allMemberIds) : Promise.resolve({ data: [], error: null }),
+      !zoneId ? supabase.from("sales").select("points, team_id").not("team_id", "is", null) : teamIds.length > 0 ? supabase.from("sales").select("points, team_id").in("team_id", teamIds) : Promise.resolve({ data: [], error: null }),
     ])
 
     const salesByRep = salesByRepResult.status === "fulfilled" ? salesByRepResult.value.data || [] : []
@@ -550,7 +531,7 @@ export async function getSalesRankingByZone(zoneId?: string) {
 
 export async function getClientsRankingByZone(zoneId?: string) {
   try {
-    const supabase = createServerClient()
+    
 
     // Obtener equipos de la zona
     let teamsQuery = supabase.from("teams").select(`
@@ -671,7 +652,7 @@ export async function getUserTeamInfo(
   userId: string,
 ): Promise<{ success: boolean; data?: UserTeamInfo; error?: string }> {
   try {
-    const supabase = createServerClient()
+    
 
     console.log("Buscando usuario con ID:", userId)
 
@@ -818,7 +799,7 @@ export async function getUserTeamInfo(
 
 export async function getProducts() {
   try {
-    const supabase = createServerClient()
+    
 
     const { data: products, error } = await supabase
       .from("products")

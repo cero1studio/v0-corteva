@@ -1,6 +1,6 @@
 "use server"
 
-import { adminSupabase } from "@/lib/supabase/admin"
+import { adminSupabase } from "@/lib/supabase/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getServerSession } from "next-auth/next"
 import { authOptions } from "@/app/api/auth/[...nextauth]/route"

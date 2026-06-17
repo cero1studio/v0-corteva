@@ -88,11 +88,13 @@ export async function getUserProfile(userId: string) {
     const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey)
 
     // Obtener perfil con zone_id y distributor_id directamente de la tabla profiles
-    const { data: profile, error } = await supabase
+    const { data: profileData, error } = await supabase
       .from("profiles")
       .select("id, full_name, role, team_id, zone_id, distributor_id, force_password_change")
       .eq("id", userId)
       .single()
+
+    const profile = profileData as any
 
     if (error || !profile) {
       console.error("❌ Error fetching profile:", error)

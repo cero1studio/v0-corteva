@@ -229,25 +229,28 @@ export async function createUser(userData: any) {
     console.log("Nombre:", full_name)
     console.log("Rol:", role)
 
-    if (!email || !password || !full_name || !role) {
+    const cleanEmail = typeof email === "string" ? email.trim() : email
+    const cleanPassword = typeof password === "string" ? password.trim() : password
+
+    if (!cleanEmail || !cleanPassword || !full_name || !role) {
       return { error: "Todos los campos son obligatorios" }
     }
 
     // Validar formato de email
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-    if (!emailRegex.test(email)) {
+    if (!emailRegex.test(cleanEmail)) {
       return { error: "El formato del email no es válido" }
     }
 
     // Validar longitud de contraseña
-    if (password.length < 6) {
+    if (cleanPassword.length < 6) {
       return { error: "La contraseña debe tener al menos 6 caracteres" }
     }
 
     const supabase = adminSupabase // Use the centralized admin client
 
     // Verificar si el usuario ya existe en profiles
-    const { data: existingProfile } = await supabase.from("profiles").select("email").eq("email", email).single()
+    const { data: existingProfile } = await supabase.from("profiles").select("email").eq("email", cleanEmail).single()
 
     if (existingProfile) {
       return { error: "Ya existe un usuario con este email en la base de datos" }
@@ -257,8 +260,8 @@ export async function createUser(userData: any) {
 
     // Crear usuario en auth
     const { data: authData, error: authError } = await supabase.auth.admin.createUser({
-      email: email,
-      password: password,
+      email: cleanEmail,
+      password: cleanPassword,
       email_confirm: true,
       user_metadata: {
         full_name: full_name,
@@ -281,7 +284,7 @@ export async function createUser(userData: any) {
     const profileData: any = {
       id: authData.user.id,
       user_id: authData.user.id,
-      email: email,
+      email: cleanEmail,
       full_name: full_name,
       role: role,
       zone_id: zone_id && zone_id !== "none" && zone_id !== "" ? zone_id : null,
@@ -289,9 +292,9 @@ export async function createUser(userData: any) {
       team_id: team_id && team_id !== "none" && team_id !== "" ? team_id : null,
     }
 
-    if (role === "capitan") {
-      if (vendedor_name) profileData.vendedor_name = vendedor_name
-      if (tecnico_name) profileData.tecnico_name = tecnico_name
+    if (role && role.toLowerCase() === "capitan") {
+      if (vendedor_name) profileData.vendedor_name = vendedor_name.trim()
+      if (tecnico_name) profileData.tecnico_name = tecnico_name.trim()
     }
 
     console.log("Creando perfil:", profileData)

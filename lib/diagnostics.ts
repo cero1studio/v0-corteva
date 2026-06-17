@@ -51,10 +51,10 @@ class DiagnosticsManager {
   // Tracking de Timeouts
   trackTimeout(callback: () => void, delay: number, id?: string): number {
     const timeoutId = setTimeout(() => {
-      this.activeTimeouts.delete(timeoutId)
+      this.activeTimeouts.delete(timeoutId as any as number)
       this.log("TIMEOUT", `Executed: ${id || timeoutId}`)
       callback()
-    }, delay)
+    }, delay) as any as number
 
     this.activeTimeouts.add(timeoutId)
     this.log("TIMEOUT", `Created: ${id || timeoutId}`, { delay, timeoutId })

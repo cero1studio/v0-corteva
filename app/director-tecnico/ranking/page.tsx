@@ -30,10 +30,15 @@ function DirectorTecnicoRankingContent() {
     try {
       setLoading(true)
 
-      const {
-        data: { user: authUser },
-      } = await supabase.auth.getUser()
-      if (!authUser) return
+      const sessionRes = await fetch("/api/auth/session")
+      const sessionData = await sessionRes.json()
+
+      if (!sessionData?.user) {
+        if (typeof router !== "undefined") router.push("/login")
+        return
+      }
+
+      const authUser = { id: sessionData.user.id }
 
       const { data: profileData, error: profileError } = await supabase
         .from("profiles")

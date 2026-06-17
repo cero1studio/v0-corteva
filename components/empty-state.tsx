@@ -8,7 +8,9 @@ import Link from "next/link"
 interface EmptyStateProps {
   title: string
   description: string
-  icon?: string
+  icon?: string | React.ElementType
+  className?: string
+  iconClassName?: string
   children?: React.ReactNode
   actionLabel?: string
   actionHref?: string
@@ -19,6 +21,8 @@ export function EmptyState({
   title,
   description,
   icon = "users",
+  className,
+  iconClassName,
   children,
   actionLabel,
   actionHref,
@@ -33,11 +37,11 @@ export function EmptyState({
     settings: Settings,
   }
 
-  const IconComponent = iconMap[icon] || UsersIcon
+  const IconComponent = typeof icon === "string" ? (iconMap[icon] || UsersIcon) : icon
 
   return (
-    <div className="flex flex-col items-center justify-center text-center p-8 rounded-lg border bg-white">
-      <div className="rounded-full bg-corteva-50 p-4 mb-4">
+    <div className={`flex flex-col items-center justify-center text-center p-8 rounded-lg border bg-white ${className || ""}`}>
+      <div className={`rounded-full bg-corteva-50 p-4 mb-4 ${iconClassName || ""}`}>
         <IconComponent className="h-8 w-8 text-corteva-500" />
       </div>
       <h3 className="text-xl font-semibold mb-2">{title}</h3>

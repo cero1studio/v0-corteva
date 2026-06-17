@@ -38,11 +38,15 @@ function DirectorTecnicoVentasContent() {
       setLoading(true)
 
       // Obtener el usuario actual
-      const {
-        data: { user: authUser },
-      } = await supabase.auth.getUser()
+      const sessionRes = await fetch("/api/auth/session")
+      const sessionData = await sessionRes.json()
 
-      if (!authUser) return
+      if (!sessionData?.user) {
+        if (typeof router !== "undefined") router.push("/login")
+        return
+      }
+
+      const authUser = { id: sessionData.user.id }
 
       // Obtener el perfil del usuario
       const { data: profileData, error: profileError } = await supabase

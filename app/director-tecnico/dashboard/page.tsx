@@ -48,14 +48,15 @@ function DirectorTecnicoDashboardContent() {
       setLoading(true)
 
       // Obtener el usuario actual
-      const {
-        data: { user: authUser },
-      } = await supabase.auth.getUser()
+      const sessionRes = await fetch("/api/auth/session")
+      const sessionData = await sessionRes.json()
 
-      if (!authUser) {
-        router.push("/login")
+      if (!sessionData?.user) {
+        if (typeof router !== "undefined") router.push("/login")
         return
       }
+
+      const authUser = { id: sessionData.user.id }
 
       console.log("Director Técnico - Usuario autenticado:", authUser.id)
 
@@ -423,7 +424,7 @@ function DirectorTecnicoDashboardContent() {
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-3xl font-bold tracking-tight">
-                  ¡Bienvenido, {userData?.full_name || "Director Técnico"}!
+                  ¡Bienvenido, {userData?.full_name || (user?.role === "arbitro" ? "Árbitro" : "Director Técnico")}!
                 </h2>
                 <div className="flex items-center gap-1 bg-corteva-50 text-corteva-700 px-3 py-1.5 rounded-full text-sm font-medium border border-corteva-200">
                   <Flag className="h-4 w-4" />

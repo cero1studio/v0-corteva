@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/client"
+import { getSupabaseClient } from "@/lib/supabase/client"
 import type { Zone } from "@/types"
 
 interface RankingItem {
@@ -15,7 +15,7 @@ interface RankingItem {
 }
 
 export async function getTeamRankingByZone(): Promise<RankingItem[]> {
-  const supabase = createClient()
+  const supabase = getSupabaseClient()
 
   try {
     // Obtener todos los equipos con sus zonas
@@ -35,7 +35,7 @@ export async function getTeamRankingByZone(): Promise<RankingItem[]> {
     const ranking: RankingItem[] =
       teams?.map((team) => ({
         teamName: team.name,
-        zone: team.zone?.name || "Sin zona",
+        zone: (Array.isArray(team.zone) ? team.zone[0]?.name : (team.zone as any)?.name) || "Sin zona",
         points: team.total_points || 0,
         matchesPlayed: 0, // Por ahora en 0, se puede calcular después
         wins: 0,

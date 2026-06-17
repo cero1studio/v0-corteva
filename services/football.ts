@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/client"
+import { getSupabaseClient } from "@/lib/supabase/client"
 
 interface TeamRanking {
   team: string
@@ -9,7 +9,7 @@ interface TeamRanking {
 }
 
 export async function getTeamRankingByZone(zone: string): Promise<TeamRanking[]> {
-  const supabase = createClient()
+  const supabase = getSupabaseClient()
 
   try {
     // Obtener equipos de la zona específica
