@@ -68,7 +68,7 @@ export async function middleware(req: NextRequest) {
 
   // Interceptar a los usuarios que deben cambiar su contraseña
   if (token && !isPublicRoute && token.force_password_change === true) {
-    if (pathname !== "/cambiar-contrasena" && !pathname.startsWith("/api/")) {
+    if (!token.original_admin_id && pathname !== "/cambiar-contrasena" && !pathname.startsWith("/api/")) {
       console.log("[MIDDLEWARE] Redirecting user to change password page")
       return NextResponse.redirect(new URL("/cambiar-contrasena", req.url))
     }

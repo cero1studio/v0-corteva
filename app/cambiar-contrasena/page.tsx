@@ -88,12 +88,13 @@ export default function CambiarContrasenaPage() {
 
   return (
     <div className="min-h-screen bg-[#f8fafc] flex flex-col items-center justify-center p-4">
-      <div className="mb-8 relative w-48 h-16">
+      <div className="mb-8 relative w-64 h-32">
         <Image 
-          src="/super-ganaderia-logo-transparent.png" 
+          src="/super-ganaderia-logo-black.png" 
           alt="Llevo las Riendas" 
           fill
           style={{ objectFit: 'contain' }}
+          priority
         />
       </div>
 

@@ -122,6 +122,7 @@ export const authOptions: NextAuthOptions = {
           token.team_name = null
           token.zone_id = undefined
           token.distributor_id = undefined
+          token.force_password_change = false // Restaurar a false para el admin
         } else {
           // Actualizar campos específicos del token (flujo normal)
           if (session.team_id !== undefined) {
