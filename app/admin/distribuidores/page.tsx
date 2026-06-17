@@ -27,6 +27,8 @@ export default function DistribuidoresPage() {
   // const [error, setError] = useState<string | null>(null)
   const [retryCount, setRetryCount] = useState(0)
   const { toast } = useToast()
+  const [selectedDistributors, setSelectedDistributors] = useState<string[]>([])
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false)
   // const [isDistributorsLoaded, setIsDistributorsLoaded] = useState(false)
 
   // useEffect(() => {
@@ -142,6 +144,64 @@ export default function DistribuidoresPage() {
     }
   }
 
+  async function handleBulkDelete() {
+    if (selectedDistributors.length === 0) return
+    if (!confirm(`¿Estás seguro de que deseas eliminar los ${selectedDistributors.length} distribuidores seleccionados? Esta acción no se puede deshacer.`)) {
+      return
+    }
+
+    setIsBulkDeleting(true)
+    const abortController = new AbortController()
+
+    try {
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("Timeout al eliminar distribuidores")), 5000),
+      )
+
+      const deletePromise = supabase.from("distributors").delete().in("id", selectedDistributors).abortSignal(abortController.signal)
+
+      const result = (await Promise.race([deletePromise, timeoutPromise])) as any
+
+      if (result.error) {
+        toast({
+          title: "Error",
+          description: result.error.message || "No se pudieron eliminar los distribuidores. Asegúrate de que no tengan equipos asociados.",
+          variant: "destructive",
+        })
+      } else {
+        toast({
+          title: "Distribuidores eliminados",
+          description: `Se han eliminado ${selectedDistributors.length} distribuidores exitosamente`,
+        })
+        setSelectedDistributors([])
+        await refresh(true)
+      }
+    } catch (error: any) {
+      console.error("Error al eliminar distribuidores:", error)
+      toast({
+        title: "Error",
+        description: "No se pudieron eliminar los distribuidores: " + error.message,
+        variant: "destructive",
+      })
+    } finally {
+      setIsBulkDeleting(false)
+    }
+  }
+
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      setSelectedDistributors(distributors.map((d) => d.id))
+    } else {
+      setSelectedDistributors([])
+    }
+  }
+
+  const toggleDistributorSelection = (id: string) => {
+    setSelectedDistributors((prev) =>
+      prev.includes(id) ? prev.filter((dId) => dId !== id) : [...prev, id]
+    )
+  }
+
   if (loading) {
     return (
       <div className="space-y-6">
@@ -188,9 +248,19 @@ export default function DistribuidoresPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
         <h2 className="text-3xl font-bold tracking-tight">Gestión de Distribuidores</h2>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
+          {selectedDistributors.length > 0 && (
+            <Button 
+              variant="destructive" 
+              onClick={handleBulkDelete}
+              disabled={isBulkDeleting}
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              {isBulkDeleting ? "Eliminando..." : `Eliminar seleccionados (${selectedDistributors.length})`}
+            </Button>
+          )}
           <Button onClick={handleRetry} variant="outline" size="icon" title="Actualizar datos">
             <RefreshCw className="h-4 w-4" />
           </Button>
@@ -227,6 +297,16 @@ export default function DistribuidoresPage() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-[40px]">
+                    <div className="flex items-center justify-center">
+                      <input
+                        type="checkbox"
+                        className="rounded border-gray-300"
+                        checked={distributors.length > 0 && selectedDistributors.length === distributors.length}
+                        onChange={(e) => handleSelectAll(e.target.checked)}
+                      />
+                    </div>
+                  </TableHead>
                   <TableHead>Nombre</TableHead>
                   <TableHead>Logo</TableHead>
                   <TableHead className="text-right">Acciones</TableHead>
@@ -234,7 +314,17 @@ export default function DistribuidoresPage() {
               </TableHeader>
               <TableBody>
                 {distributors.map((distributor) => (
-                  <TableRow key={distributor.id}>
+                  <TableRow key={distributor.id} className={selectedDistributors.includes(distributor.id) ? "bg-muted/50" : ""}>
+                    <TableCell>
+                      <div className="flex items-center justify-center">
+                        <input
+                          type="checkbox"
+                          className="rounded border-gray-300"
+                          checked={selectedDistributors.includes(distributor.id)}
+                          onChange={() => toggleDistributorSelection(distributor.id)}
+                        />
+                      </div>
+                    </TableCell>
                     <TableCell>
                       <div className="font-medium">{distributor.name}</div>
                     </TableCell>

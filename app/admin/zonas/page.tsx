@@ -19,7 +19,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { useCachedList } from "@/lib/global-cache"
-import { createZone, updateZone, deleteZone } from "@/app/actions/zones"
+import { createZone, updateZone, deleteZone, bulkDeleteZones } from "@/app/actions/zones"
 
 interface Zone {
   id: string
@@ -35,6 +35,8 @@ export default function ZonasPage() {
   const [searchTerm, setSearchTerm] = useState("")
   const { toast } = useToast()
   const [isZonesLoaded, setIsZonesLoaded] = useState(false)
+  const [selectedZones, setSelectedZones] = useState<string[]>([])
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false)
 
   const fetchZones = useCallback(async () => {
     const timeoutPromise = new Promise((_, reject) =>
@@ -170,53 +172,117 @@ export default function ZonasPage() {
     }
   }
 
+  const handleBulkDelete = async () => {
+    if (selectedZones.length === 0) return
+    if (!confirm(`¿Estás seguro de que quieres eliminar las ${selectedZones.length} zonas seleccionadas? Esta acción no se puede deshacer.`)) {
+      return
+    }
+
+    try {
+      setIsBulkDeleting(true)
+      const result = await bulkDeleteZones(selectedZones)
+
+      if (result.error) {
+        toast({
+          title: "Error",
+          description: result.error,
+          variant: "destructive",
+        })
+      } else {
+        toast({
+          title: "Zonas eliminadas",
+          description: `Se han eliminado ${selectedZones.length} zonas exitosamente`,
+        })
+        setSelectedZones([])
+        await refresh(true)
+      }
+    } catch (error: any) {
+      console.error("Error al eliminar zonas:", error)
+      toast({
+        title: "Error",
+        description: "No se pudieron eliminar las zonas: " + error.message,
+        variant: "destructive",
+      })
+    } finally {
+      setIsBulkDeleting(false)
+    }
+  }
+
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      setSelectedZones(filteredZones.map((z) => z.id))
+    } else {
+      setSelectedZones([])
+    }
+  }
+
+  const toggleZoneSelection = (zoneId: string) => {
+    setSelectedZones((prev) =>
+      prev.includes(zoneId) ? prev.filter((id) => id !== zoneId) : [...prev, zoneId]
+    )
+  }
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-3xl font-bold tracking-tight">Gestión de Zonas</h2>
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-          <DialogTrigger asChild>
-            <Button>
-              <PlusCircle className="mr-2 h-4 w-4" />
-              Nueva Zona
+      <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
+        <div>
+          <h2 className="text-3xl font-bold tracking-tight">Gestión de Zonas</h2>
+        </div>
+        <div className="flex items-center gap-2">
+          {selectedZones.length > 0 && (
+            <Button 
+              variant="destructive" 
+              onClick={handleBulkDelete}
+              disabled={isBulkDeleting}
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              {isBulkDeleting ? "Eliminando..." : `Eliminar seleccionados (${selectedZones.length})`}
             </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Añadir Nueva Zona</DialogTitle>
-              <DialogDescription>Ingresa el nombre de la nueva zona geográfica</DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4 py-4">
-              <div className="space-y-2">
-                <Label htmlFor="zoneName">Nombre de la zona</Label>
-                <Input
-                  id="zoneName"
-                  value={newZoneName}
-                  onChange={(e) => setNewZoneName(e.target.value)}
-                  placeholder="Ej: Zona Norte"
-                />
+          )}
+          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+            <DialogTrigger asChild>
+              <Button>
+                <PlusCircle className="mr-2 h-4 w-4" />
+                Nueva Zona
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Añadir Nueva Zona</DialogTitle>
+                <DialogDescription>Ingresa el nombre de la nueva zona geográfica</DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4 py-4">
+                <div className="space-y-2">
+                  <Label htmlFor="zoneName">Nombre de la zona</Label>
+                  <Input
+                    id="zoneName"
+                    value={newZoneName}
+                    onChange={(e) => setNewZoneName(e.target.value)}
+                    placeholder="Ej: Zona Norte"
+                  />
+                </div>
               </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
-                Cancelar
-              </Button>
-              <Button onClick={handleAddZone} disabled={isAddingZone}>
-                {isAddingZone ? (
-                  <>
-                    <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent"></div>
-                    Añadiendo...
-                  </>
-                ) : (
-                  <>
-                    <Save className="mr-2 h-4 w-4" />
-                    Guardar
-                  </>
-                )}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
+                  Cancelar
+                </Button>
+                <Button onClick={handleAddZone} disabled={isAddingZone}>
+                  {isAddingZone ? (
+                    <>
+                      <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent"></div>
+                      Añadiendo...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="mr-2 h-4 w-4" />
+                      Guardar
+                    </>
+                  )}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </div>
       </div>
 
       <Card>
@@ -225,7 +291,6 @@ export default function ZonasPage() {
           <CardDescription>Administra las zonas geográficas para distribuidores y equipos</CardDescription>
         </CardHeader>
         <CardContent>
-          {/* Filtro de búsqueda */}
           <div className="mb-6">
             <div className="relative max-w-sm">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
@@ -263,6 +328,16 @@ export default function ZonasPage() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-[40px]">
+                    <div className="flex items-center justify-center">
+                      <input
+                        type="checkbox"
+                        className="rounded border-gray-300"
+                        checked={filteredZones.length > 0 && selectedZones.length === filteredZones.length}
+                        onChange={(e) => handleSelectAll(e.target.checked)}
+                      />
+                    </div>
+                  </TableHead>
                   <TableHead>Nombre</TableHead>
                   <TableHead>Fecha de creación</TableHead>
                   <TableHead className="text-right">Acciones</TableHead>
@@ -271,7 +346,17 @@ export default function ZonasPage() {
               <TableBody>
                 {filteredZones.length > 0 ? (
                   filteredZones.map((zone) => (
-                    <TableRow key={zone.id}>
+                    <TableRow key={zone.id} className={selectedZones.includes(zone.id) ? "bg-muted/50" : ""}>
+                      <TableCell>
+                        <div className="flex items-center justify-center">
+                          <input
+                            type="checkbox"
+                            className="rounded border-gray-300"
+                            checked={selectedZones.includes(zone.id)}
+                            onChange={() => toggleZoneSelection(zone.id)}
+                          />
+                        </div>
+                      </TableCell>
                       <TableCell>
                         {editingZone?.id === zone.id ? (
                           <Input

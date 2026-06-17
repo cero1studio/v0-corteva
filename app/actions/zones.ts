@@ -97,6 +97,40 @@ export async function deleteZone(zoneId: string) {
   }
 }
 
+export async function bulkDeleteZones(zoneIds: string[]) {
+  const supabase = createServerClient()
+
+  try {
+    if (!zoneIds || zoneIds.length === 0) return { success: true }
+
+    // Verificar si hay equipos asociados a estas zonas
+    const { count, error: countError } = await supabase
+      .from("teams")
+      .select("*", { count: "exact", head: true })
+      .in("zone_id", zoneIds)
+
+    if (countError) {
+      return { error: countError.message }
+    }
+
+    if (count && count > 0) {
+      return { error: "No se pueden eliminar las zonas porque tienen equipos asociados. Elimina o mueve los equipos primero." }
+    }
+
+    // Eliminar las zonas
+    const { error } = await supabase.from("zones").delete().in("id", zoneIds)
+
+    if (error) {
+      return { error: error.message }
+    }
+
+    revalidatePath("/admin/zonas")
+    return { success: true }
+  } catch (error: any) {
+    return { error: error.message || "Error al eliminar las zonas" }
+  }
+}
+
 // Alias para mantener consistencia con otras funciones "getAll"
 export const getAllZones = getZones
 
