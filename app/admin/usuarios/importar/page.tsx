@@ -138,21 +138,13 @@ export default function ImportarUsuariosPage() {
   }
 
   // Find IDs based on names (case insensitive)
-  const resolveReference = (type: "zone" | "distributor" | "team", name: string) => {
+  // Nota: Esta función ya no se usa directamente en el loop para evitar staleness de React state,
+  // pero la mantenemos por si se usa en otro lado.
+  const resolveReference = (type: "zone" | "distributor" | "team", name: string, list: any[]) => {
     if (!name) return null
     const normalizedName = name.toLowerCase().trim()
-    
-    if (type === "zone") {
-      const found = zones.find(z => z.name.toLowerCase().trim() === normalizedName)
-      return found ? found.id : null
-    } else if (type === "distributor") {
-      const found = distributors.find(d => d.name.toLowerCase().trim() === normalizedName)
-      return found ? found.id : null
-    } else if (type === "team") {
-      const found = teams.find(t => t.name.toLowerCase().trim() === normalizedName)
-      return found ? found.id : null
-    }
-    return null
+    const found = list.find(item => item.name.toLowerCase().trim() === normalizedName)
+    return found ? found.id : null
   }
 
   async function handleProcess() {
@@ -168,14 +160,34 @@ export default function ImportarUsuariosPage() {
     let skipped = 0
     let errors = 0
 
+    // Usar arrays locales para la resolución en el loop, para que las creaciones nuevas
+    // estén disponibles inmediatamente en la siguiente iteración y evitar duplicados.
+    const localZones = [...zones]
+    const localDistributors = [...distributors]
+
     for (let i = 0; i < totalUsers; i++) {
       const user = usersData[i]
       setCurrentUser(user.Nombre)
 
       try {
-        // Resolve foreign keys
-        const zoneId = resolveReference("zone", user.Zona)
-        const distributorId = resolveReference("distributor", user.Distribuidor)
+        // Resolve foreign keys - AUTO CREAR si no existen
+        let zoneId = resolveReference("zone", user.Zona, localZones)
+        if (!zoneId && user.Zona) {
+          const { data, error } = await supabase.from("zones").insert({ name: user.Zona }).select("id, name").single()
+          if (!error && data) {
+            zoneId = data.id
+            localZones.push(data)
+          }
+        }
+
+        let distributorId = resolveReference("distributor", user.Distribuidor, localDistributors)
+        if (!distributorId && user.Distribuidor) {
+          const { data, error } = await supabase.from("distributors").insert({ name: user.Distribuidor }).select("id, name").single()
+          if (!error && data) {
+            distributorId = data.id
+            localDistributors.push(data)
+          }
+        }
 
         // Validate required fields based on role
         if (!user.Email || !user.Rol || !user.Nombre) {
@@ -283,6 +295,10 @@ export default function ImportarUsuariosPage() {
       // pero es mejor ir lento para no colapsar Supabase free tier o edge functions limit)
       await new Promise((resolve) => setTimeout(resolve, 800))
     }
+
+    // Actualizar estado global si creamos nuevas zonas o distribuidores
+    setZones(localZones)
+    setDistributors(localDistributors)
 
     setIsProcessing(false)
     setCurrentUser("")
