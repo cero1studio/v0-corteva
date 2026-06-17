@@ -4,6 +4,7 @@ import { Inter } from "next/font/google"
 import "./globals.css"
 import { SessionProvider } from "@/components/session-provider"
 import { Toaster } from "@/components/ui/toaster"
+import { ImpersonationBanner } from "@/components/impersonation-banner"
 
 const inter = Inter({ subsets: ["latin"] })
 
@@ -24,6 +25,7 @@ export default function RootLayout({
         <SessionProvider>
           {children}
           <Toaster />
+          <ImpersonationBanner />
         </SessionProvider>
       </body>
     </html>

@@ -91,17 +91,50 @@ export const authOptions: NextAuthOptions = {
       // Permitir actualización del token desde el cliente
       if (trigger === "update" && session) {
         console.log("[NEXTAUTH] JWT callback - Updating token with session:", session)
-        // Actualizar campos específicos del token
-        if (session.team_id !== undefined) {
-          token.team_id = session.team_id as string | null
+        
+        if (session.isImpersonating && token.role === "admin") {
+          // Iniciar impersonación: Guardar datos del admin y sobreescribir con los del objetivo
+          token.original_admin_id = token.id
+          token.original_admin_role = token.role
+          token.original_admin_name = token.name
+          
+          token.id = session.targetUser.id
+          token.email = session.targetUser.email
+          token.name = session.targetUser.name
+          token.role = session.targetUser.role
+          token.team_id = session.targetUser.team_id
+          token.team_name = session.targetUser.team_name
+          token.zone_id = session.targetUser.zone_id
+          token.distributor_id = session.targetUser.distributor_id
+          token.force_password_change = session.targetUser.force_password_change
+        } else if (session.restoreAdmin && token.original_admin_id) {
+          // Restaurar sesión de admin
+          token.id = token.original_admin_id as string
+          token.role = token.original_admin_role as string
+          token.name = token.original_admin_name as string | null
+          token.email = "" // Se mantendrá vacío o se puede restaurar si lo hubiéramos guardado. Lo ideal es no necesitarlo para la navegación básica del admin.
+          
+          // Limpiar datos de impersonación
+          token.original_admin_id = undefined
+          token.original_admin_role = undefined
+          token.original_admin_name = undefined
+          token.team_id = null
+          token.team_name = null
+          token.zone_id = undefined
+          token.distributor_id = undefined
+        } else {
+          // Actualizar campos específicos del token (flujo normal)
+          if (session.team_id !== undefined) {
+            token.team_id = session.team_id as string | null
+          }
+          if (session.team_name !== undefined) {
+            token.team_name = session.team_name as string | null
+          }
+          if (session.force_password_change !== undefined) {
+            token.force_password_change = session.force_password_change as boolean
+          }
         }
-        if (session.team_name !== undefined) {
-          token.team_name = session.team_name as string | null
-        }
-        if (session.force_password_change !== undefined) {
-          token.force_password_change = session.force_password_change as boolean
-        }
-        // Mantener otros campos del token
+        
         return token
       }
 
@@ -119,6 +152,12 @@ export const authOptions: NextAuthOptions = {
         session.user.zone_id = token.zone_id as string
         session.user.distributor_id = token.distributor_id as string
         session.user.force_password_change = token.force_password_change as boolean
+        
+        if (token.original_admin_id) {
+          session.user.original_admin_id = token.original_admin_id as string
+          session.user.original_admin_role = token.original_admin_role as string
+          session.user.original_admin_name = token.original_admin_name as string | null
+        }
       }
       return session
     },

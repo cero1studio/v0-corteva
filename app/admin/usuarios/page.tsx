@@ -1,6 +1,9 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
+import { useSession } from "next-auth/react"
+import { useRouter } from "next/navigation"
+import { getImpersonationData } from "@/app/actions/impersonate"
 import { getUsers, deleteUser, getZones } from "@/app/actions/users"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -33,6 +36,39 @@ export default function UsuariosPage() {
   const [zones, setZones] = useState<any[]>([])
   const [selectedZone, setSelectedZone] = useState<string>("all")
   const [searchTerm, setSearchTerm] = useState("")
+  const { update } = useSession()
+  const router = useRouter()
+  const [isImpersonating, setIsImpersonating] = useState<string | null>(null)
+
+  async function handleImpersonate(userId: string) {
+    try {
+      setIsImpersonating(userId)
+      const res = await getImpersonationData(userId)
+      if (!res.success || !res.data) {
+        toast({ title: "Error", description: res.error, variant: "destructive" })
+        return
+      }
+      
+      // Update NextAuth session to trigger impersonation
+      await update({
+        isImpersonating: true,
+        targetUser: res.data
+      })
+      
+      toast({ title: "Modo Impersonación", description: `Sesión iniciada como ${res.data.name}` })
+      
+      // Redirect based on role
+      if (res.data.role === "capitan") router.push("/capitan/dashboard")
+      else if (res.data.role === "director_tecnico") router.push("/director-tecnico/dashboard")
+      else if (res.data.role === "arbitro") router.push("/arbitro/dashboard")
+      else router.push("/")
+      
+    } catch (e: any) {
+      toast({ title: "Error", description: "Ocurrió un error inesperado", variant: "destructive" })
+    } finally {
+      setIsImpersonating(null)
+    }
+  }
 
   const fetchUsers = useCallback(async () => {
     const result = await getUsers(selectedZone)
@@ -320,6 +356,16 @@ export default function UsuariosPage() {
                       <TableCell>{getTeamStatus(user)}</TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-2">
+    <Button 
+      variant="outline" 
+      size="icon" 
+      title="Ingresar como..." 
+      disabled={isImpersonating === user.id}
+      onClick={() => handleImpersonate(user.id)}
+    >
+      <UserCheck className="h-4 w-4" />
+      <span className="sr-only">Ingresar como</span>
+    </Button>
                           <Button variant="outline" size="icon" asChild>
                             <Link href={`/admin/usuarios/editar/${user.id}`}>
                               <Edit className="h-4 w-4" />

@@ -14,6 +14,9 @@ declare module "next-auth" {
       zone_id?: string
       distributor_id?: string
       force_password_change?: boolean
+      original_admin_id?: string
+      original_admin_role?: string
+      original_admin_name?: string
     } & DefaultSession["user"]
   }
 
@@ -27,6 +30,9 @@ declare module "next-auth" {
     zone_id?: string
     distributor_id?: string
     force_password_change?: boolean
+    original_admin_id?: string
+    original_admin_role?: string
+    original_admin_name?: string
   }
 }
 
@@ -41,5 +47,8 @@ declare module "next-auth/jwt" {
     zone_id?: string
     distributor_id?: string
     force_password_change?: boolean
+    original_admin_id?: string
+    original_admin_role?: string
+    original_admin_name?: string
   }
 }
