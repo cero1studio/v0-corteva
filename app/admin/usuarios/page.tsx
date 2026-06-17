@@ -264,6 +264,7 @@ export default function UsuariosPage() {
                   <TableRow>
                     <TableHead>Nombre</TableHead>
                     <TableHead>Rol</TableHead>
+<TableHead>Vendedor / Técnico</TableHead>
                     <TableHead>Equipo</TableHead>
                     <TableHead>Zona</TableHead>
                     <TableHead>Distribuidor</TableHead>
