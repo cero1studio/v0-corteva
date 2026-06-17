@@ -161,7 +161,17 @@ export async function executeContestReset(
     if (options.teams) {
       // 1. Desvincular todos los usuarios de sus equipos
       await db.from("profiles").update({ team_id: null }).neq("id", NIL_UUID)
-      // 2. Borrar todos los equipos
+      
+      // 2. Desvincular ventas, tiros libres y clientes (para no perderlos si no se marcaron para borrar)
+      await db.from("sales").update({ team_id: null }).neq("id", NIL_UUID)
+      await db.from("free_kick_goals").update({ team_id: null }).neq("id", NIL_UUID)
+      await db.from("competitor_clients").update({ team_id: null }).neq("id", NIL_UUID)
+      
+      // 3. Borrar penalizaciones porque siempre dependen de un equipo
+      await db.from("penalty_history").delete().neq("id", NIL_UUID)
+      await db.from("penalties").delete().neq("id", NIL_UUID)
+      
+      // 4. Borrar todos los equipos
       const { error: teamsErr } = await db.from("teams").delete().neq("id", NIL_UUID)
       if (teamsErr) {
         console.error("contest-reset teams:", teamsErr)
