@@ -22,6 +22,7 @@ export function AdminStatsChart() {
   const [isMounted, setIsMounted] = useState(false)
   const [loading, setLoading] = useState(true)
   const [data, setData] = useState<TeamData[]>([])
+  const [fullData, setFullData] = useState<TeamData[]>([])
   const [error, setError] = useState<string | null>(null)
   const [retryCount, setRetryCount] = useState(0)
   /** Sin equipos en ranking vs equipos con todo en cero oficial */
@@ -96,8 +97,10 @@ export function AdminStatsChart() {
       }
 
       setEmptyKind("none")
-      const filteredData = chartData.filter((team) => team.goles > 0)
-      setData(filteredData.length > 0 ? filteredData : chartData.slice(0, 10))
+      // Sort teams by points (descending) and take top 20, keeping teams with 0 goals if needed
+      const sortedData = [...chartData].sort((a, b) => b.puntos - a.puntos)
+      setData(sortedData.slice(0, 20))
+      setFullData(chartData)
       setLoading(false)
     } catch (err: any) {
       console.error("Error al cargar datos del gráfico:", err)
@@ -210,12 +213,12 @@ export function AdminStatsChart() {
       <div className="mt-6 grid grid-cols-6 gap-6 text-center text-sm">
         <div className="bg-yellow-50 p-2 rounded">
           <div className="font-semibold text-yellow-700">Total Goles</div>
-          <div className="text-lg font-bold text-yellow-800">{data.reduce((sum, team) => sum + team.goles, 0)}</div>
+          <div className="text-lg font-bold text-yellow-800">{fullData.reduce((sum, team) => sum + team.goles, 0)}</div>
         </div>
         <div className="bg-blue-50 p-2 rounded">
           <div className="font-semibold text-blue-700">Total Puntos</div>
           <div className="text-lg font-bold text-blue-800">
-            {data.reduce((sum, team) => sum + team.puntos, 0).toLocaleString()}
+            {fullData.reduce((sum, team) => sum + team.puntos, 0).toLocaleString()}
           </div>
         </div>
       </div>
