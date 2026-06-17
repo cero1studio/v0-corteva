@@ -149,13 +149,21 @@ export default function CambiarContrasenaPage() {
             </div>
           </CardContent>
           
-          <CardFooter>
+          <CardFooter className="flex flex-col gap-2">
             <Button 
               type="submit" 
               className="w-full font-bold text-lg h-12" 
               disabled={isSubmitting}
             >
               {isSubmitting ? "Actualizando..." : "Actualizar Contraseña"}
+            </Button>
+            <Button 
+              type="button" 
+              variant="ghost" 
+              className="w-full text-gray-500" 
+              onClick={() => router.push("/api/auth/signout")}
+            >
+              Cerrar sesión y volver
             </Button>
           </CardFooter>
         </form>
