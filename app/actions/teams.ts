@@ -120,21 +120,19 @@ export async function deleteTeam(teamId: string) {
   const supabase = createServerClient()
 
   try {
-    // Verificar si hay usuarios asociados a este equipo
-    const { count, error: countError } = await supabase
-      .from("profiles")
-      .select("*", { count: "exact", head: true })
-      .eq("team_id", teamId)
+    // 1. Desvincular usuarios
+    await supabase.from("profiles").update({ team_id: null }).eq("team_id", teamId)
+    
+    // 2. Desvincular ventas, tiros libres y clientes (para no perderlos, pero que ya no referencien al equipo borrado)
+    await supabase.from("sales").update({ team_id: null }).eq("team_id", teamId)
+    await supabase.from("free_kick_goals").update({ team_id: null }).eq("team_id", teamId)
+    await supabase.from("competitor_clients").update({ team_id: null }).eq("team_id", teamId)
+    
+    // 3. Borrar penalizaciones porque siempre dependen del equipo
+    await supabase.from("penalty_history").delete().eq("team_id", teamId)
+    await supabase.from("penalties").delete().eq("team_id", teamId)
 
-    if (countError) {
-      return { error: countError.message }
-    }
-
-    if (count && count > 0) {
-      return { error: "No se puede eliminar el equipo porque tiene usuarios asociados" }
-    }
-
-    // Eliminar el equipo
+    // 4. Eliminar el equipo
     const { error } = await supabase.from("teams").delete().eq("id", teamId)
 
     if (error) {
@@ -145,5 +143,37 @@ export async function deleteTeam(teamId: string) {
     return { success: true }
   } catch (error: any) {
     return { error: error.message || "Error al eliminar el equipo" }
+  }
+}
+
+export async function bulkDeleteTeams(teamIds: string[]) {
+  const supabase = createServerClient()
+
+  try {
+    if (!teamIds || teamIds.length === 0) return { success: true }
+
+    // 1. Desvincular usuarios
+    await supabase.from("profiles").update({ team_id: null }).in("team_id", teamIds)
+    
+    // 2. Desvincular ventas, tiros libres y clientes (para no perderlos, pero que ya no referencien a los equipos borrados)
+    await supabase.from("sales").update({ team_id: null }).in("team_id", teamIds)
+    await supabase.from("free_kick_goals").update({ team_id: null }).in("team_id", teamIds)
+    await supabase.from("competitor_clients").update({ team_id: null }).in("team_id", teamIds)
+    
+    // 3. Borrar penalizaciones porque siempre dependen del equipo
+    await supabase.from("penalty_history").delete().in("team_id", teamIds)
+    await supabase.from("penalties").delete().in("team_id", teamIds)
+
+    // 4. Finalmente, borrar los equipos
+    const { error } = await supabase.from("teams").delete().in("id", teamIds)
+
+    if (error) {
+      return { error: error.message }
+    }
+
+    revalidatePath("/admin/equipos")
+    return { success: true }
+  } catch (error: any) {
+    return { error: error.message || "Error al eliminar equipos masivamente" }
   }
 }

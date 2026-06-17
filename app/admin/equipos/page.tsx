@@ -38,32 +38,8 @@ interface Distributor {
   logo_url?: string
 }
 
-// Función helper para obtener URL del logo del distribuidor
-function getDistributorLogoUrl(distributor: { name?: string; logo_url?: string } = {}) {
-  const { name = "", logo_url } = distributor
-
-  if (logo_url) {
-    return `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/${logo_url}`
-  }
-
-  // Fallback basado en el nombre
-  const logoMap: Record<string, string> = {
-    agralba: "/logos/agralba.png",
-    coacosta: "/logos/coacosta.png",
-    cosechar: "/logos/cosechar.png",
-    hernandez: "/logos/hernandez.png",
-    insagrin: "/logos/insagrin.png",
-  }
-
-  const key = name.toLowerCase()
-  for (const [logoKey, logoPath] of Object.entries(logoMap)) {
-    if (key.includes(logoKey)) {
-      return logoPath
-    }
-  }
-
-  return "/placeholder.svg?height=32&width=32"
-}
+import { getDistributorLogoUrl } from "@/lib/utils/image"
+import { bulkDeleteTeams } from "@/app/actions/teams"
 
 export default function TeamsAdminPage() {
   const { toast } = useToast()
@@ -78,6 +54,8 @@ export default function TeamsAdminPage() {
   const [error, setError] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedZone, setSelectedZone] = useState<string>("all")
+  const [selectedTeams, setSelectedTeams] = useState<string[]>([])
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false)
 
   // Función para cargar equipos
   const fetchTeams = useCallback(async () => {
@@ -226,6 +204,36 @@ export default function TeamsAdminPage() {
     }
   }
 
+  const handleBulkDelete = async () => {
+    if (selectedTeams.length === 0) return
+    if (!confirm(`¿Estás seguro de que quieres eliminar los ${selectedTeams.length} equipos seleccionados? Esta acción también eliminará sus ventas, tiros libres y penalizaciones.`)) {
+      return
+    }
+
+    try {
+      setIsBulkDeleting(true)
+      const result = await bulkDeleteTeams(selectedTeams)
+
+      if (result.error) throw new Error(result.error)
+
+      setSelectedTeams([])
+      fetchTeams()
+      toast({
+        title: "Equipos eliminados",
+        description: `Se han eliminado ${selectedTeams.length} equipos correctamente.`,
+      })
+    } catch (error: any) {
+      console.error("Error al eliminar equipos:", error)
+      toast({
+        title: "Error",
+        description: error.message || "No se pudieron eliminar los equipos",
+        variant: "destructive",
+      })
+    } finally {
+      setIsBulkDeleting(false)
+    }
+  }
+
   // Filtrar equipos
   const filteredTeams = teams.filter((team) => {
     const matchesSearch =
@@ -237,6 +245,20 @@ export default function TeamsAdminPage() {
 
     return matchesSearch && matchesZone
   })
+
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      setSelectedTeams(filteredTeams.map((t) => t.id))
+    } else {
+      setSelectedTeams([])
+    }
+  }
+
+  const toggleTeamSelection = (teamId: string) => {
+    setSelectedTeams((prev) =>
+      prev.includes(teamId) ? prev.filter((id) => id !== teamId) : [...prev, teamId]
+    )
+  }
 
   if (error) {
     return (
@@ -254,17 +276,25 @@ export default function TeamsAdminPage() {
 
   return (
     <div className="flex-1 space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight">Gestión de Equipos</h2>
-          <p className="text-muted-foreground">Administra los equipos del concurso Super Ganadería</p>
+      <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
+        <h1 className="text-3xl font-bold tracking-tight">Equipos</h1>
+        <div className="flex items-center gap-2">
+          {selectedTeams.length > 0 && (
+            <Button 
+              variant="destructive" 
+              onClick={handleBulkDelete}
+              disabled={isBulkDeleting}
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              {isBulkDeleting ? "Eliminando..." : `Eliminar seleccionados (${selectedTeams.length})`}
+            </Button>
+          )}
+          <Button asChild>
+            <Link href="/admin/equipos/nuevo">
+              <Plus className="mr-2 h-4 w-4" /> Nuevo Equipo
+            </Link>
+          </Button>
         </div>
-        <Button asChild>
-          <Link href="/admin/equipos/nuevo">
-            <Plus className="mr-2 h-4 w-4" />
-            Nuevo Equipo
-          </Link>
-        </Button>
       </div>
 
       <Card>
@@ -339,7 +369,17 @@ export default function TeamsAdminPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Equipo</TableHead>
+                    <TableHead className="w-[40px]">
+                      <div className="flex items-center justify-center">
+                        <input
+                          type="checkbox"
+                          className="rounded border-gray-300"
+                          checked={filteredTeams.length > 0 && selectedTeams.length === filteredTeams.length}
+                          onChange={(e) => handleSelectAll(e.target.checked)}
+                        />
+                      </div>
+                    </TableHead>
+                    <TableHead>Nombre</TableHead>
                     <TableHead>Zona</TableHead>
                     <TableHead>Distribuidor</TableHead>
                     <TableHead>Miembros</TableHead>
@@ -349,9 +389,19 @@ export default function TeamsAdminPage() {
                 </TableHeader>
                 <TableBody>
                   {filteredTeams.map((team) => (
-                    <TableRow key={team.id}>
+                    <TableRow key={team.id} className={selectedTeams.includes(team.id) ? "bg-muted/50" : ""}>
                       <TableCell>
-                        <div className="flex items-center space-x-3">
+                        <div className="flex items-center justify-center">
+                          <input
+                            type="checkbox"
+                            className="rounded border-gray-300"
+                            checked={selectedTeams.includes(team.id)}
+                            onChange={() => toggleTeamSelection(team.id)}
+                          />
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-3">
                           <div className="flex-shrink-0">
                             <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center">
                               <Building2 className="h-5 w-5 text-blue-600" />
@@ -373,17 +423,19 @@ export default function TeamsAdminPage() {
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center space-x-2">
-                          <img
-                            src={getDistributorLogoUrl({
-                              name: team.distributors?.name || "",
-                              logo_url: team.distributors?.logo_url,
-                            })}
-                            alt={team.distributors?.name || "Distribuidor"}
-                            className="h-6 w-6 rounded object-contain"
-                            onError={(e) => {
-                              e.currentTarget.src = "/placeholder.svg?height=24&width=24"
-                            }}
-                          />
+                          <div className="h-8 w-8 overflow-hidden rounded bg-gray-100 border border-gray-200">
+                            <img
+                              src={getDistributorLogoUrl({
+                                name: team.distributors?.name || "",
+                                logo_url: team.distributors?.logo_url || null,
+                              })}
+                              alt={`Logo ${team.distributors?.name}`}
+                              className="object-contain w-full h-full p-1"
+                              onError={(e) => {
+                                e.currentTarget.src = "/placeholder.svg?height=32&width=64&text=Logo"
+                              }}
+                            />
+                          </div>
                           <span className="text-sm">{team.distributors?.name || "Sin distribuidor"}</span>
                         </div>
                       </TableCell>
