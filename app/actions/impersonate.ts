@@ -18,7 +18,7 @@ export async function getImpersonationData(targetUserId: string) {
 
     const { data: profile, error: pErr } = await adminSupabase
       .from("profiles")
-      .select("*, teams(name)")
+      .select("*, teams:team_id(name)")
       .eq("id", targetUserId)
       .single()
 
