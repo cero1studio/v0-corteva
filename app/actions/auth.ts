@@ -1,47 +1,45 @@
 "use server"
 
-import { getServerSession } from "next-auth"
+import { adminSupabase } from "@/lib/supabase/admin"
+import { createServerClient } from "@/lib/supabase/server"
+import { getServerSession } from "next-auth/next"
 import { authOptions } from "@/app/api/auth/[...nextauth]/route"
-import { createClient } from "@supabase/supabase-js"
-import type { Database } from "@/types/supabase"
+import { revalidatePath } from "next/cache"
 
-export async function signIn(formData: FormData) {
-  // NextAuth maneja el inicio de sesión a través de su API
-  // Este action ya no es necesario, pero lo mantenemos por compatibilidad
-  return { error: "Use NextAuth signIn en el cliente" }
-}
-
-export async function signOut() {
-  // NextAuth maneja el cierre de sesión a través de su API
-  // Este action ya no es necesario, pero lo mantenemos por compatibilidad
-  return { error: "Use NextAuth signOut en el cliente" }
-}
-
-export async function getCurrentUser() {
+export async function forceChangePassword(password: string) {
   try {
     const session = await getServerSession(authOptions)
-
     if (!session || !session.user) {
-      return null
+      return { error: "No autorizado" }
     }
 
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    const userId = session.user.id
 
-    if (!supabaseUrl || !supabaseAnonKey) {
-      return null
+    // 1. Actualizar la contraseña en auth.users
+    const { error: authError } = await adminSupabase.auth.admin.updateUserById(userId, {
+      password: password,
+    })
+
+    if (authError) {
+      console.error("Error al actualizar contraseña:", authError)
+      return { error: authError.message }
     }
 
-    // Obtener perfil completo
-    const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey)
-    const { data: profile } = await supabase.from("profiles").select("*").eq("id", session.user.id).single()
+    // 2. Actualizar el flag en perfiles
+    const supabase = createServerClient()
+    const { error: profileError } = await supabase
+      .from("profiles")
+      .update({ force_password_change: false })
+      .eq("id", userId)
 
-    return {
-      ...session.user,
-      ...profile,
+    if (profileError) {
+      console.error("Error al actualizar el perfil:", profileError)
+      return { error: "Contraseña actualizada pero hubo un error al quitar la bandera del perfil." }
     }
-  } catch (error) {
-    console.error("Error en getCurrentUser:", error)
-    return null
+
+    return { success: true }
+  } catch (error: any) {
+    console.error("Error general al cambiar contraseña:", error)
+    return { error: "Ocurrió un error inesperado al procesar la solicitud." }
   }
 }

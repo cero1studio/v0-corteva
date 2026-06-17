@@ -90,7 +90,7 @@ export async function getUserProfile(userId: string) {
     // Obtener perfil con zone_id y distributor_id directamente de la tabla profiles
     const { data: profile, error } = await supabase
       .from("profiles")
-      .select("id, full_name, role, team_id, zone_id, distributor_id")
+      .select("id, full_name, role, team_id, zone_id, distributor_id, force_password_change")
       .eq("id", userId)
       .single()
 
@@ -128,6 +128,7 @@ export async function getUserProfile(userId: string) {
       team_name: teamName,
       zone_id: profile.zone_id || undefined,
       distributor_id: profile.distributor_id || undefined,
+      force_password_change: profile.force_password_change,
     }
   } catch (error: any) {
     // Si ya es un error con código, propagarlo

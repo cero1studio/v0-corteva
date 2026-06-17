@@ -23,6 +23,7 @@ interface UserImportData {
   Distribuidor: string
   Vendedor?: string
   Tecnico?: string
+  Contraseña?: string
 }
 
 type ResultType = {
@@ -70,11 +71,11 @@ export default function ImportarUsuariosPage() {
 
   const downloadTemplate = () => {
     const wsData = [
-      ["Nombre Completo", "Email", "Rol", "Zona", "Distribuidor", "Vendedor", "Tecnico"],
-      ["Maria Gomez", "maria@ejemplo.com", "capitan", "Santander", "Agralba Santander", "Juan Vendedor", "Pedro Tecnico"],
-      ["Carlos Ruiz", "carlos@ejemplo.com", "director_tecnico", "Antioquia", "Agralba Antioquia", "", ""],
-      ["Ana Juez", "ana@ejemplo.com", "arbitro", "", "", "", ""],
-      ["Luis Supervisor", "luis@ejemplo.com", "supervisor", "Norte", "Distribuidor XYZ", "", ""]
+      ["Nombre Completo", "Email", "Rol", "Zona", "Distribuidor", "Vendedor", "Tecnico", "Contraseña"],
+      ["Maria Gomez", "maria@ejemplo.com", "capitan", "Santander", "Agralba Santander", "Juan Vendedor", "Pedro Tecnico", "miclave123"],
+      ["Carlos Ruiz", "carlos@ejemplo.com", "director_tecnico", "Antioquia", "Agralba Antioquia", "", "", ""],
+      ["Ana Juez", "ana@ejemplo.com", "arbitro", "", "", "", "", "arbitro2026"],
+      ["Luis Supervisor", "luis@ejemplo.com", "supervisor", "Norte", "Distribuidor XYZ", "", "", ""]
     ]
     const ws = XLSX.utils.aoa_to_sheet(wsData)
     const wb = XLSX.utils.book_new()
@@ -106,6 +107,7 @@ export default function ImportarUsuariosPage() {
           Distribuidor: row.Distribuidor?.trim() || "",
           Vendedor: row.Vendedor?.trim() || "",
           Tecnico: row.Tecnico?.trim() || "",
+          Contraseña: row.Contraseña?.trim() || "",
         }))
 
         const validData = parsedData.filter(u => u.Email && u.Nombre)
@@ -263,7 +265,7 @@ export default function ImportarUsuariosPage() {
           } else {
             const formData = new FormData()
             formData.append("email", user.Email)
-            formData.append("password", "Corteva2026*")
+            formData.append("password", user.Contraseña || "Corteva2026*")
             formData.append("full_name", user.Nombre)
             formData.append("role", user.Rol)
             if (zoneId) formData.append("zone_id", zoneId)
@@ -356,6 +358,7 @@ export default function ImportarUsuariosPage() {
                     <li>Los <strong>Roles exactos</strong> permitidos en la columna "Rol" son: <code className="bg-background px-1 py-0.5 rounded text-foreground">capitan</code>, <code className="bg-background px-1 py-0.5 rounded text-foreground">director_tecnico</code>, <code className="bg-background px-1 py-0.5 rounded text-foreground">arbitro</code>, <code className="bg-background px-1 py-0.5 rounded text-foreground">supervisor</code>, <code className="bg-background px-1 py-0.5 rounded text-foreground">admin</code>.</li>
                     <li><strong>Vendedor y Técnico NO son roles:</strong> Son nombres de personas asociadas al <strong>capitan</strong>. Llena esas dos columnas ÚNICAMENTE cuando el Rol del usuario sea <code className="bg-background px-1 py-0.5 rounded text-foreground">capitan</code>.</li>
                     <li>Las columnas <strong>Zona</strong> y <strong>Distribuidor</strong> deben tener el nombre exacto de la zona y distribuidor que ya fueron creados previamente en el sistema.</li>
+                    <li><strong>Contraseña (Opcional):</strong> Puedes agregar una columna llamada "Contraseña". Si la dejas vacía o no la pones, el sistema asignará por defecto: <code className="bg-background px-1 py-0.5 rounded text-foreground font-mono">Corteva2026*</code></li>
                   </ul>
                 </div>
               </CardDescription>

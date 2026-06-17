@@ -39,6 +39,7 @@ export const authOptions: NextAuthOptions = {
             distributor_id: profile.distributor_id,
             hasZone: !!profile.zone_id,
             hasDistributor: !!profile.distributor_id,
+            force_password_change: profile.force_password_change,
           })
 
           // Retornar usuario con perfil incluido
@@ -51,6 +52,7 @@ export const authOptions: NextAuthOptions = {
             team_name: profile.team_name,
             zone_id: profile.zone_id,
             distributor_id: profile.distributor_id,
+            force_password_change: profile.force_password_change,
           }
         } catch (error: any) {
           console.error("❌ Error in authorize:", error)
@@ -82,7 +84,8 @@ export const authOptions: NextAuthOptions = {
         token.team_name = user.team_name
         token.zone_id = user.zone_id
         token.distributor_id = user.distributor_id
-        console.log("[NEXTAUTH] JWT callback - Token updated with role:", token.role)
+        token.force_password_change = user.force_password_change
+        console.log("[NEXTAUTH] JWT callback - Token updated with role:", token.role, "force_password_change:", token.force_password_change)
       }
 
       // Permitir actualización del token desde el cliente
@@ -94,6 +97,9 @@ export const authOptions: NextAuthOptions = {
         }
         if (session.team_name !== undefined) {
           token.team_name = session.team_name as string | null
+        }
+        if (session.force_password_change !== undefined) {
+          token.force_password_change = session.force_password_change as boolean
         }
         // Mantener otros campos del token
         return token
@@ -112,6 +118,7 @@ export const authOptions: NextAuthOptions = {
         session.user.team_name = token.team_name as string | null
         session.user.zone_id = token.zone_id as string
         session.user.distributor_id = token.distributor_id as string
+        session.user.force_password_change = token.force_password_change as boolean
       }
       return session
     },

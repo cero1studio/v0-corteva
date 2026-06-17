@@ -66,6 +66,21 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(new URL(dashboardUrl, req.url))
   }
 
+  // Interceptar a los usuarios que deben cambiar su contraseña
+  if (token && !isPublicRoute && token.force_password_change === true) {
+    if (pathname !== "/cambiar-contrasena" && !pathname.startsWith("/api/")) {
+      console.log("[MIDDLEWARE] Redirecting user to change password page")
+      return NextResponse.redirect(new URL("/cambiar-contrasena", req.url))
+    }
+  }
+
+  // Si ya cambiaron la contraseña y tratan de ir a cambiar-contrasena, mandarlos al dashboard
+  if (token && token.force_password_change === false && pathname === "/cambiar-contrasena") {
+    const role = token.role as string
+    const dashboardUrl = roleDashboards[role] || "/login"
+    return NextResponse.redirect(new URL(dashboardUrl, req.url))
+  }
+
   // Verificar acceso basado en roles
   if (token && !isPublicRoute) {
     const role = token.role as string
@@ -83,9 +98,10 @@ export async function middleware(req: NextRequest) {
       arbitro: ["/arbitro"],
       supervisor: ["/supervisor"],
       representante: ["/representante"],
+      all: ["/cambiar-contrasena"] // Allow global access for this specific route
     }
 
-    const allowedRoutes = roleRoutes[role] || []
+    const allowedRoutes = [...(roleRoutes[role] || []), ...roleRoutes.all]
     const hasAccess = allowedRoutes.some((route) => pathname.startsWith(route))
 
     // Si no tiene acceso, redirigir a su dashboard
